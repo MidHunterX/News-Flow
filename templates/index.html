@@ -24,48 +24,189 @@
       </h2>
     </div>
 
-    <!-- News Grid -->
-    {% if items %}
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {% for item in items %}
-          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col">
-            {% if item.image_url %}
-              <div class="h-48 overflow-hidden bg-gray-100 relative">
-                <img src="{{ item.image_url }}" alt="{{ item.title }}" class="w-full h-full object-cover">
-                <span class="absolute top-3 left-3 bg-black/60 text-white text-xs uppercase px-2 py-1 rounded font-bold backdrop-blur-sm">
-                  {{ item.source }}
-                </span>
-              </div>
-            {% endif %}
-            <div class="p-5 flex flex-col flex-grow">
-              <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
-                {% if not item.image_url %}
-                  <span class="bg-indigo-50 text-indigo-700 uppercase px-2 py-0.5 rounded font-bold">{{ item.source }}</span>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      <!-- News Grid -->
+      <div class="lg:col-span-2">
+        {% if items %}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {% for item in items %}
+              <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col">
+                {% if item.image_url %}
+                  <div class="h-48 overflow-hidden bg-gray-100 relative">
+                    <img src="{{ item.image_url }}" alt="{{ item.title }}" class="w-full h-full object-cover">
+                    <span class="absolute top-3 left-3 bg-black/60 text-white text-xs uppercase px-2 py-1 rounded font-bold backdrop-blur-sm">
+                      {{ item.source }}
+                    </span>
+                  </div>
                 {% endif %}
-                <span>{{ item.published_at }}</span>
+                <div class="p-5 flex flex-col flex-grow">
+                  <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+                    {% if not item.image_url %}
+                      <span class="bg-indigo-50 text-indigo-700 uppercase px-2 py-0.5 rounded font-bold">{{ item.source }}</span>
+                    {% endif %}
+                    <span>{{ item.published_at }}</span>
+                  </div>
+                  <h3 class="font-bold text-lg text-gray-900 mb-2 leading-snug">
+                    <a href="{{ item.url }}" target="_blank" class="hover:text-indigo-600 transition">{{ item.title }}</a>
+                  </h3>
+                  <p class="text-gray-600 text-sm mb-4 flex-grow line-clamp-3">{{ item.description }}</p>
+                  <div class="pt-4 border-t border-gray-100 mt-auto flex items-center justify-between gap-2">
+                    <a href="{{ item.url }}"
+                       target="_blank"
+                       class="text-indigo-600 font-semibold text-sm hover:underline inline-flex items-center gap-1">
+                      Read full article
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                      </svg>
+                    </a>
+                    <div class="flex items-center gap-2">
+                      <button onclick="postAction(`/api/articles/{{ item.id }}/accept`)"
+                              title="Accept article"
+                              class="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                      </button>
+                      <button onclick="postAction(`/api/articles/{{ item.id }}/reject`)"
+                              title="Reject article"
+                              class="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <h3 class="font-bold text-lg text-gray-900 mb-2 leading-snug">
-                <a href="{{ item.url }}" target="_blank" class="hover:text-indigo-600 transition">{{ item.title }}</a>
-              </h3>
-              <p class="text-gray-600 text-sm mb-4 flex-grow line-clamp-3">{{ item.description }}</p>
-              <div class="pt-4 border-t border-gray-100 mt-auto flex justify-between items-center">
-                <a href="{{ item.url }}"
-                   target="_blank"
-                   class="text-indigo-600 font-semibold text-sm hover:underline inline-flex items-center gap-1">
-                  Read full article
-                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
-                  </svg>
-                </a>
-              </div>
-            </div>
+            {% endfor %}
           </div>
-        {% endfor %}
+        {% else %}
+          <div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <p class="text-gray-500 text-lg">No news items found for this filter.</p>
+          </div>
+        {% endif %}
       </div>
-    {% else %}
-      <div class="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <p class="text-gray-500 text-lg">No news items found for this filter.</p>
-      </div>
+
+      <!-- Accepted Articles Aside -->
+      <aside class="lg:col-span-1 space-y-4 lg:sticky lg:top-6">
+        <div class="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+          <div class="px-4 py-3 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between">
+            <h3 class="font-bold text-sm text-indigo-800 uppercase tracking-wide">Accepted</h3>
+            <span class="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+              {{ accepted_items|length }}
+            </span>
+          </div>
+          {% if accepted_items %}
+            <ul class="divide-y divide-gray-100">
+              {% for item in accepted_items %}
+                <li class="p-4">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <div class="min-w-0">
+                      <span class="text-xs uppercase font-bold text-indigo-600">{{ item.source }}</span>
+                      <h4 class="font-semibold text-sm text-gray-900 leading-snug mt-0.5">{{ item.title }}</h4>
+                    </div>
+                    {% if item.status == "completed" %}
+                      <span class="shrink-0 text-xs font-bold px-2 py-1 rounded bg-green-100 text-green-700">Completed</span>
+                    {% endif %}
+                  </div>
+                  {% if item.status != "completed" %}
+                    <div class="timer-meter mb-3" data-accepted-at="{{ item.accepted_at }}" data-interval="{{ completion_interval }}">
+                      <div class="flex items-center justify-between text-xs mb-1">
+                        <span class="text-gray-500 font-medium">Completing in</span>
+                        <span class="timer-label font-bold text-indigo-600 tabular-nums">--:--</span>
+                      </div>
+                      <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div class="timer-fill h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                      </div>
+                    </div>
+                  {% endif %}
+                  <div class="flex items-center justify-between text-xs">
+                    <a href="{{ item.url }}" target="_blank" class="text-indigo-600 hover:underline font-medium">Open</a>
+                    <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
+                            class="text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2 py-1 rounded font-medium transition">
+                      Clear accept
+                    </button>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="px-4 py-6 text-sm text-gray-500 text-center">No accepted articles yet.</p>
+          {% endif %}
+        </div>
+      </aside>
+    </div>
+
+    <!-- Rejected Articles -->
+    {% if rejected_items %}
+      <details class="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <summary class="px-4 py-3 cursor-pointer text-sm font-semibold text-gray-700 flex items-center gap-2 select-none">
+          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+          Rejected ({{ rejected_items|length }})
+        </summary>
+        <ul class="divide-y divide-gray-100">
+          {% for item in rejected_items %}
+            <li class="px-4 py-3 flex items-center justify-between gap-3">
+              <span class="text-sm text-gray-500 line-through truncate">{{ item.title }}</span>
+              <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
+                      class="shrink-0 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2 py-1 rounded font-medium transition">
+                Restore
+              </button>
+            </li>
+          {% endfor %}
+        </ul>
+      </details>
     {% endif %}
   </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    // Completion interval in seconds (from server settings).
+    const completionInterval = {{ completion_interval }};
+
+    // POST an action (accept/reject/clear) and reload to reflect the change.
+    async function postAction(url) {
+      try {
+        await fetch(url, {
+          method: "POST"
+        });
+      } finally {
+        window.location.reload();
+      }
+    }
+
+    // Countdown meter under each accepted article.
+    function startTimerMeters() {
+      document.querySelectorAll(".timer-meter").forEach((meter) => {
+        const acceptedAt = new Date(meter.dataset.acceptedAt).getTime();
+        const intervalMs = parseInt(meter.dataset.interval, 10) * 1000;
+        const deadline = acceptedAt + intervalMs;
+        const label = meter.querySelector(".timer-label");
+        const fill = meter.querySelector(".timer-fill");
+
+        function tick() {
+          const remaining = Math.max(0, deadline - Date.now());
+          const pct = (remaining / Math.max(1, intervalMs)) * 100;
+          fill.style.width = `${pct}%`;
+          if (remaining <= 0) {
+            label.textContent = "Done";
+            fill.classList.remove("bg-indigo-500");
+            fill.classList.add("bg-green-500");
+          } else {
+            const minutes = Math.floor(remaining / 60000);
+            const seconds = Math.floor((remaining % 60000) / 1000);
+            label.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+          }
+        }
+
+        tick();
+        setInterval(tick, 1000);
+      });
+    }
+
+    startTimerMeters();
+  </script>
 {% endblock %}

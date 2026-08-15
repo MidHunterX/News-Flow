@@ -8,6 +8,10 @@ class NewsItem(BaseModel):
     description: str
     published_at: str
     source: str
+    # Database bookkeeping (None until loaded from the DB).
+    id: int | None = None
+    status: str | None = None
+    accepted_at: str | None = None
 
 
 class ScrapeResponse(BaseModel):

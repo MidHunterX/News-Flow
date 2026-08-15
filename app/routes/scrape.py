@@ -5,7 +5,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import SOURCES
-from app.db import get_cached_sources, get_items, save_items
+from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
+                    complete_due_articles, get_accepted_items,
+                    get_all_settings, get_cached_sources,
+                    get_completion_interval, get_items, get_pending_items,
+                    get_rejected_items, save_items, set_article_status,
+                    set_setting)
 from app.models import NewsItem, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
 
@@ -59,16 +64,69 @@ async def refresh_news(
     return ScrapeResponse(sources=sources, count=len(items), items=items)
 
 
+@router.post("/api/articles/{article_id}/accept")
+async def accept_article(article_id: int):
+    """Mark an article as accepted, starting its completion countdown."""
+    if not await set_article_status(article_id, STATUS_ACCEPTED):
+        raise HTTPException(404, "Article not found")
+    return {"ok": True}
+
+
+@router.post("/api/articles/{article_id}/reject")
+async def reject_article(article_id: int):
+    """Mark an article as rejected, removing it from the pending list."""
+    if not await set_article_status(article_id, STATUS_REJECTED):
+        raise HTTPException(404, "Article not found")
+    return {"ok": True}
+
+
+@router.post("/api/articles/{article_id}/clear")
+async def clear_article_status(article_id: int):
+    """Clear the status flag, moving the article back to the pending list."""
+    if not await set_article_status(article_id, None):
+        raise HTTPException(404, "Article not found")
+    return {"ok": True}
+
+
+@router.get("/api/settings")
+async def get_settings():
+    return await get_all_settings()
+
+
+@router.post("/api/settings")
+async def update_settings(settings: dict[str, str]):
+    """Update user-overridable app settings (only known keys are accepted)."""
+    for key, value in settings.items():
+        if key not in DEFAULT_SETTINGS:
+            raise HTTPException(400, f"Unknown setting: {key}")
+        if key == "completion_interval":
+            try:
+                if int(value) < 1:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "completion_interval must be a positive number of seconds"
+                )
+        await set_setting(key, value)
+    return await get_all_settings()
+
+
 @router.get("/", response_class=HTMLResponse)
 async def get_news_ui(
     request: Request, source: str | None = Query(None, description="Filter by source")
 ):
     current_source = source if source in SOURCES else None
+    sources = [current_source] if current_source else list(SOURCES)
 
-    if current_source:
-        items = await _get_articles([current_source])
-    else:
-        items = await _get_articles(list(SOURCES))
+    await _get_articles(sources)
+
+    # Lazily mark any accepted articles whose completion interval has elapsed.
+    interval = await get_completion_interval()
+    await complete_due_articles(interval)
+
+    items = await get_pending_items(current_source)
+    accepted_items = await get_accepted_items(current_source)
+    rejected_items = await get_rejected_items(current_source)
 
     return templates.TemplateResponse(
         request=request,
@@ -76,8 +134,11 @@ async def get_news_ui(
         context={
             "request": request,
             "items": items,
+            "accepted_items": accepted_items,
+            "rejected_items": rejected_items,
             "sources": SOURCES.keys(),
             "selected_source": current_source,
             "count": len(items),
+            "completion_interval": interval,
         },
     )

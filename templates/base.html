@@ -41,15 +41,82 @@
           >
             Refresh Now
           </button>
+          <button
+            onclick="openSettings()"
+            class="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition"
+            title="Settings"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              ></path>
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              ></path>
+            </svg>
+          </button>
         </div>
       </div>
     </header>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold text-gray-900">Settings</h3>
+          <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600 transition" title="Close">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="space-y-4">
+          <div>
+            <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
+              Completion interval (minutes)
+            </label>
+            <p class="text-xs text-gray-500 mb-2">
+              Accepted articles are marked completed one by one, each this long after being accepted.
+            </p>
+            <input
+              id="completion-interval-input"
+              type="number"
+              min="1"
+              step="1"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button
+              onclick="closeSettings()"
+              class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+            >
+              Cancel
+            </button>
+            <button
+              onclick="saveSettings()"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-8">{% block content %}{% endblock %}</main>
 
     <footer class="bg-white border-t border-gray-200 py-6 text-center text-sm text-gray-500">
       News Flow Scraper &bull; Built with FastAPI & Tailwind CSS
     </footer>
+
+    {% block scripts %}{% endblock %}
 
     <script>
       // Auto-refresh every 15 minutes (900 seconds)
@@ -92,6 +159,42 @@
 
       // Update every second
       setInterval(updateTimer, 1000);
+
+      // ---- Settings modal ----
+      async function openSettings() {
+        try {
+          const res = await fetch("/api/settings");
+          const settings = await res.json();
+          const seconds = parseInt(settings.completion_interval, 10) || 600;
+          document.getElementById("completion-interval-input").value = Math.max(1, Math.round(seconds / 60));
+        } catch (err) {
+          document.getElementById("completion-interval-input").value = 10;
+        }
+        document.getElementById("settings-modal").classList.remove("hidden");
+      }
+
+      function closeSettings() {
+        document.getElementById("settings-modal").classList.add("hidden");
+      }
+
+      async function saveSettings() {
+        const minutes = parseInt(document.getElementById("completion-interval-input").value, 10);
+        if (!minutes || minutes < 1) {
+          alert("Completion interval must be at least 1 minute.");
+          return;
+        }
+        try {
+          await fetch("/api/settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ completion_interval: String(minutes * 60) }),
+          });
+        } catch (err) {
+          alert("Failed to save settings.");
+          return;
+        }
+        window.location.reload();
+      }
     </script>
   </body>
 </html>

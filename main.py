@@ -1,7 +1,9 @@
+import asyncio
+
 from fastapi import FastAPI
 
 from app.client import get_client
-from app.db import init_db
+from app.db import complete_due_articles, get_completion_interval, init_db
 from app.routes import scrape
 from app.scrapers.init import SCRAPERS
 
@@ -10,14 +12,32 @@ app = FastAPI(title="News Flow")
 # Include routers
 app.include_router(scrape.router)
 
+_completion_task: asyncio.Task | None = None
+
+
+async def _completion_loop() -> None:
+    """Periodically mark accepted articles as completed once their interval elapses."""
+    while True:
+        try:
+            interval = await get_completion_interval()
+            await complete_due_articles(interval)
+        except Exception:
+            # Keep the loop alive on transient errors (e.g. locked DB).
+            pass
+        await asyncio.sleep(2)
+
 
 @app.on_event("startup")
 async def startup():
     init_db()
+    global _completion_task
+    _completion_task = asyncio.create_task(_completion_loop())
 
 
 @app.on_event("shutdown")
 async def shutdown():
+    if _completion_task is not None:
+        _completion_task.cancel()
     client = await get_client()
     await client.aclose()
 
