@@ -32,8 +32,8 @@
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               ></path>
             </svg>
-            <span class="text-gray-600 font-medium">Auto-refresh in:</span>
-            <span id="timer-display" class="font-bold text-indigo-600 w-12">15:00</span>
+            <span class="text-gray-600 font-medium">Next update in:</span>
+            <span id="timer-display" class="font-bold text-indigo-600 w-12">--:--</span>
           </div>
           <button
             onclick="refreshNews()"
@@ -52,9 +52,8 @@
     </footer>
 
     <script>
-      // Default timer set to 15 minutes (15 * 60 seconds = 900 seconds)
+      // Auto-refresh every 15 minutes (900 seconds)
       const autoRefreshSeconds = 15 * 60;
-      let totalSeconds = autoRefreshSeconds;
       let refreshing = false;
       const timerDisplay = document.getElementById("timer-display");
 
@@ -72,18 +71,26 @@
       }
 
       function updateTimer() {
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+        // Calculate seconds until next 15-minute interval based on system time
+        const now = new Date();
+        const secondsSinceMidnight = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        const secondsUntilNextInterval = autoRefreshSeconds - (secondsSinceMidnight % autoRefreshSeconds);
 
-        if (totalSeconds <= 0) {
+        // If we're exactly at an interval boundary, trigger refresh
+        if (secondsUntilNextInterval === autoRefreshSeconds) {
           refreshNews();
-          totalSeconds = autoRefreshSeconds;
-        } else {
-          totalSeconds--;
+          return;
         }
+
+        const minutes = Math.floor(secondsUntilNextInterval / 60);
+        const seconds = secondsUntilNextInterval % 60;
+        timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
       }
 
+      // Initial update
+      updateTimer();
+
+      // Update every second
       setInterval(updateTimer, 1000);
     </script>
   </body>
