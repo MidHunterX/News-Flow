@@ -36,7 +36,7 @@
             <span id="timer-display" class="font-bold text-indigo-600 w-12">15:00</span>
           </div>
           <button
-            onclick="window.location.reload()"
+            onclick="refreshNews()"
             class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow-sm"
           >
             Refresh Now
@@ -53,8 +53,23 @@
 
     <script>
       // Default timer set to 15 minutes (15 * 60 seconds = 900 seconds)
-      let totalSeconds = 15 * 60;
+      const autoRefreshSeconds = 15 * 60;
+      let totalSeconds = autoRefreshSeconds;
+      let refreshing = false;
       const timerDisplay = document.getElementById("timer-display");
+
+      // Re-scrape via the refresh endpoint, then reload to show fresh data.
+      async function refreshNews() {
+        if (refreshing) return;
+        refreshing = true;
+        const source = new URLSearchParams(window.location.search).get("source");
+        const url = source ? `/api/refresh?source=${encodeURIComponent(source)}` : "/api/refresh";
+        try {
+          await fetch(url, { method: "POST" });
+        } finally {
+          window.location.reload();
+        }
+      }
 
       function updateTimer() {
         const minutes = Math.floor(totalSeconds / 60);
@@ -62,7 +77,8 @@
         timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 
         if (totalSeconds <= 0) {
-          window.location.reload();
+          refreshNews();
+          totalSeconds = autoRefreshSeconds;
         } else {
           totalSeconds--;
         }
