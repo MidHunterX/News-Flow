@@ -120,6 +120,11 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Database
+newsflow.db
+newsflow.db-wal
+newsflow.db-shm
+
 # Environments
 .env
 .venv
