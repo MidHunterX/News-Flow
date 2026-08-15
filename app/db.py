@@ -19,8 +19,7 @@ def init_db() -> None:
     with _connect() as conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=5000")
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS articles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -31,8 +30,7 @@ def init_db() -> None:
                 source TEXT NOT NULL,
                 scraped_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
-            """
-        )
+            """)
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_articles_source ON articles(source)"
         )
@@ -57,7 +55,17 @@ def _save_items_sync(items: list[NewsItem]) -> None:
 
     with _connect() as conn:
         for source, source_items in by_source.items():
-            conn.execute("DELETE FROM articles WHERE source = ?", (source,))
+            existing = conn.execute(
+                "SELECT url, title FROM articles WHERE source = ?", (source,)
+            ).fetchall()
+            existing_keys = {row["url"] or row["title"] for row in existing}
+            new_items = [
+                item
+                for item in source_items
+                if (item.url or item.title) not in existing_keys
+            ]
+            if not new_items:
+                continue
             conn.executemany(
                 """
                 INSERT INTO articles (title, url, image_url, description, published_at, source)
@@ -72,13 +80,13 @@ def _save_items_sync(items: list[NewsItem]) -> None:
                         item.published_at,
                         item.source,
                     )
-                    for item in source_items
+                    for item in new_items
                 ],
             )
 
 
 async def save_items(items: list[NewsItem]) -> None:
-    """Replace the cached articles for every source present in ``items``."""
+    """Insert cached articles not already stored, keeping previously seen ones."""
     await asyncio.to_thread(_save_items_sync, items)
 
 
@@ -87,12 +95,12 @@ def _get_items_sync(source: str | None = None) -> list[NewsItem]:
         if source is None:
             rows = conn.execute(
                 "SELECT title, url, image_url, description, published_at, source "
-                "FROM articles ORDER BY id"
+                "FROM articles ORDER BY id DESC"
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT title, url, image_url, description, published_at, source "
-                "FROM articles WHERE source = ? ORDER BY id",
+                "FROM articles WHERE source = ? ORDER BY id DESC",
                 (source,),
             ).fetchall()
     return [
