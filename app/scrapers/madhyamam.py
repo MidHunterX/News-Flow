@@ -19,7 +19,7 @@ class MadhyamamScraper(BaseScraper):
         base_url = SOURCES[self.source_name]
         items = []
 
-        for card in soup.select("div.exclude-news-item"):
+        for card in soup.select("div.other-news div.exclude-news-item"):
             link_el = card.select_one("div.heading h3.hd a")
             img_el = card.select_one("div.story-image img")
             title_el = card.select_one("div.heading h3.hd")
@@ -27,7 +27,7 @@ class MadhyamamScraper(BaseScraper):
             time_el = card.select_one("div.post-time span")
 
             href = link_el.get("href") if link_el else None
-            src = img_el.get("src") if img_el else None
+            src = img_el.get("data-src") or img_el.get("src") if img_el else None
 
             items.append(
                 NewsItem(
