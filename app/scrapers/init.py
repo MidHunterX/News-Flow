@@ -3,11 +3,13 @@ from app.models import NewsItem
 from .base import BaseScraper
 from .kaumudi import KaumudiScraper
 from .mangalam import MangalamScraper
+from .madhyamam import MadhyamamScraper
 
 # Registry of all scrapers
 SCRAPERS = {
     "kaumudi": KaumudiScraper(),
     "mangalam": MangalamScraper(),
+    "madhyamam": MadhyamamScraper(),
 }
 
 
