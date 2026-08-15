@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.client import get_client
 from app.routes import scrape
+from app.scrapers.init import SCRAPERS
 
 app = FastAPI(title="News Flow")
 
@@ -17,9 +18,10 @@ async def shutdown():
 
 @app.get("/")
 async def root():
+    sources = "|".join([scraper for scraper in SCRAPERS])
     return {
         "name": "News Flow Scraper",
         "endpoints": {
-            "/scrape": "Get news from all sources (optional ?source=kaumudi|mangalam)",
+            "/scrape": f"Get news from all sources (optional ?source={sources})",
         },
     }
