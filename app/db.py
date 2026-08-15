@@ -19,6 +19,10 @@ STATUS_ACCEPTED = "accepted"
 STATUS_REJECTED = "rejected"
 STATUS_COMPLETED = "completed"
 
+# Setting key storing the UTC date of the last app run. When the app starts on
+# a new day, the articles table is cleared for a fresh workspace.
+LAST_RUN_DATE_KEY = "last_run_date"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -75,6 +79,19 @@ def init_db() -> None:
             conn.execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
+            )
+        # Fresh workspace per day: clear the articles table when the last run
+        # was on a previous day.
+        today = datetime.now(timezone.utc).date().isoformat()
+        last_run = conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (LAST_RUN_DATE_KEY,)
+        ).fetchone()
+        if last_run is None or last_run["value"] != today:
+            conn.execute("DELETE FROM articles")
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (LAST_RUN_DATE_KEY, today),
             )
 
 
