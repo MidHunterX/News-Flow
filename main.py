@@ -20,8 +20,9 @@ async def shutdown():
 async def root():
     sources = "|".join([scraper for scraper in SCRAPERS])
     return {
-        "name": "News Flow Scraper",
+        "name": "News Flow",
         "endpoints": {
-            "/scrape": f"Get news from all sources (optional ?source={sources})",
+            "/": f"Get news from all sources (optional ?source={sources})",
+            "/api/scrape": f"Get JSON from all sources (optional ?source={sources})",
         },
     }

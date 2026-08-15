@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>News Flow - Realtime Aggregator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
+    <header class="bg-white shadow-sm border-b border-gray-200">
+      <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div class="flex items-center space-x-3">
+          <a href="/" class="text-2xl font-black tracking-tight text-indigo-600">NewsFlow</a>
+          <span class="text-xs uppercase tracking-wider bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-semibold"
+            >Live Scraper</span
+          >
+        </div>
+
+        <!-- Timer Visual Indicator -->
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 text-sm">
+            <svg
+              class="w-4 h-4 text-indigo-600 animate-spin-slow"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              ></path>
+            </svg>
+            <span class="text-gray-600 font-medium">Auto-refresh in:</span>
+            <span id="timer-display" class="font-bold text-indigo-600 w-12">15:00</span>
+          </div>
+          <button
+            onclick="window.location.reload()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow-sm"
+          >
+            Refresh Now
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 py-8">{% block content %}{% endblock %}</main>
+
+    <footer class="bg-white border-t border-gray-200 py-6 text-center text-sm text-gray-500">
+      News Flow Scraper &bull; Built with FastAPI & Tailwind CSS
+    </footer>
+
+    <script>
+      // Default timer set to 15 minutes (15 * 60 seconds = 900 seconds)
+      let totalSeconds = 15 * 60;
+      const timerDisplay = document.getElementById("timer-display");
+
+      function updateTimer() {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
+        if (totalSeconds <= 0) {
+          window.location.reload();
+        } else {
+          totalSeconds--;
+        }
+      }
+
+      setInterval(updateTimer, 1000);
+    </script>
+  </body>
+</html>
