@@ -110,7 +110,7 @@
                     {% endif %}
                   </div>
                   {% if item.status != "completed" %}
-                    <div class="timer-meter mb-3" data-accepted-at="{{ item.accepted_at }}" data-interval="{{ completion_interval }}">
+                    <div class="timer-meter mb-3" data-accepted-at="{{ item.accepted_at or '' }}" data-interval="{{ completion_interval }}">
                       <div class="flex items-center justify-between text-xs mb-1">
                         <span class="text-gray-500 font-medium">Completing in</span>
                         <span class="timer-label font-bold text-indigo-600 tabular-nums">--:--</span>
@@ -181,11 +181,23 @@
     // Countdown meter under each accepted article.
     function startTimerMeters() {
       document.querySelectorAll(".timer-meter").forEach((meter) => {
-        const acceptedAt = new Date(meter.dataset.acceptedAt).getTime();
+        const acceptedAtRaw = meter.dataset.acceptedAt;
         const intervalMs = parseInt(meter.dataset.interval, 10) * 1000;
-        const deadline = acceptedAt + intervalMs;
         const label = meter.querySelector(".timer-label");
         const fill = meter.querySelector(".timer-fill");
+
+        if (!acceptedAtRaw) {
+          // Queued behind another accepted article; its timer starts only
+          // when it becomes the active one.
+          label.textContent = "Waiting";
+          fill.style.width = "100%";
+          fill.classList.remove("bg-indigo-500");
+          fill.classList.add("bg-gray-300");
+          return;
+        }
+
+        const acceptedAt = new Date(acceptedAtRaw).getTime();
+        const deadline = acceptedAt + intervalMs;
 
         function tick() {
           const remaining = Math.max(0, deadline - Date.now());

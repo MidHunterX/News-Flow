@@ -37,6 +37,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE articles ADD COLUMN status TEXT")
     if "accepted_at" not in cols:
         conn.execute("ALTER TABLE articles ADD COLUMN accepted_at TEXT")
+    if "accepted_order" not in cols:
+        conn.execute("ALTER TABLE articles ADD COLUMN accepted_order INTEGER")
 
 
 def init_db() -> None:
@@ -201,18 +203,31 @@ def _set_article_status_sync(article_id: int, status: str | None) -> bool:
         if exists is None:
             return False
         if status == STATUS_ACCEPTED:
+            # Queue the article behind every previously accepted one.
+            order = conn.execute(
+                "SELECT COALESCE(MAX(accepted_order), 0) + 1 FROM articles"
+            ).fetchone()[0]
+            # Only one article runs its completion timer at a time: if this is
+            # the only accepted article its timer starts now, otherwise it
+            # waits in the queue until its turn.
+            others = conn.execute(
+                "SELECT 1 FROM articles WHERE status = ? AND id != ? LIMIT 1",
+                (STATUS_ACCEPTED, article_id),
+            ).fetchone()
+            accepted_at = _now_iso() if others is None else None
             conn.execute(
-                "UPDATE articles SET status = ?, accepted_at = ? WHERE id = ?",
-                (STATUS_ACCEPTED, _now_iso(), article_id),
+                "UPDATE articles SET status = ?, accepted_at = ?, accepted_order = ? WHERE id = ?",
+                (STATUS_ACCEPTED, accepted_at, order, article_id),
             )
         elif status is None:
             conn.execute(
-                "UPDATE articles SET status = NULL, accepted_at = NULL WHERE id = ?",
+                "UPDATE articles SET status = NULL, accepted_at = NULL, accepted_order = NULL WHERE id = ?",
                 (article_id,),
             )
         else:
             conn.execute(
-                "UPDATE articles SET status = ? WHERE id = ?", (status, article_id)
+                "UPDATE articles SET status = ?, accepted_order = NULL WHERE id = ?",
+                (status, article_id),
             )
     return True
 
@@ -223,27 +238,49 @@ async def set_article_status(article_id: int, status: str | None) -> bool:
 
 
 def _complete_due_articles_sync(interval_seconds: int) -> int:
-    """Mark accepted articles whose completion deadline has passed as completed."""
+    """Complete accepted articles one at a time, in acceptance order.
+
+    Only the first accepted (non-completed) article runs its completion timer;
+    the rest wait in the queue. A queued article's timer starts only once it
+    becomes the active one.
+    """
     now = datetime.now(timezone.utc).timestamp()
-    due_ids: list[int] = []
+    now_iso = _now_iso()
+    completed = 0
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, accepted_at FROM articles WHERE status = ?",
+            "SELECT id, accepted_at FROM articles WHERE status = ? "
+            "ORDER BY accepted_order ASC, id ASC",
             (STATUS_ACCEPTED,),
         ).fetchall()
-        for row in rows:
-            try:
-                accepted_ts = datetime.fromisoformat(row["accepted_at"]).timestamp()
-            except TypeError, ValueError:
-                continue
-            if now - accepted_ts >= interval_seconds:
-                due_ids.append(row["id"])
-        if due_ids:
-            conn.executemany(
-                "UPDATE articles SET status = ? WHERE id = ?",
-                [(STATUS_COMPLETED, article_id) for article_id in due_ids],
-            )
-    return len(due_ids)
+        for index, row in enumerate(rows):
+            if index == 0:
+                # Active article: start its timer if it hasn't begun yet.
+                if row["accepted_at"] is None:
+                    conn.execute(
+                        "UPDATE articles SET accepted_at = ? WHERE id = ?",
+                        (now_iso, row["id"]),
+                    )
+                    continue
+                try:
+                    accepted_ts = datetime.fromisoformat(
+                        row["accepted_at"]
+                    ).timestamp()
+                except (TypeError, ValueError):
+                    continue
+                if now - accepted_ts >= interval_seconds:
+                    conn.execute(
+                        "UPDATE articles SET status = ?, accepted_order = NULL WHERE id = ?",
+                        (STATUS_COMPLETED, row["id"]),
+                    )
+                    completed += 1
+            elif row["accepted_at"] is not None:
+                # Queued article: its timer must not have started yet.
+                conn.execute(
+                    "UPDATE articles SET accepted_at = NULL WHERE id = ?",
+                    (row["id"],),
+                )
+    return completed
 
 
 async def complete_due_articles(interval_seconds: int) -> int:
