@@ -149,7 +149,7 @@ def _row_to_item(row: sqlite3.Row) -> NewsItem:
 def _get_items_sync(
     source: str | None = None, status_filter: str | None = None
 ) -> list[NewsItem]:
-    """status_filter: 'pending', 'accepted' (accepted + completed), 'rejected', or None for all."""
+    """status_filter: 'pending', 'accepted', 'completed', 'rejected', or None for all."""
     query = (
         "SELECT id, title, url, image_url, description, published_at, source, status, accepted_at "
         "FROM articles"
@@ -162,8 +162,11 @@ def _get_items_sync(
     if status_filter == "pending":
         clauses.append("status IS NULL")
     elif status_filter == "accepted":
-        clauses.append("status IN (?, ?)")
-        params.extend([STATUS_ACCEPTED, STATUS_COMPLETED])
+        clauses.append("status = ?")
+        params.append(STATUS_ACCEPTED)
+    elif status_filter == "completed":
+        clauses.append("status = ?")
+        params.append(STATUS_COMPLETED)
     elif status_filter == "rejected":
         clauses.append("status = ?")
         params.append(STATUS_REJECTED)
@@ -186,8 +189,13 @@ async def get_pending_items(source: str | None = None) -> list[NewsItem]:
 
 
 async def get_accepted_items(source: str | None = None) -> list[NewsItem]:
-    """Return accepted articles, including ones already marked completed."""
+    """Return articles the user has accepted but not yet completed."""
     return await asyncio.to_thread(_get_items_sync, source, "accepted")
+
+
+async def get_completed_items(source: str | None = None) -> list[NewsItem]:
+    """Return articles whose acceptance interval has elapsed."""
+    return await asyncio.to_thread(_get_items_sync, source, "completed")
 
 
 async def get_rejected_items(source: str | None = None) -> list[NewsItem]:

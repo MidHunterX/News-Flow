@@ -8,9 +8,9 @@ from app.config import SOURCES
 from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
                     complete_due_articles, get_accepted_items,
                     get_all_settings, get_cached_sources,
-                    get_completion_interval, get_items, get_pending_items,
-                    get_rejected_items, save_items, set_article_status,
-                    set_setting)
+                    get_completed_items, get_completion_interval, get_items,
+                    get_pending_items, get_rejected_items, save_items,
+                    set_article_status, set_setting)
 from app.models import NewsItem, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
 
@@ -126,6 +126,7 @@ async def get_news_ui(
 
     items = await get_pending_items(current_source)
     accepted_items = await get_accepted_items(current_source)
+    completed_items = await get_completed_items(current_source)
     rejected_items = await get_rejected_items(current_source)
 
     return templates.TemplateResponse(
@@ -135,6 +136,7 @@ async def get_news_ui(
             "request": request,
             "items": items,
             "accepted_items": accepted_items,
+            "completed_items": completed_items,
             "rejected_items": rejected_items,
             "sources": SOURCES.keys(),
             "selected_source": current_source,

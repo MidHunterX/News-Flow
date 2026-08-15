@@ -105,21 +105,16 @@
                       <span class="text-xs uppercase font-bold text-indigo-600">{{ item.source }}</span>
                       <h4 class="font-semibold text-sm text-gray-900 leading-snug mt-0.5">{{ item.title }}</h4>
                     </div>
-                    {% if item.status == "completed" %}
-                      <span class="shrink-0 text-xs font-bold px-2 py-1 rounded bg-green-100 text-green-700">Completed</span>
-                    {% endif %}
                   </div>
-                  {% if item.status != "completed" %}
-                    <div class="timer-meter mb-3" data-accepted-at="{{ item.accepted_at or '' }}" data-interval="{{ completion_interval }}">
-                      <div class="flex items-center justify-between text-xs mb-1">
-                        <span class="text-gray-500 font-medium">Completing in</span>
-                        <span class="timer-label font-bold text-indigo-600 tabular-nums">--:--</span>
-                      </div>
-                      <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div class="timer-fill h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: 100%"></div>
-                      </div>
+                  <div class="timer-meter mb-3" data-accepted-at="{{ item.accepted_at or '' }}" data-interval="{{ completion_interval }}">
+                    <div class="flex items-center justify-between text-xs mb-1">
+                      <span class="text-gray-500 font-medium">Completing in</span>
+                      <span class="timer-label font-bold text-indigo-600 tabular-nums">--:--</span>
                     </div>
-                  {% endif %}
+                    <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div class="timer-fill h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                    </div>
+                  </div>
                   <div class="flex items-center justify-between text-xs">
                     <a href="{{ item.url }}" target="_blank" class="text-indigo-600 hover:underline font-medium">Open</a>
                     <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
@@ -134,31 +129,51 @@
             <p class="px-4 py-6 text-sm text-gray-500 text-center">No accepted articles yet.</p>
           {% endif %}
         </div>
+
+        <!-- Completed Articles -->
+        {% if completed_items %}
+          <details class="bg-white rounded-xl border border-green-200 shadow-sm">
+            <summary class="px-4 py-3 cursor-pointer text-sm font-semibold text-gray-700 flex items-center gap-2 select-none">
+              <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+              Completed ({{ completed_items|length }})
+            </summary>
+            <ul class="divide-y divide-gray-100">
+              {% for item in completed_items %}
+                <li class="px-4 py-3 flex items-center justify-between gap-3">
+                  <a href="{{ item.url }}" target="_blank" class="text-sm text-gray-600 hover:text-indigo-600 truncate">{{ item.title }}</a>
+                  <div class="shrink-0 text-xs text-green-500 bg-green-100 px-2 py-1 rounded font-medium transition">Done</div>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
+
+        <!-- Rejected Articles -->
+        {% if rejected_items %}
+          <details class="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <summary class="px-4 py-3 cursor-pointer text-sm font-semibold text-gray-700 flex items-center gap-2 select-none">
+              <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+              Rejected ({{ rejected_items|length }})
+            </summary>
+            <ul class="divide-y divide-gray-100">
+              {% for item in rejected_items %}
+                <li class="px-4 py-3 flex items-center justify-between gap-3">
+                  <span class="text-sm text-gray-500 line-through truncate">{{ item.title }}</span>
+                  <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
+                          class="shrink-0 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2 py-1 rounded font-medium transition">
+                    Restore
+                  </button>
+                </li>
+              {% endfor %}
+            </ul>
+          </details>
+        {% endif %}
       </aside>
     </div>
-
-    <!-- Rejected Articles -->
-    {% if rejected_items %}
-      <details class="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <summary class="px-4 py-3 cursor-pointer text-sm font-semibold text-gray-700 flex items-center gap-2 select-none">
-          <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-          Rejected ({{ rejected_items|length }})
-        </summary>
-        <ul class="divide-y divide-gray-100">
-          {% for item in rejected_items %}
-            <li class="px-4 py-3 flex items-center justify-between gap-3">
-              <span class="text-sm text-gray-500 line-through truncate">{{ item.title }}</span>
-              <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
-                      class="shrink-0 text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2 py-1 rounded font-medium transition">
-                Restore
-              </button>
-            </li>
-          {% endfor %}
-        </ul>
-      </details>
-    {% endif %}
   </div>
 {% endblock %}
 
