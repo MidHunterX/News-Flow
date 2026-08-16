@@ -7,10 +7,10 @@ from fastapi.templating import Jinja2Templates
 from app.config import SOURCES
 from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
                     complete_due_articles, get_accepted_items,
-                    get_all_settings, get_cached_sources,
-                    get_completed_items, get_completion_interval, get_items,
-                    get_pending_items, get_rejected_items, save_items,
-                    set_article_status, set_setting)
+                    get_all_settings, get_cached_sources, get_completed_items,
+                    get_completion_interval, get_items, get_pending_items,
+                    get_rejected_items, save_items, set_article_status,
+                    set_setting)
 from app.models import NewsItem, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
 
