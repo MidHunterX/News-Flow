@@ -56,7 +56,7 @@
                     <div class="grid grid-cols-2 gap-3">
                       <!-- Accept Button -->
                       <button onclick="postAction(`/api/articles/{{ item.id }}/accept`, event)"
-                              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md">
+                              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 hover:bg-green-700 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path>
                         </svg>
@@ -65,7 +65,7 @@
 
                       <!-- Reject Button -->
                       <button onclick="postAction(`/api/articles/{{ item.id }}/reject`, event)"
-                              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md">
+                              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 hover:bg-red-500 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
@@ -112,15 +112,31 @@
                       <div class="timer-fill h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: 100%"></div>
                     </div>
                   </div>
-                  <div class="flex items-center justify-between text-xs">
-                    <div class="flex items-center gap-2">
-                      <a href="/article/{{ item.id }}" class="text-indigo-600 hover:underline font-medium">View</a>
-                      <a href="{{ item.url }}" target="_blank" class="text-gray-500 hover:text-indigo-600 hover:underline font-medium">Open</a>
-                    </div>
+
+                  <!-- Action Buttons - Prioritized -->
+                  <div class="flex items-center gap-2">
+                    <!-- PRIMARY: View -->
+                    <a href="/article/{{ item.id }}"
+                       class="flex-1 text-center px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition shadow-sm hover:shadow">
+                      Show Content
+                    </a>
+
+                    <!-- SECONDARY: Clear accept -->
                     <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
-                            class="text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2 py-1 rounded font-medium transition">
-                      Clear accept
+                            class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition">
+                      Cancel
                     </button>
+
+                    <!-- TERTIARY: Open (external link) -->
+                    <a href="{{ item.url }}"
+                       target="_blank"
+                       class="p-1.5 text-gray-400 hover:text-indigo-600 transition rounded-lg hover:bg-indigo-50"
+                       title="Open original article">
+                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14">
+                        </path>
+                      </svg>
+                    </a>
                   </div>
                 </li>
               {% endfor %}
