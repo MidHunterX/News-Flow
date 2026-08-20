@@ -15,6 +15,11 @@ class BaseScraper(ABC):
         pass
 
     @property
+    def needs_browser(self) -> bool:
+        """Return True if the article page requires a headless browser to render."""
+        return False
+
+    @property
     @abstractmethod
     def source_name(self) -> str:
         """Return the source name identifier"""

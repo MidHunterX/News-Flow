@@ -14,6 +14,10 @@ class MangalamScraper(BaseScraper):
     def source_name(self) -> str:
         return "mangalam"
 
+    @property
+    def needs_browser(self) -> bool:
+        return True
+
     async def scrape_article_page(self, html: str) -> ScrapedArticleContent | None:
         soup = BeautifulSoup(html, "html.parser")
         container = soup.select_one("div.single-news-content") or soup

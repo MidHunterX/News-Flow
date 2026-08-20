@@ -15,6 +15,8 @@ from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
 from app.utils import COVERS_DIR, download_image, fetch_html
 
+from app.browser import fetch_rendered_html
+
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
@@ -81,9 +83,16 @@ async def accept_article(article_id: int):
 
     # Scrape the article page for cover image and content, then download.
     if article.url and article.source in SCRAPERS:
+        scraper = SCRAPERS[article.source]
         try:
-            html = await fetch_html(article.url)
-            scraped = await SCRAPERS[article.source].scrape_article_page(html)
+            if scraper.needs_browser:
+                html = await fetch_rendered_html(
+                    article.url,
+                    wait_selector="div.single-news-content h1",
+                )
+            else:
+                html = await fetch_html(article.url)
+            scraped = await scraper.scrape_article_page(html)
             if scraped:
                 if scraped.cover_path:
                     await download_image(scraped.cover_path, filename=str(article_id))
