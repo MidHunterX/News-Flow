@@ -29,7 +29,8 @@ class MangalamScraper(BaseScraper):
             # Replace <br> tags with newlines to preserve paragraph breaks.
             for br in article_el.find_all("br"):
                 br.replace_with("\n")
-            content = clean_text(article_el.get_text(separator="\n"))
+            lines = [line.strip() for line in article_el.get_text(separator="\n").splitlines()]
+            content = "\n".join([line for line in lines if line])
         else:
             content = ""
 
