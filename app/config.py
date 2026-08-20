@@ -13,3 +13,6 @@ SOURCES = {
 }
 
 TIMEOUT = httpx.Timeout(20.0)
+
+# Maximum number of articles to keep per source in the database.
+MAX_ARTICLES_PER_SOURCE = 10

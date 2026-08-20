@@ -78,6 +78,38 @@ async def save_items(items: list[NewsItem]) -> None:
     await run_in_thread(_save_items_sync, items)
 
 
+def _trim_articles_sync(max_per_source: int) -> None:
+    """Delete oldest pending articles so each source keeps at most *max_per_source* rows.
+
+    Articles that have been accepted, completed, or rejected are never removed
+    by the trim — only unprocessed (status=None) rows beyond the cap are pruned,
+    keeping the newest ones.
+    """
+    with SessionLocal() as session:
+        sources = session.scalars(select(Article.source).distinct()).all()
+        for source in sources:
+            # IDs of the newest *max_per_source* pending articles for this source.
+            keep_ids = session.scalars(
+                select(Article.id)
+                .where(Article.source == source, Article.status.is_(None))
+                .order_by(Article.id.desc())
+                .limit(max_per_source)
+            ).all()
+            if keep_ids:
+                # Delete every pending row for this source that isn't in the keep set.
+                session.query(Article).filter(
+                    Article.source == source,
+                    Article.status.is_(None),
+                    ~Article.id.in_(keep_ids),
+                ).delete(synchronize_session="fetch")
+        session.commit()
+
+
+async def trim_articles(max_per_source: int) -> None:
+    """Trim each source to at most *max_per_source* pending articles."""
+    await run_in_thread(_trim_articles_sync, max_per_source)
+
+
 def _get_items_sync(
     source: str | None = None, status_filter: str | None = None
 ) -> list[NewsItem]:

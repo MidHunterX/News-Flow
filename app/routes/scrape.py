@@ -4,13 +4,13 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.config import SOURCES
+from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
 from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
                     complete_due_articles, get_accepted_items,
                     get_all_settings, get_cached_sources, get_completed_items,
                     get_completion_interval, get_items, get_pending_items,
                     get_rejected_items, save_items, set_article_status,
-                    set_setting)
+                    set_setting, trim_articles)
 from app.models import NewsItem, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
 
@@ -61,6 +61,7 @@ async def refresh_news(
     results = await asyncio.gather(*[scrape_source(name) for name in sources])
     items = [item for sublist in results for item in sublist]
     await save_items(items)
+    await trim_articles(MAX_ARTICLES_PER_SOURCE)
     return ScrapeResponse(sources=sources, count=len(items), items=items)
 
 
