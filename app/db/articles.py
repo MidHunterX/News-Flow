@@ -191,6 +191,19 @@ async def set_article_status(article_id: int, status: str | None) -> bool:
     return await run_in_thread(_set_article_status_sync, article_id, status)
 
 
+def _get_article_by_id_sync(article_id: int) -> NewsItem | None:
+    with SessionLocal() as session:
+        article = session.get(Article, article_id)
+        if article is None:
+            return None
+        return _article_to_item(article)
+
+
+async def get_article_by_id(article_id: int) -> NewsItem | None:
+    """Return a single article by its ID, or None if not found."""
+    return await run_in_thread(_get_article_by_id_sync, article_id)
+
+
 def _complete_due_articles_sync(interval_seconds: int) -> int:
     """Complete accepted articles one at a time, in acceptance order.
 

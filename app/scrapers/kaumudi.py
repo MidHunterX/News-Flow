@@ -14,6 +14,14 @@ class KaumudiScraper(BaseScraper):
     def source_name(self) -> str:
         return "kaumudi"
 
+    async def scrape_article_page(self, html: str) -> str | None:
+        soup = BeautifulSoup(html, "html.parser")
+        img = soup.select_one("figure.image img")
+        if not img:
+            return None
+        src = img.get("src")
+        return resolve_image_url(str(src) if src else None, SOURCES[self.source_name])
+
     async def scrape(self, html: str) -> list[NewsItem]:
         soup = BeautifulSoup(html, "html.parser")
         base_url = SOURCES[self.source_name]

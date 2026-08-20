@@ -7,12 +7,13 @@ from fastapi.templating import Jinja2Templates
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
 from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
                     complete_due_articles, get_accepted_items,
-                    get_all_settings, get_cached_sources, get_completed_items,
-                    get_completion_interval, get_items, get_pending_items,
-                    get_rejected_items, save_items, set_article_status,
-                    set_setting, trim_articles)
+                    get_all_settings, get_article_by_id, get_cached_sources,
+                    get_completed_items, get_completion_interval, get_items,
+                    get_pending_items, get_rejected_items, save_items,
+                    set_article_status, set_setting, trim_articles)
 from app.models import NewsItem, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
+from app.utils import download_image, fetch_html
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -67,9 +68,27 @@ async def refresh_news(
 
 @router.post("/api/articles/{article_id}/accept")
 async def accept_article(article_id: int):
-    """Mark an article as accepted, starting its completion countdown."""
+    """Mark an article as accepted, starting its completion countdown.
+
+    Also scrapes the article page to download the cover image.
+    """
+    article = await get_article_by_id(article_id)
+    if article is None:
+        raise HTTPException(404, "Article not found")
+
     if not await set_article_status(article_id, STATUS_ACCEPTED):
         raise HTTPException(404, "Article not found")
+
+    # Scrape the article page for cover image and download it.
+    if article.url and article.source in SCRAPERS:
+        try:
+            html = await fetch_html(article.url)
+            cover_url = await SCRAPERS[article.source].scrape_article_page(html)
+            if cover_url:
+                await download_image(cover_url)
+        except Exception:
+            pass  # Don't fail the accept if scraping fails
+
     return {"ok": True}
 
 

@@ -14,6 +14,9 @@ class MadhyamamScraper(BaseScraper):
     def source_name(self) -> str:
         return "madhyamam"
 
+    async def scrape_article_page(self, html: str) -> str | None:
+        return None
+
     async def scrape(self, html: str) -> list[NewsItem]:
         soup = BeautifulSoup(html, "html.parser")
         base_url = SOURCES[self.source_name]
