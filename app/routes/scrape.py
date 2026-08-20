@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -10,10 +11,11 @@ from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
                     get_all_settings, get_article_by_id, get_cached_sources,
                     get_completed_items, get_completion_interval, get_items,
                     get_pending_items, get_rejected_items, save_items,
-                    set_article_status, set_setting, trim_articles)
+                    set_article_status, set_setting, trim_articles,
+                    update_article_cover_file)
 from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
-from app.utils import COVERS_DIR, download_image, fetch_html
+from app.utils import ARTICLES_DIR, download_image, fetch_html
 
 from app.browser import fetch_rendered_html
 
@@ -95,12 +97,17 @@ async def accept_article(article_id: int):
             scraped = await scraper.scrape_article_page(html)
             if scraped:
                 if scraped.cover_path:
-                    await download_image(scraped.cover_path, filename=str(article_id))
+                    local_path = await download_image(scraped.cover_path)
+                    if local_path:
+                        # Store the web-accessible path relative to covers dir.
+                        cover_name = Path(local_path).name
+                        cover_web = f"/covers/{cover_name}"
+                        await update_article_cover_file(article_id, cover_web)
                 else:
                     local_path = None
                 # Persist scraped content for the article view page.
-                COVERS_DIR.mkdir(parents=True, exist_ok=True)
-                content_file = COVERS_DIR / f"{article_id}.txt"
+                ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
+                content_file = ARTICLES_DIR / f"{article_id}.txt"
                 content_file.write_text(
                     f"{scraped.heading}\n\n{scraped.content}", encoding="utf-8"
                 )
@@ -159,20 +166,13 @@ async def article_view(request: Request, article_id: int):
     # Read saved scraped content if available.
     scraped_heading = article.title
     scraped_content = ""
-    cover_file = None
-    content_file = COVERS_DIR / f"{article_id}.txt"
+    cover_file = article.cover_file  # Stored by accept endpoint.
+    content_file = ARTICLES_DIR / f"{article_id}.txt"
     if content_file.exists():
         raw = content_file.read_text(encoding="utf-8")
         parts = raw.split("\n\n", 1)
         scraped_heading = parts[0].strip() or article.title
         scraped_content = parts[1].strip() if len(parts) > 1 else ""
-
-    # Find the downloaded cover image file.
-    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
-        candidate = COVERS_DIR / f"{article_id}{ext}"
-        if candidate.exists():
-            cover_file = f"/covers/{article_id}{ext}"
-            break
 
     return templates.TemplateResponse(
         request=request,

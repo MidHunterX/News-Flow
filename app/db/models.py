@@ -26,6 +26,7 @@ class Article(Base):
     status: Mapped[str | None] = mapped_column(String)
     accepted_at: Mapped[str | None] = mapped_column(String)
     accepted_order: Mapped[int | None] = mapped_column(Integer)
+    cover_file: Mapped[str | None] = mapped_column(String)
 
 
 class Setting(Base):

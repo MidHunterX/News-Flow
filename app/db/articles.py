@@ -35,6 +35,7 @@ def _article_to_item(article: Article) -> NewsItem:
         source=article.source,
         status=article.status,
         accepted_at=article.accepted_at,
+        cover_file=article.cover_file,
     )
 
 
@@ -202,6 +203,21 @@ def _get_article_by_id_sync(article_id: int) -> NewsItem | None:
 async def get_article_by_id(article_id: int) -> NewsItem | None:
     """Return a single article by its ID, or None if not found."""
     return await run_in_thread(_get_article_by_id_sync, article_id)
+
+
+def _update_article_cover_file_sync(article_id: int, cover_file: str | None) -> bool:
+    with SessionLocal() as session:
+        article = session.get(Article, article_id)
+        if article is None:
+            return False
+        article.cover_file = cover_file
+        session.commit()
+    return True
+
+
+async def update_article_cover_file(article_id: int, cover_file: str | None) -> bool:
+    """Store the local cover file path for an article."""
+    return await run_in_thread(_update_article_cover_file_sync, article_id, cover_file)
 
 
 def _complete_due_articles_sync(interval_seconds: int) -> int:

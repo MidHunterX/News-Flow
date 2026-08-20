@@ -5,8 +5,8 @@ from urllib.parse import parse_qs, unquote, urljoin, urlparse
 import httpx
 from fastapi import HTTPException
 
-WORKSPACE_DIR = Path("workspace")
-COVERS_DIR = WORKSPACE_DIR / "covers"
+PUBLIC_DIR = Path("public")
+ARTICLES_DIR = PUBLIC_DIR / "articles"
 
 
 def clean_text(value: str | None) -> str:
@@ -46,7 +46,7 @@ async def download_image(url: str, filename: str | None = None) -> str | None:
     """
     from app.client import get_client
 
-    COVERS_DIR.mkdir(parents=True, exist_ok=True)
+    ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
     if filename is None:
         filename = os.path.basename(urlparse(url).path)
     if not filename:
@@ -56,7 +56,7 @@ async def download_image(url: str, filename: str | None = None) -> str | None:
         orig_ext = os.path.splitext(urlparse(url).path)[1]
         if orig_ext:
             filename += orig_ext
-    save_path = COVERS_DIR / filename
+    save_path = ARTICLES_DIR / filename
     client = await get_client()
     try:
         resp = await client.get(url)

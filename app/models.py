@@ -19,6 +19,7 @@ class NewsItem(BaseModel):
     id: int | None = None
     status: str | None = None
     accepted_at: str | None = None
+    cover_file: str | None = None
 
 
 class ScrapeResponse(BaseModel):

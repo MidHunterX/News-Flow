@@ -16,7 +16,7 @@ from app.db.articles import (complete_due_articles, get_accepted_items,
                              get_article_by_id, get_cached_sources,
                              get_completed_items, get_items, get_pending_items,
                              get_rejected_items, save_items, set_article_status,
-                             trim_articles)
+                             trim_articles, update_article_cover_file)
 from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
                               STATUS_ACCEPTED, STATUS_COMPLETED,
                               STATUS_REJECTED)
@@ -53,6 +53,7 @@ __all__ = [
     "get_article_by_id",
     "complete_due_articles",
     "get_cached_sources",
+    "update_article_cover_file",
     # Settings.
     "get_setting",
     "set_setting",

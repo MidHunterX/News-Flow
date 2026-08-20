@@ -20,6 +20,8 @@ def _migrate() -> None:
             conn.execute(text("ALTER TABLE articles ADD COLUMN accepted_at TEXT"))
         if "accepted_order" not in columns:
             conn.execute(text("ALTER TABLE articles ADD COLUMN accepted_order INTEGER"))
+        if "cover_file" not in columns:
+            conn.execute(text("ALTER TABLE articles ADD COLUMN cover_file TEXT"))
 
 
 def init_db() -> None:
