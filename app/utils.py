@@ -38,14 +38,24 @@ async def fetch_html(url: str) -> str:
         raise HTTPException(502, f"Failed to fetch {url}: {exc}") from exc
 
 
-async def download_image(url: str) -> str | None:
-    """Download an image and save it to workspace/covers/. Returns the file path."""
+async def download_image(url: str, filename: str | None = None) -> str | None:
+    """Download an image and save it to workspace/covers/. Returns the file path.
+
+    If *filename* is given the image is saved under that name (preserving the
+    original extension).  Otherwise the basename of the URL path is used.
+    """
     from app.client import get_client
 
     COVERS_DIR.mkdir(parents=True, exist_ok=True)
-    filename = os.path.basename(urlparse(url).path)
+    if filename is None:
+        filename = os.path.basename(urlparse(url).path)
     if not filename:
         return None
+    # Preserve the original extension when a custom filename is supplied.
+    if "." not in filename:
+        orig_ext = os.path.splitext(urlparse(url).path)[1]
+        if orig_ext:
+            filename += orig_ext
     save_path = COVERS_DIR / filename
     client = await get_client()
     try:

@@ -3,7 +3,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.config import SOURCES
-from app.models import NewsItem
+from app.models import NewsItem, ScrapedArticleContent
 from app.utils import clean_text, resolve_image_url
 
 from .base import BaseScraper
@@ -14,13 +14,31 @@ class KaumudiScraper(BaseScraper):
     def source_name(self) -> str:
         return "kaumudi"
 
-    async def scrape_article_page(self, html: str) -> str | None:
+    async def scrape_article_page(self, html: str) -> ScrapedArticleContent | None:
         soup = BeautifulSoup(html, "html.parser")
-        img = soup.select_one("figure.image img")
-        if not img:
+        container = soup.select_one("div.full-width.box-left") or soup
+        heading_el = container.select_one("h1")
+        heading = clean_text(heading_el.get_text()) if heading_el else ""
+
+        body_el = container.select_one("div.news-body")
+        paragraphs = []
+        if body_el:
+            for p in body_el.find_all("p"):
+                text = clean_text(p.get_text())
+                if text:
+                    paragraphs.append(text)
+        content = "\n".join(paragraphs)
+
+        img = container.select_one("figure.image img")
+        cover_url = None
+        if img:
+            src = img.get("src")
+            cover_url = resolve_image_url(str(src) if src else None, SOURCES[self.source_name])
+
+        if not heading and not content:
             return None
-        src = img.get("src")
-        return resolve_image_url(str(src) if src else None, SOURCES[self.source_name])
+
+        return ScrapedArticleContent(heading=heading, content=content, cover_path=cover_url)
 
     async def scrape(self, html: str) -> list[NewsItem]:
         soup = BeautifulSoup(html, "html.parser")

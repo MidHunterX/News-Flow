@@ -3,7 +3,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.config import SOURCES
-from app.models import NewsItem
+from app.models import NewsItem, ScrapedArticleContent
 from app.utils import clean_text, resolve_image_url
 
 from .base import BaseScraper
@@ -14,7 +14,7 @@ class MadhyamamScraper(BaseScraper):
     def source_name(self) -> str:
         return "madhyamam"
 
-    async def scrape_article_page(self, html: str) -> str | None:
+    async def scrape_article_page(self, html: str) -> ScrapedArticleContent | None:
         return None
 
     async def scrape(self, html: str) -> list[NewsItem]:

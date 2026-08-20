@@ -1,6 +1,13 @@
 from pydantic import AnyUrl, BaseModel, HttpUrl
 
 
+class ScrapedArticleContent(BaseModel):
+    """Content scraped from a single article page."""
+    heading: str
+    content: str
+    cover_path: str | None = None
+
+
 class NewsItem(BaseModel):
     title: str
     url: str | None

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from app.models import NewsItem
+from app.models import NewsItem, ScrapedArticleContent
 
 
 class BaseScraper(ABC):
@@ -10,8 +10,8 @@ class BaseScraper(ABC):
         pass
 
     @abstractmethod
-    async def scrape_article_page(self, html: str) -> str | None:
-        """Scrape a single article page and return the cover image URL."""
+    async def scrape_article_page(self, html: str) -> ScrapedArticleContent | None:
+        """Scrape a single article page and return heading, content, and cover image URL."""
         pass
 
     @property

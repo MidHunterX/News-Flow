@@ -11,9 +11,9 @@ from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
                     get_completed_items, get_completion_interval, get_items,
                     get_pending_items, get_rejected_items, save_items,
                     set_article_status, set_setting, trim_articles)
-from app.models import NewsItem, ScrapeResponse
+from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.scrapers.init import SCRAPERS, scrape_source
-from app.utils import download_image, fetch_html
+from app.utils import COVERS_DIR, download_image, fetch_html
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -79,13 +79,22 @@ async def accept_article(article_id: int):
     if not await set_article_status(article_id, STATUS_ACCEPTED):
         raise HTTPException(404, "Article not found")
 
-    # Scrape the article page for cover image and download it.
+    # Scrape the article page for cover image and content, then download.
     if article.url and article.source in SCRAPERS:
         try:
             html = await fetch_html(article.url)
-            cover_url = await SCRAPERS[article.source].scrape_article_page(html)
-            if cover_url:
-                await download_image(cover_url)
+            scraped = await SCRAPERS[article.source].scrape_article_page(html)
+            if scraped:
+                if scraped.cover_path:
+                    await download_image(scraped.cover_path, filename=str(article_id))
+                else:
+                    local_path = None
+                # Persist scraped content for the article view page.
+                COVERS_DIR.mkdir(parents=True, exist_ok=True)
+                content_file = COVERS_DIR / f"{article_id}.txt"
+                content_file.write_text(
+                    f"{scraped.heading}\n\n{scraped.content}", encoding="utf-8"
+                )
         except Exception:
             pass  # Don't fail the accept if scraping fails
 
@@ -129,6 +138,44 @@ async def update_settings(settings: dict[str, str]):
                 )
         await set_setting(key, value)
     return await get_all_settings()
+
+
+@router.get("/article/{article_id}", response_class=HTMLResponse)
+async def article_view(request: Request, article_id: int):
+    """Display the scraped cover, heading, and content for an accepted article."""
+    article = await get_article_by_id(article_id)
+    if article is None:
+        raise HTTPException(404, "Article not found")
+
+    # Read saved scraped content if available.
+    scraped_heading = article.title
+    scraped_content = ""
+    cover_file = None
+    content_file = COVERS_DIR / f"{article_id}.txt"
+    if content_file.exists():
+        raw = content_file.read_text(encoding="utf-8")
+        parts = raw.split("\n\n", 1)
+        scraped_heading = parts[0].strip() or article.title
+        scraped_content = parts[1].strip() if len(parts) > 1 else ""
+
+    # Find the downloaded cover image file.
+    for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
+        candidate = COVERS_DIR / f"{article_id}{ext}"
+        if candidate.exists():
+            cover_file = f"/covers/{article_id}{ext}"
+            break
+
+    return templates.TemplateResponse(
+        request=request,
+        name="article.html",
+        context={
+            "request": request,
+            "article": article,
+            "scraped_heading": scraped_heading,
+            "scraped_content": scraped_content,
+            "cover_file": cover_file,
+        },
+    )
 
 
 @router.get("/", response_class=HTMLResponse)

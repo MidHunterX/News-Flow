@@ -116,7 +116,10 @@
                     </div>
                   </div>
                   <div class="flex items-center justify-between text-xs">
-                    <a href="{{ item.url }}" target="_blank" class="text-indigo-600 hover:underline font-medium">Open</a>
+                    <div class="flex items-center gap-2">
+                      <a href="/article/{{ item.id }}" class="text-indigo-600 hover:underline font-medium">View</a>
+                      <a href="{{ item.url }}" target="_blank" class="text-gray-500 hover:text-indigo-600 hover:underline font-medium">Open</a>
+                    </div>
                     <button onclick="postAction(`/api/articles/{{ item.id }}/clear`)"
                             class="text-gray-500 hover:text-gray-800 hover:bg-gray-100 px-2 py-1 rounded font-medium transition">
                       Clear accept
