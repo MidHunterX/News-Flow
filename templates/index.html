@@ -248,7 +248,9 @@
             label.textContent = "Done";
             fill.classList.remove("bg-indigo-500");
             fill.classList.add("bg-green-500");
-            window.location.reload();
+            setTimeout(() => {
+              window.location.reload();
+            }, 1000);
           } else {
             const minutes = Math.floor(remaining / 60000);
             const seconds = Math.floor((remaining % 60000) / 1000);
