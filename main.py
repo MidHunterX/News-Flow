@@ -8,7 +8,7 @@ from app.client import get_client
 from app.db import complete_due_articles, get_completion_interval, init_db
 from app.routes import scrape
 from app.scrapers.init import SCRAPERS
-from app.utils import ARTICLES_DIR
+from app.utils import COVERS_DIR
 
 app = FastAPI(title="News Flow")
 
@@ -16,8 +16,8 @@ app = FastAPI(title="News Flow")
 app.include_router(scrape.router)
 
 # Serve downloaded cover images.
-ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/covers", StaticFiles(directory=str(ARTICLES_DIR)), name="covers")
+COVERS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/covers", StaticFiles(directory=str(COVERS_DIR)), name="covers")
 
 _completion_task: asyncio.Task | None = None
 
