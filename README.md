@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Aggregate · Review · Publish</strong><br/>
-  A FastAPI-powered Malayalam news aggregator with a clean review UI
+  A FastAPI-powered news aggregator with a clean review UI
 </p>
 
 <p align="center">
@@ -18,17 +18,18 @@
 
 ## ✨ What is News Flow?
 
-**News Flow** is a self-hosted news aggregation and curation tool for Malayalam news websites. It scrapes articles from multiple sources, presents them in a clean review interface, and lets you accept, reject, or complete articles in a streamlined workflow.
+**News Flow** is a self-hosted, general-purpose news aggregation and curation tool. It scrapes articles from any website you configure, presents them in a clean review interface, and lets you accept, reject, or complete articles in a streamlined workflow.
 
 ### Key Features
 
-- 🔄 **Auto-refreshing feed** — Scrapes news every 15 minutes from configured sources
-- 📰 **Multi-source aggregation** — Kerala Kaumudi, Mangalam, and Madhyamam (extensible)
+- 🔄 **Caching feed** — Articles are scraped on demand, cached in SQLite, and trimmed so only fresh ones are kept
+- 📰 **Multi-source aggregation** — Plug in any website via a simple, extensible scraper interface
 - ✅ **Review workflow** — Accept articles to save content, reject to dismiss, or clear to restore
 - ⏱️ **Completion timer** — Accepted articles auto-complete after a configurable interval
 - 🖼️ **Cover image download** — Automatically fetches and stores cover images for accepted articles
 - 📋 **Click-to-copy** — Copy headings, content, and image paths directly from the article view
-- 🌐 **Playwright support** — Handles JS-heavy pages (like Mangalam's Next.js app) with browser rendering
+- 🌐 **Playwright support** — Handles JS-heavy pages (SPAs, Next.js sites) with headless browser rendering
+- 🧪 **Fully offline test suite** — Scrapers are tested against local HTML fixtures, no network required
 
 ---
 
@@ -56,7 +57,7 @@ uv run playwright install chromium
 ### Running the App
 
 ```bash
-uv run main.py
+uv run fastapi dev main.py
 ```
 
 The app will be available at **http://localhost:8000**
@@ -67,29 +68,29 @@ The app will be available at **http://localhost:8000**
 
 ```
 news-flow/
+├── main.py                     # FastAPI app, startup/shutdown, completion loop
 ├── app/
-│   ├── config.py              # Sources, timeouts, user agent
-│   ├── models.py              # Pydantic models (NewsItem, ScrapeResponse)
-│   ├── client.py              # HTTP client singleton
-│   ├── utils.py               # HTML fetching, image download, text cleaning
-│   ├── browser.py             # Playwright browser rendering
+│   ├── config.py               # Sources, timeouts, user agent
+│   ├── models.py               # Pydantic models (NewsItem, ScrapeResponse)
+│   ├── client.py               # HTTP client singleton
+│   ├── utils.py                # HTML fetching, image download, text cleaning
+│   ├── browser.py              # Playwright browser rendering
 │   ├── scrapers/
-│   │   ├── base.py            # Base scraper abstract class
-│   │   ├── init.py            # Scraper registry & pipeline
-│   │   ├── kaumudi.py         # Kerala Kaumudi scraper
-│   │   ├── mangalam.py        # Mangalam scraper
-│   │   └── madhyamam.py       # Madhyamam scraper (WIP)
+│   │   ├── base.py             # Base scraper abstract class
+│   │   ├── init.py             # Scraper registry & pipeline
+│   │   └── <source>.py         # One scraper module per configured source
 │   ├── routes/
-│   │   └── scrape.py          # API + UI routes
-│   └── db/                    # SQLAlchemy models, schema, queries
-├── templates/                 # Jinja2 HTML templates
-├── static/                    # Static assets (logo, etc.)
+│   │   └── scrape.py           # API + UI routes
+│   └── db/                     # SQLAlchemy models, schema, queries
+├── templates/                  # Jinja2 HTML templates
+├── static/                     # Static assets (logo, etc.)
+├── public/                     # Downloaded covers & saved article content
 ├── tests/
-│   ├── fixtures/              # Offline HTML fixtures for testing
-│   └── test_scrapers.py       # Scraper tests
+│   ├── fixtures/               # Offline HTML fixtures for testing
+│   └── test_scrapers.py        # Scraper tests
 ├── scripts/
-│   └── health_check.py        # Live smoke test
-└── pyproject.toml             # Project config & dependencies
+│   └── health_check.py         # Live smoke test
+└── pyproject.toml              # Project config & dependencies
 ```
 
 ---
@@ -124,7 +125,7 @@ uv run pytest -v
 
 ### Live Smoke Test
 
-For testing against real websites (requires network):
+For testing your configured sources against the real websites (requires network):
 
 ```bash
 uv run python scripts/health_check.py [source ...]
@@ -152,7 +153,7 @@ uv run python scripts/health_check.py [source ...]
 
 ## 🛠️ Tech Stack
 
-- **Backend:** FastAPI, SQLAlchemy (async), httpx
+- **Backend:** FastAPI, SQLAlchemy 2.0, httpx
 - **Frontend:** Jinja2, Tailwind CSS
 - **Database:** SQLite
 - **Scraping:** BeautifulSoup4, Playwright
