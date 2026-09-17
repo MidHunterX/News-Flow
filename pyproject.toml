@@ -11,3 +11,12 @@ dependencies = [
     "playwright>=1.62.0",
     "sqlalchemy>=2.0.52",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
