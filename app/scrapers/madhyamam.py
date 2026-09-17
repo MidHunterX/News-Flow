@@ -10,6 +10,9 @@ from .base import BaseScraper
 
 
 class MadhyamamScraper(BaseScraper):
+    # Fallback base URL for when the source is disabled in app.config.SOURCES.
+    BASE_URL = "https://www.madhyamam.com"
+
     @property
     def source_name(self) -> str:
         return "madhyamam"
@@ -19,7 +22,7 @@ class MadhyamamScraper(BaseScraper):
 
     async def scrape(self, html: str) -> list[NewsItem]:
         soup = BeautifulSoup(html, "html.parser")
-        base_url = SOURCES[self.source_name]
+        base_url = SOURCES.get(self.source_name, self.BASE_URL)
         items = []
 
         for card in soup.select("div.other-news div.exclude-news-item"):
