@@ -74,7 +74,8 @@ async def refresh_news(
 async def accept_article(article_id: int):
     """Mark an article as accepted, starting its completion countdown.
 
-    Also scrapes the article page to download the cover image.
+    Also scrapes the article page to download the cover image, falling back
+    to the listing-page thumbnail (``image_url``) when that download fails.
     """
     article = await get_article_by_id(article_id)
     if article is None:
@@ -96,15 +97,18 @@ async def accept_article(article_id: int):
                 html = await fetch_html(article.url)
             scraped = await scraper.scrape_article_page(html)
             if scraped:
+                local_path = None
                 if scraped.cover_path:
                     local_path = await download_image(scraped.cover_path)
-                    if local_path:
-                        # Store the web-accessible path relative to covers dir.
-                        cover_name = Path(local_path).name
-                        cover_web = f"/covers/{cover_name}"
-                        await update_article_cover_file(article_id, cover_web)
-                else:
-                    local_path = None
+                    if local_path is None and article.image_url:
+                        # Cover download failed; fall back to the thumbnail
+                        # image from the listing page.
+                        local_path = await download_image(article.image_url)
+                if local_path:
+                    # Store the web-accessible path relative to covers dir.
+                    cover_name = Path(local_path).name
+                    cover_web = f"/covers/{cover_name}"
+                    await update_article_cover_file(article_id, cover_web)
                 # Persist scraped content for the article view page.
                 ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
                 content_file = ARTICLES_DIR / f"{article_id}.txt"
