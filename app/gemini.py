@@ -10,6 +10,7 @@ are ever returned. Fail-soft: any error logs and returns an empty list.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -26,6 +27,14 @@ API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 # Hard cap on the article text sent to Gemini (keeps prompts small; the news
 # body is a scrape, not literature).
 MAX_BODY_CHARS = 4000
+
+# Gemini (a thinking model) regularly needs >20s, longer than the shared
+# scrape client's TIMEOUT, so generateContent gets its own.
+REQUEST_TIMEOUT = httpx.Timeout(60.0)
+
+# Transient failures worth retrying with a short backoff.
+_RETRY_STATUSES = {429, 500, 502, 503, 504}
+_MAX_ATTEMPTS = 3
 
 # A synced term as fed to the model/matcher: (wp_term_id, name, slug).
 TermTriple = tuple[int, str, str]
@@ -173,18 +182,35 @@ async def suggest_categories(
     }
     try:
         client = await get_client()
-        resp = await client.post(
-            f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
-            headers={"x-goog-api-key": GEMINI_API_KEY},
-            json=payload,
-        )
+        resp = None
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                resp = await client.post(
+                    f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
+                    headers={"x-goog-api-key": GEMINI_API_KEY},
+                    json=payload,
+                    timeout=REQUEST_TIMEOUT,
+                )
+                if resp.status_code not in _RETRY_STATUSES:
+                    break
+                retry_after = float(
+                    resp.headers.get("retry-after") or 0
+                )
+            except httpx.TransportError:
+                if attempt == _MAX_ATTEMPTS - 1:
+                    raise
+                retry_after = 1.0
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(min(5.0, retry_after or 0.5 * (attempt + 1)))
         resp.raise_for_status()
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         parsed = _extract_json(text)
     except Exception as exc:
-        # Fail-soft like publishing: log and skip categorization.
-        logger.warning("Gemini categorization failed: %s", exc)
+        # Fail-soft like publishing: log and skip categorization. Include the
+        # type name — transport timeouts stringify to an empty message.
+        logger.warning("Gemini categorization failed: %s: %s",
+                       type(exc).__name__, exc)
         return []
 
     matched = _match_terms(parsed.get("categories"), category_triples)

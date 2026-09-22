@@ -29,6 +29,9 @@ uv run fastapi dev main.py    # run the app (http://localhost:8000)
 uv run pytest                 # offline test suite (must pass, no network)
 uv run python scripts/health_check.py [source ...]
                               # live smoke test against real websites (manual)
+uv run python scripts/publish_check.py [--publish]
+                              # live WP terms sync + Gemini categorization check
+                              # (--publish also POSTs a draft, then deletes it)
 uv sync                       # install/update dependencies
 uv run playwright install chromium   # once, for browser-rendered pages
 ```
