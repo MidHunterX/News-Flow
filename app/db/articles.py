@@ -220,16 +220,17 @@ async def update_article_cover_file(article_id: int, cover_file: str | None) -> 
     return await run_in_thread(_update_article_cover_file_sync, article_id, cover_file)
 
 
-def _complete_due_articles_sync(interval_seconds: int) -> int:
-    """Complete accepted articles one at a time, in acceptance order.
+def _get_due_articles_sync(interval_seconds: int) -> list[NewsItem]:
+    """Return accepted articles whose completion timer has elapsed.
 
     Only the first accepted (non-completed) article runs its completion timer;
     the rest wait in the queue. A queued article's timer starts only once it
-    becomes the active one.
+    becomes the active one. Side effect: starts/clears timers as the queue
+    advances (committed here so callers see consistent state).
     """
     now = datetime.now(timezone.utc).timestamp()
     current = now_iso()
-    completed = 0
+    due: list[NewsItem] = []
     with SessionLocal() as session:
         articles = session.scalars(
             select(Article)
@@ -249,19 +250,39 @@ def _complete_due_articles_sync(interval_seconds: int) -> int:
                 except TypeError, ValueError:
                     continue
                 if now - accepted_ts >= interval_seconds:
-                    article.status = STATUS_COMPLETED
-                    article.accepted_order = None
-                    completed += 1
+                    due.append(_article_to_item(article))
             elif article.accepted_at is not None:
                 # Queued article: its timer must not have started yet.
                 article.accepted_at = None
         session.commit()
+    return due
+
+
+async def get_due_articles(interval_seconds: int) -> list[NewsItem]:
+    """Return accepted articles whose completion interval has elapsed."""
+    return await run_in_thread(_get_due_articles_sync, interval_seconds)
+
+
+def _mark_articles_completed_sync(article_ids: list[int]) -> int:
+    """Mark the given accepted articles completed (skips non-accepted rows)."""
+    completed = 0
+    with SessionLocal() as session:
+        for article_id in article_ids:
+            article = session.get(Article, article_id)
+            if article is None or article.status != STATUS_ACCEPTED:
+                continue
+            article.status = STATUS_COMPLETED
+            article.accepted_order = None
+            completed += 1
+        session.commit()
     return completed
 
 
-async def complete_due_articles(interval_seconds: int) -> int:
-    """Mark accepted articles as completed once their interval elapses."""
-    return await run_in_thread(_complete_due_articles_sync, interval_seconds)
+async def mark_articles_completed(article_ids: list[int]) -> int:
+    """Mark accepted articles as completed by ID. Returns how many changed."""
+    if not article_ids:
+        return 0
+    return await run_in_thread(_mark_articles_completed_sync, article_ids)
 
 
 def _get_cached_sources_sync() -> set[str]:

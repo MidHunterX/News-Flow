@@ -5,7 +5,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.client import get_client
-from app.db import complete_due_articles, get_completion_interval, init_db
+from app.db import get_completion_interval, init_db
+from app.publisher import publish_due_articles
 from app.routes import scrape
 from app.scrapers.init import SCRAPERS
 from app.utils import COVERS_DIR
@@ -23,11 +24,15 @@ _completion_task: asyncio.Task | None = None
 
 
 async def _completion_loop() -> None:
-    """Periodically mark accepted articles as completed once their interval elapses."""
+    """Publish and complete accepted articles once their interval elapses.
+
+    Each due article is pushed to WordPress (when configured) right before
+    being marked completed.
+    """
     while True:
         try:
             interval = await get_completion_interval()
-            await complete_due_articles(interval)
+            await publish_due_articles(interval)
         except Exception:
             # Keep the loop alive on transient errors (e.g. locked DB).
             pass

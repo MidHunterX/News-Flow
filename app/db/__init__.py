@@ -12,11 +12,12 @@ Modules:
     settings    — data access for app settings
 """
 
-from app.db.articles import (complete_due_articles, get_accepted_items,
-                             get_article_by_id, get_cached_sources,
-                             get_completed_items, get_items, get_pending_items,
-                             get_rejected_items, save_items, set_article_status,
-                             trim_articles, update_article_cover_file)
+from app.db.articles import (get_accepted_items, get_article_by_id,
+                             get_cached_sources, get_completed_items,
+                             get_due_articles, get_items, get_pending_items,
+                             get_rejected_items, mark_articles_completed,
+                             save_items, set_article_status, trim_articles,
+                             update_article_cover_file)
 from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
                               STATUS_ACCEPTED, STATUS_COMPLETED,
                               STATUS_REJECTED)
@@ -51,7 +52,8 @@ __all__ = [
     "get_rejected_items",
     "set_article_status",
     "get_article_by_id",
-    "complete_due_articles",
+    "get_due_articles",
+    "mark_articles_completed",
     "get_cached_sources",
     "update_article_cover_file",
     # Settings.

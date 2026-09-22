@@ -7,13 +7,13 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
 from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
-                    complete_due_articles, get_accepted_items,
-                    get_all_settings, get_article_by_id, get_cached_sources,
-                    get_completed_items, get_completion_interval, get_items,
-                    get_pending_items, get_rejected_items, save_items,
-                    set_article_status, set_setting, trim_articles,
-                    update_article_cover_file)
+                    get_accepted_items, get_all_settings, get_article_by_id,
+                    get_cached_sources, get_completed_items,
+                    get_completion_interval, get_items, get_pending_items,
+                    get_rejected_items, save_items, set_article_status,
+                    set_setting, trim_articles, update_article_cover_file)
 from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
+from app.publisher import publish_due_articles
 from app.scrapers.init import SCRAPERS, scrape_source
 from app.utils import ARTICLES_DIR, download_image, fetch_html
 
@@ -200,9 +200,9 @@ async def get_news_ui(
 
     await _get_articles(sources)
 
-    # Lazily mark any accepted articles whose completion interval has elapsed.
+    # Lazily publish + complete any accepted articles whose interval elapsed.
     interval = await get_completion_interval()
-    await complete_due_articles(interval)
+    await publish_due_articles(interval)
 
     items = await get_pending_items(current_source)
     accepted_items = await get_accepted_items(current_source)
