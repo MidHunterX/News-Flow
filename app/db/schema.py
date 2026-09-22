@@ -1,14 +1,19 @@
 """Table creation, schema migrations, and startup initialization."""
 
+import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import delete, inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
-                              STATUS_PUBLISHING)
+                              STATUS_PUBLISHING, STATUS_ACCEPTED)
 from app.db.engine import Base, SessionLocal, engine
 from app.db.models import Article, Setting
+from app.utils import ARTICLES_DIR, COVERS_DIR
+
+logger = logging.getLogger(__name__)
 
 
 def _migrate() -> None:
@@ -29,10 +34,70 @@ def _migrate() -> None:
             )
 
 
+def _collect_workspace_files(articles: list[Article]) -> list[Path]:
+    """Return the local files attached to the given articles, for deletion.
+
+    These are the scraped-content files (``public/articles/<id>.txt``) and any
+    downloaded cover referenced by ``cover_file`` (a ``/covers/<name>`` web
+    path mapped back into ``public/covers/``). Missing paths are kept so the
+    caller can still try unlinking them — ``unlink`` is only attempted when
+    the file actually exists.
+    """
+    files: list[Path] = []
+    for article in articles:
+        files.append(ARTICLES_DIR / f"{article.id}.txt")
+        if article.cover_file:
+            files.append(COVERS_DIR / Path(article.cover_file).name)
+    return files
+
+
+def _delete_files(paths: list[Path]) -> None:
+    """Unlink the given files, ignoring missing ones and logging failures."""
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Could not delete workspace file %s", path, exc_info=True)
+
+
+def _reset_daily_workspace() -> None:
+    """Clear the articles table and its attached files on a new UTC day.
+
+    Fresh workspace per day: when the last run was on a previous day, every
+    article row is dropped together with the files created for it (covers and
+    scraped-content .txt). The file deletion happens *after* the row delete is
+    committed — losing a row but keeping its files is the safe failure mode,
+    and orphaned files are harmless.
+    """
+    with SessionLocal() as session:
+        today = datetime.now(timezone.utc).date().isoformat()
+        last_run = session.get(Setting, LAST_RUN_DATE_KEY)
+        if last_run is not None and last_run.value == today:
+            return  # Same day: nothing to reset.
+
+        # Files are collected before the delete; the rows are gone after
+        # commit, so this must happen inside the transaction.
+        files = _collect_workspace_files(session.query(Article).all())
+        session.execute(delete(Article))
+        if last_run is None:
+            session.add(Setting(key=LAST_RUN_DATE_KEY, value=today))
+        else:
+            last_run.value = today
+        session.commit()
+
+    _delete_files(files)
+
+
 def init_db() -> None:
     """Create the tables/indexes (and migrate) if they don't exist."""
     Base.metadata.create_all(engine)
     _migrate()
+
+    # Runs first and in its own committed transaction: the session below
+    # starts writing (settings seeding) immediately after, and SQLite could
+    # not serve a second write transaction from here while that one holds an
+    # uncommitted one ("database is locked").
+    _reset_daily_workspace()
 
     with SessionLocal() as session:
         for key, value in DEFAULT_SETTINGS.items():
@@ -41,16 +106,6 @@ def init_db() -> None:
                 .values(key=key, value=value)
                 .on_conflict_do_nothing()
             )
-        # Fresh workspace per day: clear the articles table when the last run
-        # was on a previous day.
-        today = datetime.now(timezone.utc).date().isoformat()
-        last_run = session.get(Setting, LAST_RUN_DATE_KEY)
-        if last_run is None or last_run.value != today:
-            session.execute(delete(Article))
-            if last_run is None:
-                session.add(Setting(key=LAST_RUN_DATE_KEY, value=today))
-            else:
-                last_run.value = today
 
         # Recover articles left mid-publish by a previous crash/shutdown: no
         # publisher is running yet, so any claim is stale. Requeue them so
