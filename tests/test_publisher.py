@@ -16,7 +16,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.publisher as publisher
-from app.db.constants import STATUS_ACCEPTED, STATUS_COMPLETED, now_iso
+from app.db.constants import (STATUS_ACCEPTED, STATUS_COMPLETED,
+                              STATUS_PUBLISHING, now_iso)
 from app.db.models import Article, Base
 from app.models import NewsItem
 from app.publisher import (body_to_html, is_configured, publish_article,
@@ -306,7 +307,7 @@ class TestPublishDueArticles:
             events.append(f"publish:{article.id}")
             return f"{WP_BASE}/?p=1"
 
-        async def fake_mark(ids):
+        async def fake_mark(ids, expected_status=None):
             events.append(f"mark:{ids}")
             return len(ids)
 
@@ -333,6 +334,32 @@ class TestPublishDueArticles:
         monkeypatch.setattr(publisher, "mark_articles_completed", fail_mark)
         assert await publish_due_articles(600) == 0
 
+    async def test_crash_publishing_one_does_not_skip_others(self, monkeypatch):
+        """An unexpected exception mid-publish must not lose the batch."""
+
+        async def fake_get_due(interval):
+            return [make_article(id=1), make_article(id=2)]
+
+        async def fake_publish(article):
+            if article.id == 1:
+                raise RuntimeError("boom")
+            return f"{WP_BASE}/?p={article.id}"
+
+        marked: list[list[int]] = []
+
+        async def fake_mark(ids, expected_status=None):
+            marked.append(ids)
+            return len(ids)
+
+        monkeypatch.setattr(publisher, "get_due_articles", fake_get_due)
+        monkeypatch.setattr(publisher, "publish_article", fake_publish)
+        monkeypatch.setattr(publisher, "mark_articles_completed", fake_mark)
+
+        assert await publish_due_articles(600) == 2
+        # Fail-soft: article 1 is still completed after its crash, and —
+        # crucially — article 2 was published and completed as well.
+        assert marked == [[1], [2]]
+
     async def test_publish_failure_still_completes(self, wp_env, monkeypatch):
         """Fail-soft policy: a failed publish never blocks completion."""
 
@@ -344,7 +371,7 @@ class TestPublishDueArticles:
 
         marked: list[list[int]] = []
 
-        async def fake_mark(ids):
+        async def fake_mark(ids, expected_status=None):
             marked.append(ids)
             return len(ids)
 
@@ -401,7 +428,40 @@ class TestDueArticlesDb:
             article = _insert_article(session)
         due = await articles_mod_get_due(600)
         assert [item.id for item in due] == [article.id]
-        assert due[0].status == STATUS_ACCEPTED  # not yet mutated
+        # The article is atomically claimed for publishing so concurrent
+        # triggers (background loop + UI reload) can't return it again.
+        assert due[0].status == STATUS_PUBLISHING
+
+    async def test_claimed_article_not_returned_twice(self, db_session):
+        """Regression: an in-flight publish must not be picked up again."""
+        with db_session() as session:
+            article = _insert_article(session)
+        due = await articles_mod_get_due(600)
+        assert [item.id for item in due] == [article.id]
+        # Simulate the background loop racing a UI reload: the second call
+        # must not return the article that is already being published.
+        assert await articles_mod_get_due(600) == []
+        with db_session() as session:
+            row = session.get(Article, article.id)
+            assert row.status == STATUS_PUBLISHING
+
+    async def test_next_queued_article_timer_starts_after_claim(self, db_session):
+        """Claiming the head article hands the timer slot to the next one."""
+        with db_session() as session:
+            first = _insert_article(session, accepted_order=1)
+            _insert_article(
+                session,
+                accepted_order=2,
+                accepted_at=None,  # queued: timer not started yet
+            )
+        due = await articles_mod_get_due(600)
+        assert [item.id for item in due] == [first.id]
+        with db_session() as session:
+            rows = session.query(Article).order_by(Article.accepted_order).all()
+            assert rows[0].status == STATUS_PUBLISHING
+            # The next article became active and its timer started.
+            assert rows[1].status == STATUS_ACCEPTED
+            assert rows[1].accepted_at is not None
 
     async def test_timer_not_elapsed_not_returned(self, db_session):
         with db_session() as session:
@@ -427,6 +487,16 @@ class TestDueArticlesDb:
         # The completed row must be skipped, and unknown IDs ignored.
         assert await articles_mod_mark([article.id, 999]) == 0
 
+    async def test_mark_completes_claimed_article(self, db_session):
+        """Articles claimed for publishing (status=publishing) are completed."""
+        with db_session() as session:
+            article = _insert_article(session)
+        assert await articles_mod_get_due(600)  # claims the article
+        count = await articles_mod_mark([article.id], STATUS_PUBLISHING)
+        assert count == 1
+        with db_session() as session:
+            assert session.get(Article, article.id).status == STATUS_COMPLETED
+
 
 async def articles_mod_get_due(interval: int):
     from app.db.articles import get_due_articles
@@ -434,7 +504,9 @@ async def articles_mod_get_due(interval: int):
     return await get_due_articles(interval)
 
 
-async def articles_mod_mark(ids: list[int]) -> int:
+async def articles_mod_mark(
+    ids: list[int], expected_status: str = STATUS_ACCEPTED
+) -> int:
     from app.db.articles import mark_articles_completed
 
-    return await mark_articles_completed(ids)
+    return await mark_articles_completed(ids, expected_status)

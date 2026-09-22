@@ -20,7 +20,7 @@ from app.db.articles import (get_accepted_items, get_article_by_id,
                              update_article_cover_file)
 from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
                               STATUS_ACCEPTED, STATUS_COMPLETED,
-                              STATUS_REJECTED)
+                              STATUS_PUBLISHING, STATUS_REJECTED)
 from app.db.engine import DB_PATH, Base, SessionLocal, engine
 from app.db.models import Article, Setting
 from app.db.schema import init_db
@@ -31,6 +31,7 @@ __all__ = [
     "DEFAULT_SETTINGS",
     "LAST_RUN_DATE_KEY",
     "STATUS_ACCEPTED",
+    "STATUS_PUBLISHING",
     "STATUS_COMPLETED",
     "STATUS_REJECTED",
     # Engine / session / models (useful for tests and ad-hoc queries).

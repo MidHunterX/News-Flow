@@ -1,12 +1,17 @@
-"""Data access for cached news articles."""
+"""Data access for cached news articles.
+
+``get_due_articles`` atomically claims each due article by flipping its status
+to :data:`STATUS_PUBLISHING` in the same transaction that detects it, so
+concurrent triggers (the background completion loop and UI reloads) can never
+publish the same article twice. """
 
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.db.constants import (STATUS_ACCEPTED, STATUS_COMPLETED,
-                              STATUS_REJECTED, now_iso)
+                              STATUS_PUBLISHING, STATUS_REJECTED, now_iso)
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Article
 from app.models import NewsItem
@@ -225,18 +230,28 @@ def _get_due_articles_sync(interval_seconds: int) -> list[NewsItem]:
 
     Only the first accepted (non-completed) article runs its completion timer;
     the rest wait in the queue. A queued article's timer starts only once it
-    becomes the active one. Side effect: starts/clears timers as the queue
-    advances (committed here so callers see consistent state).
+    becomes the active one.
+
+    Each due article is atomically claimed for publishing by setting its
+    status to :data:`STATUS_PUBLISHING` in the same transaction, so a
+    concurrent trigger (background loop racing a UI reload) cannot return the
+    same article again — this is what prevents duplicate WordPress posts.
     """
     now = datetime.now(timezone.utc).timestamp()
     current = now_iso()
     due: list[NewsItem] = []
     with SessionLocal() as session:
+        # Take the write lock before reading: two triggers otherwise both
+        # SELECT (pysqlite defers BEGIN to writes), both see the article as
+        # accepted, and both publish it. BEGIN IMMEDIATE + the engine's
+        # busy_timeout serializes them — the loser reads committed state.
+        session.execute(text("BEGIN IMMEDIATE"))
         articles = session.scalars(
             select(Article)
             .where(Article.status == STATUS_ACCEPTED)
             .order_by(Article.accepted_order.asc(), Article.id.asc())
         ).all()
+        claimed_head = False
         for index, article in enumerate(articles):
             if index == 0:
                 # Active article: start its timer if it hasn't begun yet.
@@ -247,10 +262,19 @@ def _get_due_articles_sync(interval_seconds: int) -> list[NewsItem]:
                     accepted_ts = datetime.fromisoformat(
                         article.accepted_at
                     ).timestamp()
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     continue
                 if now - accepted_ts >= interval_seconds:
+                    # Claim the article for publishing in this same
+                    # transaction: a second trigger running concurrently sees
+                    # status=publishing and won't return it again.
+                    article.status = STATUS_PUBLISHING
                     due.append(_article_to_item(article))
+                    claimed_head = True
+            elif index == 1 and claimed_head:
+                # Hand the active timer slot to the next queued article; its
+                # own publish happens once its interval elapses.
+                article.accepted_at = current
             elif article.accepted_at is not None:
                 # Queued article: its timer must not have started yet.
                 article.accepted_at = None
@@ -263,13 +287,20 @@ async def get_due_articles(interval_seconds: int) -> list[NewsItem]:
     return await run_in_thread(_get_due_articles_sync, interval_seconds)
 
 
-def _mark_articles_completed_sync(article_ids: list[int]) -> int:
-    """Mark the given accepted articles completed (skips non-accepted rows)."""
+def _mark_articles_completed_sync(
+    article_ids: list[int], expected_status: str
+) -> int:
+    """Mark the given claimed articles completed (skips other rows).
+
+    Only articles currently in *expected_status* are valid targets — the
+    publisher passes its STATUS_PUBLISHING claim. A row already completed by
+    another path, or one that lost its claim, is skipped.
+    """
     completed = 0
     with SessionLocal() as session:
         for article_id in article_ids:
             article = session.get(Article, article_id)
-            if article is None or article.status != STATUS_ACCEPTED:
+            if article is None or article.status != expected_status:
                 continue
             article.status = STATUS_COMPLETED
             article.accepted_order = None
@@ -278,11 +309,20 @@ def _mark_articles_completed_sync(article_ids: list[int]) -> int:
     return completed
 
 
-async def mark_articles_completed(article_ids: list[int]) -> int:
-    """Mark accepted articles as completed by ID. Returns how many changed."""
+async def mark_articles_completed(
+    article_ids: list[int], expected_status: str = STATUS_ACCEPTED
+) -> int:
+    """Mark articles as completed by ID. Returns how many changed.
+
+    ``expected_status`` guards the transition: only rows currently in that
+    state are completed. The publisher passes STATUS_PUBLISHING (its claim);
+    the default keeps the plain accepted → completed transition.
+    """
     if not article_ids:
         return 0
-    return await run_in_thread(_mark_articles_completed_sync, article_ids)
+    return await run_in_thread(
+        _mark_articles_completed_sync, article_ids, expected_status
+    )
 
 
 def _get_cached_sources_sync() -> set[str]:

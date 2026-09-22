@@ -10,6 +10,9 @@ DEFAULT_SETTINGS = {
 
 # Article status flags. NULL (default) means the article is untouched.
 STATUS_ACCEPTED = "accepted"
+# Transient: claimed by a publisher run (post creation is in flight). Prevents
+# concurrent triggers (background loop + UI reloads) from publishing twice.
+STATUS_PUBLISHING = "publishing"
 STATUS_REJECTED = "rejected"
 STATUS_COMPLETED = "completed"
 

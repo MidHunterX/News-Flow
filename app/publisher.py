@@ -27,6 +27,7 @@ import httpx
 from app.config import (WORDPRESS_APP_PASSWORD, WORDPRESS_CATEGORY_ID,
                         WORDPRESS_URL, WORDPRESS_USERNAME)
 from app.db import get_due_articles, mark_articles_completed
+from app.db.constants import STATUS_PUBLISHING
 from app.models import NewsItem
 from app.utils import ARTICLES_DIR, COVERS_DIR
 
@@ -142,7 +143,10 @@ async def publish_article(article: NewsItem) -> str | None:
         )
         resp.raise_for_status()
         link = resp.json().get("link")
-    except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+    except Exception as exc:
+        # Fail-soft: log and skip (status stays "publishing"; init_db requeues
+        # it on the next startup, and the post was never created so nothing is
+        # orphaned on WordPress).
         logger.warning("WordPress publish failed for article %s: %s", article.id, exc)
         return None
     return str(link) if link else None
@@ -151,14 +155,20 @@ async def publish_article(article: NewsItem) -> str | None:
 async def publish_due_articles(interval_seconds: int) -> int:
     """Publish every accepted article whose completion timer elapsed.
 
-    Runs right before the articles are marked completed. Publishing failures
-    never prevent completion. Returns the number of articles processed.
+    Due articles are claimed in the DB (status=publishing) by
+    get_due_articles, so concurrent triggers can't double-publish. Each
+    article is published then marked completed individually — one broken
+    article must not skip or wedge the rest of the batch. Publishing failures
+    never prevent completion; returns the number of articles claimed.
     """
     due = await get_due_articles(interval_seconds)
     for article in due:
-        await publish_article(article)
-    if due:
-        await mark_articles_completed(
-            [article.id for article in due if article.id is not None]
-        )
+        try:
+            await publish_article(article)
+        except Exception:
+            # Fail-soft per article: log and still complete it.
+            logger.exception("Unexpected error publishing article %s", article.id)
+        if article.id is None:
+            continue
+        await mark_articles_completed([article.id], STATUS_PUBLISHING)
     return len(due)

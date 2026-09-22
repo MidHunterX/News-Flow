@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.db.constants import DEFAULT_SETTINGS, LAST_RUN_DATE_KEY
+from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
+                              STATUS_PUBLISHING)
 from app.db.engine import Base, SessionLocal, engine
 from app.db.models import Article, Setting
 
@@ -46,4 +47,13 @@ def init_db() -> None:
                 session.add(Setting(key=LAST_RUN_DATE_KEY, value=today))
             else:
                 last_run.value = today
+
+        # Recover articles left mid-publish by a previous crash/shutdown: no
+        # publisher is running yet, so any claim is stale. Requeue them so
+        # they get published exactly once instead of being orphaned.
+        for article in session.query(Article).filter(
+            Article.status == STATUS_PUBLISHING
+        ).all():
+            article.status = STATUS_ACCEPTED
+
         session.commit()
