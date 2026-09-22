@@ -170,6 +170,14 @@ class TestPublishArticle:
         monkeypatch.setattr(publisher, "WORDPRESS_APP_PASSWORD", "")
         assert await publish_article(make_article()) is None
 
+    @pytest.fixture(autouse=True)
+    def _no_gemini(self, monkeypatch):
+        """Default every publish test to Gemini disabled; opt in per test."""
+        import app.gemini as gemini_mod
+
+        monkeypatch.setattr(gemini_mod, "GEMINI_API_KEY", "")
+        return monkeypatch
+
     async def test_publishes_post_and_returns_link(self, wp_env, article_dirs,
                                                    monkeypatch):
         articles_dir, _ = article_dirs
@@ -291,6 +299,106 @@ class TestPublishArticle:
 # ---------------------------------------------------------------------------
 # Completion orchestration
 # ---------------------------------------------------------------------------
+
+
+class TestCategorization:
+    """Gemini categories are resolved, persisted, and sent on the post."""
+
+    @pytest.fixture(autouse=True)
+    def _gemini_on(self, monkeypatch):
+        import app.gemini as gemini_mod
+
+        monkeypatch.setattr(gemini_mod, "GEMINI_API_KEY", "test-key")
+        return monkeypatch
+
+    async def test_categories_marked_and_included_in_post(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        articles_dir, _ = article_dirs
+        (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
+
+        async def fake_suggest(article, heading, body):
+            return [3, 7]
+
+        import app.gemini as gemini_mod
+
+        monkeypatch.setattr(gemini_mod, "suggest_categories", fake_suggest)
+        saved: list[tuple[int, list[int]]] = []
+
+        async def fake_save(article_id, ids):
+            saved.append((article_id, ids))
+            return True
+
+        # publisher imported the name at module load; patch its binding.
+        monkeypatch.setattr(publisher, "set_article_category_ids", fake_save)
+
+        def handler(url, kwargs):
+            return FakeResponse({"id": 7, "link": f"{WP_BASE}/?p=7"})
+
+        client = FakeClient(handler)
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await publish_article(make_article())
+
+        # IDs were persisted on the article...
+        assert saved == [(1, [3, 7])]
+        # ...and sent as the post's categories.
+        post_json = client.calls[0][1]["json"]
+        assert post_json["categories"] == [3, 7]
+
+    async def test_post_falls_back_to_default_category_without_gemini_ids(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        wp_env.setattr(publisher, "WORDPRESS_CATEGORY_ID", "5")
+        articles_dir, _ = article_dirs
+        (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
+
+        import app.gemini as gemini_mod
+
+        async def fake_suggest(article, heading, body):
+            return []  # nothing suggested
+
+        monkeypatch.setattr(gemini_mod, "suggest_categories", fake_suggest)
+
+        def handler(url, kwargs):
+            return FakeResponse({"id": 7, "link": f"{WP_BASE}/?p=7"})
+
+        client = FakeClient(handler)
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await publish_article(make_article())
+        post_json = client.calls[0][1]["json"]
+        assert post_json["categories"] == [5]
+
+    async def test_suggestion_failure_still_publishes(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        articles_dir, _ = article_dirs
+        (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
+
+        async def boom(article, heading, body):
+            raise RuntimeError("gemini down")
+
+        import app.gemini as gemini_mod
+
+        monkeypatch.setattr(gemini_mod, "suggest_categories", boom)
+
+        def handler(url, kwargs):
+            return FakeResponse({"id": 7, "link": f"{WP_BASE}/?p=7"})
+
+        client = FakeClient(handler)
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await publish_article(make_article()) == f"{WP_BASE}/?p=7"
 
 
 class TestPublishDueArticles:

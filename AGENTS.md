@@ -16,6 +16,9 @@ their scraped content saved to `public/articles/<id>.txt`.
   httpx fetching (via `fastapi[standard]`), Playwright for JS-heavy pages
 - A background asyncio task auto-completes accepted articles once
   `completion_interval` (a user-editable setting, default 600 s) elapses
+- WordPress publishing: categories/tags are synced from the site at startup
+  (`app/wordpress.py`, TTL-refreshed) and Gemini picks related categories for
+  each article (`app/gemini.py`) right before it is published
 
 ## Commands
 
@@ -54,12 +57,16 @@ app/
   db/                # persistence layer (SQLAlchemy 2.0 + SQLite, WAL mode)
     engine.py        # engine, SessionLocal, Base, run_in_thread, DB_PATH
                      # (override the DB location with NEWSFLOW_DB_PATH)
-    models.py        # Article, Setting ORM models
-    constants.py     # STATUS_* flags, DEFAULT_SETTINGS, LAST_RUN_DATE_KEY
+    models.py        # Article, WpCategory, Setting ORM models
+    constants.py     # STATUS_* flags, DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
+                     # WP_TERMS_SYNCED_KEY, WP_CATEGORIES_TTL
     schema.py        # create_all + column migrations + init_db (seeds settings,
-                     # resets articles on a new day)
+                     # resets articles on a new day, requeues stale claims)
     articles.py      # article queries/mutations
+    wp_terms.py      # WordPress terms (categories/tags) queries/mutations
     settings.py      # settings queries/mutations
+  wordpress.py       # WordPress terms sync (categories + tags → wp_terms)
+  gemini.py          # Gemini categorization (article + terms → category IDs)
 templates/           # Jinja2 UI (base/index/article.html), Tailwind via CDN
 static/              # logo.svg
 tests/

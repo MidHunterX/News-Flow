@@ -60,3 +60,10 @@ WORDPRESS_USERNAME = _env_str("WORDPRESS_USERNAME")
 WORDPRESS_APP_PASSWORD = _env_str("WORDPRESS_APP_PASSWORD")
 # Optional category ID applied to every published post (empty = site default).
 WORDPRESS_CATEGORY_ID = _env_str("WORDPRESS_CATEGORY_ID")
+
+# --- Google Gemini (auto-categorization) -------------------------------------
+# When an API key is set, accepted articles are sent to Gemini along with the
+# site's categories/tags and the response marks the categories on the article
+# before publishing. Get a key at https://aistudio.google.com/apikey
+GEMINI_API_KEY = _env_str("GEMINI_API_KEY")
+GEMINI_MODEL = _env_str("GEMINI_MODEL") or "gemini-2.5-flash"

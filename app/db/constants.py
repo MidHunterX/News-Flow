@@ -20,6 +20,13 @@ STATUS_COMPLETED = "completed"
 # a new day, the articles table is cleared for a fresh workspace.
 LAST_RUN_DATE_KEY = "last_run_date"
 
+# Setting key storing the UTC timestamp of the last successful WordPress
+# terms (categories + tags) sync. WP_CATEGORIES_TTL drives re-syncing.
+WP_TERMS_SYNCED_KEY = "wp_terms_synced_at"
+
+# How long a WordPress terms sync stays fresh before being refreshed.
+WP_CATEGORIES_TTL = 24 * 60 * 60  # seconds
+
 
 def now_iso() -> str:
     """Current UTC time as an ISO-8601 string with second precision."""

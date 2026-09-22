@@ -41,6 +41,7 @@ def _article_to_item(article: Article) -> NewsItem:
         status=article.status,
         accepted_at=article.accepted_at,
         cover_file=article.cover_file,
+        wp_category_ids=article.wp_category_ids,
     )
 
 

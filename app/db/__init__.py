@@ -26,6 +26,9 @@ from app.db.models import Article, Setting
 from app.db.schema import init_db
 from app.db.settings import (get_all_settings, get_completion_interval,
                              get_setting, set_setting)
+from app.db.wp_terms import (get_categories, get_last_terms_sync, get_tags,
+                             set_article_category_ids, set_last_terms_sync,
+                             upsert_terms)
 
 __all__ = [
     "DEFAULT_SETTINGS",
@@ -62,4 +65,11 @@ __all__ = [
     "set_setting",
     "get_all_settings",
     "get_completion_interval",
+    # WordPress terms (categories + tags).
+    "get_categories",
+    "get_tags",
+    "upsert_terms",
+    "set_article_category_ids",
+    "get_last_terms_sync",
+    "set_last_terms_sync",
 ]

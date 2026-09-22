@@ -28,6 +28,7 @@ from app.config import (WORDPRESS_APP_PASSWORD, WORDPRESS_CATEGORY_ID,
                         WORDPRESS_URL, WORDPRESS_USERNAME)
 from app.db import get_due_articles, mark_articles_completed
 from app.db.constants import STATUS_PUBLISHING
+from app.db.wp_terms import set_article_category_ids
 from app.models import NewsItem
 from app.utils import ARTICLES_DIR, COVERS_DIR
 
@@ -93,7 +94,10 @@ def _post_fields(
     }
     if featured_media is not None:
         fields["featured_media"] = featured_media
-    if WORDPRESS_CATEGORY_ID:
+    if article.wp_category_ids:
+        # Chosen by Gemini for this article; overrides the site default.
+        fields["categories"] = list(article.wp_category_ids)
+    elif WORDPRESS_CATEGORY_ID:
         try:
             fields["categories"] = [int(WORDPRESS_CATEGORY_ID)]
         except ValueError:
@@ -119,6 +123,25 @@ async def _upload_media(client: httpx.AsyncClient, local_path: Path) -> int | No
         return None
 
 
+async def _mark_categories(article: NewsItem, heading: str, body: str) -> None:
+    """Ask Gemini for related categories and store the IDs on the article.
+
+    Fail-soft: any failure leaves the article uncategorized and logged; the
+    post still goes out under the site default category.
+    """
+    from app.gemini import suggest_categories  # lazy: tests patch app.gemini
+
+    try:
+        ids = await suggest_categories(article, heading, body)
+    except Exception as exc:
+        logger.warning("Category suggestion failed for %s: %s", article.id, exc)
+        return
+    if ids:
+        await set_article_category_ids(article.id, ids)
+        # Reflect on the in-memory item so _post_fields picks it up.
+        article.wp_category_ids = ids
+
+
 async def publish_article(article: NewsItem) -> str | None:
     """Create a WordPress post for *article*. Returns the post URL, or None.
 
@@ -135,6 +158,7 @@ async def publish_article(article: NewsItem) -> str | None:
     featured_media = await _upload_media(client, cover_path) if cover_path else None
 
     heading, body = read_article_content(article.id)
+    await _mark_categories(article, heading, body)
     try:
         resp = await client.post(
             _api_url("/posts"),

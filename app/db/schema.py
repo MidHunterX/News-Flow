@@ -23,6 +23,10 @@ def _migrate() -> None:
             conn.execute(text("ALTER TABLE articles ADD COLUMN accepted_order INTEGER"))
         if "cover_file" not in columns:
             conn.execute(text("ALTER TABLE articles ADD COLUMN cover_file TEXT"))
+        if "wp_category_ids" not in columns:
+            conn.execute(
+                text("ALTER TABLE articles ADD COLUMN wp_category_ids JSON")
+            )
 
 
 def init_db() -> None:

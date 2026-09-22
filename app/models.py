@@ -20,6 +20,9 @@ class NewsItem(BaseModel):
     status: str | None = None
     accepted_at: str | None = None
     cover_file: str | None = None
+    # WordPress category IDs chosen by Gemini before publishing (JSON column;
+    # None until the publisher marks them).
+    wp_category_ids: list[int] | None = None
 
 
 class ScrapeResponse(BaseModel):
