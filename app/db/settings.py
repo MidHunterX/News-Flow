@@ -2,7 +2,7 @@
 
 from sqlalchemy import select
 
-from app.db.constants import DEFAULT_SETTINGS
+from app.db.constants import ARTICLE_LAYOUTS, DEFAULT_SETTINGS
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Setting
 
@@ -52,3 +52,9 @@ async def get_completion_interval() -> int:
         return max(1, int(raw))
     except TypeError, ValueError:
         return int(DEFAULT_SETTINGS["completion_interval"])
+
+
+async def get_article_layout() -> str:
+    """Return the article-list layout, falling back to the default if invalid."""
+    raw = await get_setting("article_layout", DEFAULT_SETTINGS["article_layout"])
+    return raw if raw in ARTICLE_LAYOUTS else DEFAULT_SETTINGS["article_layout"]

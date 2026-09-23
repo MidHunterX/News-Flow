@@ -6,7 +6,13 @@ from datetime import datetime, timezone
 DEFAULT_SETTINGS = {
     # Seconds between an article being accepted and it being marked completed.
     "completion_interval": "600",  # 10 minutes
+    # How the pending article list renders: "grid" (cards in columns),
+    # "rows" (full-width rows with thumbnail), or "compact" (dense rows).
+    "article_layout": "grid",
 }
+
+# Layouts the article grid setting accepts (validated in the settings API).
+ARTICLE_LAYOUTS = ("grid", "rows", "compact")
 
 # Article status flags. NULL (default) means the article is untouched.
 STATUS_ACCEPTED = "accepted"

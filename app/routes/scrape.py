@@ -6,9 +6,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
-from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
-                    clear_notifications, get_accepted_items, get_all_settings,
-                    get_article_by_id, get_cached_sources, get_completed_items,
+from app.db import (ARTICLE_LAYOUTS, DEFAULT_SETTINGS, STATUS_ACCEPTED,
+                    STATUS_REJECTED, clear_notifications, get_accepted_items,
+                    get_all_settings, get_article_by_id, get_article_layout,
+                    get_cached_sources, get_completed_items,
                     get_completion_interval, get_items, get_notifications,
                     get_pending_items, get_rejected_items, save_items,
                     set_article_status, set_setting, trim_articles,
@@ -157,6 +158,12 @@ async def update_settings(settings: dict[str, str]):
                 raise HTTPException(
                     400, "completion_interval must be a positive number of seconds"
                 )
+        elif key == "article_layout":
+            if value not in ARTICLE_LAYOUTS:
+                raise HTTPException(
+                    400,
+                    f"article_layout must be one of: {', '.join(ARTICLE_LAYOUTS)}",
+                )
         await set_setting(key, value)
     return await get_all_settings()
 
@@ -236,6 +243,7 @@ async def get_news_ui(
     accepted_items = await get_accepted_items(current_source)
     completed_items = await get_completed_items(current_source)
     rejected_items = await get_rejected_items(current_source)
+    layout = await get_article_layout()
 
     return templates.TemplateResponse(
         request=request,
@@ -250,5 +258,6 @@ async def get_news_ui(
             "selected_source": current_source,
             "count": len(items),
             "completion_interval": interval,
+            "article_layout": layout,
         },
     )
