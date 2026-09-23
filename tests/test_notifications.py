@@ -14,6 +14,27 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.db.notifications as notifications_mod
+import app.publisher as publisher_mod
+import app.wordpress as wordpress_mod
+from app.db.models import Base
+from app.models import NewsItem
+
+
+async def _async_none() -> None:
+    return None
+
+
+class FakeResponse:
+    def __init__(self, json_data=None, status_code: int = 200):
+        self._json = json_data if json_data is not None else {}
+        self.status_code = status_code
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPError(f"HTTP {self.status_code}")
+
+    def json(self):
+        return self._json
 from app.db.constants import (MAX_NOTIFICATIONS, NOTIF_ERROR, NOTIF_INFO,
                               NOTIF_WARNING)
 from app.db.models import Base, Notification
@@ -176,3 +197,94 @@ class TestGeminiIntegration:
         assert rows[0].source == "gemini"
         assert rows[0].article_id == 7
         assert "Categorization failed" in rows[0].message
+
+
+class TestWordPressIntegration:
+    """WordPress publish/sync failures surface as notifications."""
+
+    @pytest.fixture
+    def wp_env(self, monkeypatch):
+        """Pretend WordPress publishing is configured (Gemini disabled)."""
+        import app.gemini as gemini_mod
+
+        monkeypatch.setattr(publisher_mod, "WORDPRESS_URL", "https://wp.example.com")
+        monkeypatch.setattr(publisher_mod, "WORDPRESS_USERNAME", "editor")
+        monkeypatch.setattr(publisher_mod, "WORDPRESS_APP_PASSWORD", "pass")
+        monkeypatch.setattr(publisher_mod, "WORDPRESS_CATEGORY_ID", "")
+        # Isolate WordPress: categorization would otherwise add its own
+        # notification when the fake response lacks Gemini-specific fields.
+        monkeypatch.setattr(gemini_mod, "GEMINI_API_KEY", "")
+        return monkeypatch
+
+    def _article(self) -> NewsItem:
+        return NewsItem(
+            id=3,
+            title="T",
+            url=None,
+            image_url=None,
+            description="d",
+            published_at="2026-09-19",
+            source="kaumudi",
+        )
+
+    async def _publish_with_client(self, monkeypatch, handler):
+        class FakeClient:
+            async def post(self, url, **kwargs):
+                return handler(url, kwargs)
+
+        async def fake_get_client():
+            return FakeClient()
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+
+    async def test_publish_failure_records_error_notification(
+        self, db, wp_env, monkeypatch
+    ):
+        await self._publish_with_client(
+            monkeypatch, lambda url, kwargs: FakeResponse(status_code=500)
+        )
+        assert await publisher_mod.publish_article(self._article()) is None
+
+        rows = await _get()
+        assert len(rows) == 1
+        assert rows[0].level == NOTIF_ERROR
+        assert rows[0].source == "wordpress"
+        assert rows[0].article_id == 3
+        assert "Publish failed" in rows[0].message
+
+    async def test_media_upload_failure_records_warning(
+        self, db, wp_env, monkeypatch, tmp_path
+    ):
+        cover = tmp_path / "cover.png"
+        cover.write_bytes(b"png")
+        posts_url = "https://wp.example.com/wp-json/wp/v2/posts"
+
+        def handler(url, kwargs):
+            if url.endswith("/media"):
+                return FakeResponse(status_code=500)
+            return FakeResponse({"id": 7, "link": "https://wp.example.com/?p=7"})
+
+        await self._publish_with_client(monkeypatch, handler)
+        article = self._article()
+        article.cover_file = f"/covers/{cover.name}"
+        monkeypatch.setattr(publisher_mod, "COVERS_DIR", tmp_path)
+        assert await publisher_mod.publish_article(article)
+
+        levels = {r.level for r in await _get()}
+        assert levels == {NOTIF_WARNING}  # upload failed; post still went out
+
+    async def test_terms_sync_failure_records_warning(self, db, monkeypatch):
+        async def boom():
+            raise httpx.ConnectError("down")
+
+        monkeypatch.setattr(wordpress_mod, "sync_terms", boom)
+        monkeypatch.setattr(
+            wordpress_mod, "get_last_terms_sync", lambda: _async_none()
+        )
+        assert await wordpress_mod.sync_terms_if_stale() is True
+
+        rows = await _get()
+        assert len(rows) == 1
+        assert rows[0].level == NOTIF_WARNING
+        assert rows[0].source == "wordpress"
+        assert "Terms sync failed" in rows[0].message

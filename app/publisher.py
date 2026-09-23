@@ -27,7 +27,8 @@ import httpx
 from app.config import (WORDPRESS_APP_PASSWORD, WORDPRESS_CATEGORY_ID,
                         WORDPRESS_URL, WORDPRESS_USERNAME)
 from app.db import get_due_articles, mark_articles_completed
-from app.db.constants import STATUS_PUBLISHING
+from app.db.constants import NOTIF_ERROR, NOTIF_WARNING, STATUS_PUBLISHING
+from app.db.notifications import record_notification
 from app.db.wp_terms import set_article_category_ids
 from app.models import NewsItem
 from app.utils import ARTICLES_DIR, COVERS_DIR
@@ -107,7 +108,9 @@ def _post_fields(
     return fields
 
 
-async def _upload_media(client: httpx.AsyncClient, local_path: Path) -> int | None:
+async def _upload_media(
+    client: httpx.AsyncClient, local_path: Path, article_id: int | None = None
+) -> int | None:
     """Upload a local image as a WordPress media attachment; return its ID."""
     mime = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
     try:
@@ -120,6 +123,13 @@ async def _upload_media(client: httpx.AsyncClient, local_path: Path) -> int | No
         return int(resp.json()["id"])
     except (httpx.HTTPError, OSError, KeyError, TypeError, ValueError) as exc:
         logger.warning("WordPress media upload failed (%s): %s", local_path.name, exc)
+        # The post can still go out without a featured image.
+        await record_notification(
+            NOTIF_WARNING,
+            "wordpress",
+            f"Media upload failed ({local_path.name}): {exc or 'no details'}",
+            article_id=article_id,
+        )
         return None
 
 
@@ -155,7 +165,9 @@ async def publish_article(article: NewsItem) -> str | None:
 
     client = await get_client()
     cover_path = _cover_local_path(article.cover_file)
-    featured_media = await _upload_media(client, cover_path) if cover_path else None
+    featured_media = (
+        await _upload_media(client, cover_path, article.id) if cover_path else None
+    )
 
     heading, body = read_article_content(article.id)
     await _mark_categories(article, heading, body)
@@ -172,6 +184,12 @@ async def publish_article(article: NewsItem) -> str | None:
         # it on the next startup, and the post was never created so nothing is
         # orphaned on WordPress).
         logger.warning("WordPress publish failed for article %s: %s", article.id, exc)
+        await record_notification(
+            NOTIF_ERROR,
+            "wordpress",
+            f"Publish failed: {exc or 'no details'}",
+            article_id=article.id,
+        )
         return None
     return str(link) if link else None
 
@@ -189,9 +207,15 @@ async def publish_due_articles(interval_seconds: int) -> int:
     for article in due:
         try:
             await publish_article(article)
-        except Exception:
+        except Exception as exc:
             # Fail-soft per article: log and still complete it.
             logger.exception("Unexpected error publishing article %s", article.id)
+            await record_notification(
+                NOTIF_ERROR,
+                "wordpress",
+                f"Unexpected publish error: {exc or 'no details'}",
+                article_id=article.id,
+            )
         if article.id is None:
             continue
         await mark_articles_completed([article.id], STATUS_PUBLISHING)

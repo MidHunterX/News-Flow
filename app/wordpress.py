@@ -17,7 +17,8 @@ import httpx
 from app.config import WORDPRESS_URL
 from app.db import (get_categories, get_last_terms_sync, get_tags,
                     set_last_terms_sync, upsert_terms)
-from app.db.constants import WP_CATEGORIES_TTL
+from app.db.constants import NOTIF_WARNING, WP_CATEGORIES_TTL
+from app.db.notifications import record_notification
 from app.db.wp_terms import TAXONOMY_CATEGORY, TAXONOMY_TAG
 
 logger = logging.getLogger(__name__)
@@ -120,6 +121,12 @@ async def sync_terms_if_stale() -> bool:
         await sync_terms()
     except (httpx.HTTPError, OSError, ValueError) as exc:
         logger.warning("WordPress terms sync failed: %s", exc)
+        # Categorization depends on a fresh term list; surface the gap.
+        await record_notification(
+            NOTIF_WARNING,
+            "wordpress",
+            f"Terms sync failed: {exc or 'no details'}",
+        )
     return True
 
 
