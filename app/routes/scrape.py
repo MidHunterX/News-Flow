@@ -7,11 +7,12 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
 from app.db import (DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
-                    get_accepted_items, get_all_settings, get_article_by_id,
-                    get_cached_sources, get_completed_items,
-                    get_completion_interval, get_items, get_pending_items,
-                    get_rejected_items, save_items, set_article_status,
-                    set_setting, trim_articles, update_article_cover_file)
+                    clear_notifications, get_accepted_items, get_all_settings,
+                    get_article_by_id, get_cached_sources, get_completed_items,
+                    get_completion_interval, get_items, get_notifications,
+                    get_pending_items, get_rejected_items, save_items,
+                    set_article_status, set_setting, trim_articles,
+                    update_article_cover_file)
 from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.publisher import publish_due_articles
 from app.scrapers.init import SCRAPERS, scrape_source
@@ -158,6 +159,33 @@ async def update_settings(settings: dict[str, str]):
                 )
         await set_setting(key, value)
     return await get_all_settings()
+
+
+@router.get("/api/notifications")
+async def list_notifications(limit: int = Query(50, ge=1, le=100)):
+    """Return the stored notification log (newest first) as JSON."""
+    rows = await get_notifications(limit)
+    return {
+        "count": len(rows),
+        "items": [
+            {
+                "id": row.id,
+                "level": row.level,
+                "source": row.source,
+                "message": row.message,
+                "article_id": row.article_id,
+                "created_at": row.created_at,
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.delete("/api/notifications")
+async def delete_notifications():
+    """Clear the entire notification log."""
+    deleted = await clear_notifications()
+    return {"ok": True, "deleted": deleted}
 
 
 @router.get("/article/{article_id}", response_class=HTMLResponse)

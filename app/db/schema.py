@@ -8,9 +8,10 @@ from sqlalchemy import delete, inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
-                              STATUS_PUBLISHING, STATUS_ACCEPTED)
+                              STATUS_PUBLISHING, STATUS_ACCEPTED,
+                              NOTIF_INFO)
 from app.db.engine import Base, SessionLocal, engine
-from app.db.models import Article, Setting
+from app.db.models import Article, Notification, Setting
 from app.utils import ARTICLES_DIR, COVERS_DIR
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,20 @@ def _reset_daily_workspace() -> None:
         session.commit()
 
     _delete_files(files)
+
+    # A fresh day is an event worth surfacing in the UI's notification bell.
+    try:
+        with SessionLocal() as session:
+            session.add(
+                Notification(
+                    level=NOTIF_INFO,
+                    source="system",
+                    message="Daily workspace reset: articles and files cleared.",
+                )
+            )
+            session.commit()
+    except Exception:
+        logger.warning("Could not store daily-reset notification", exc_info=True)
 
 
 def init_db() -> None:

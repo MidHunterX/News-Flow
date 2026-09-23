@@ -56,3 +56,20 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class Notification(Base):
+    """A log entry surfaced in the UI (e.g. Gemini/API failures)."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # One of the NOTIF_* levels from app.db.constants.
+    level: Mapped[str] = mapped_column(String, nullable=False)
+    # Component that produced it, e.g. "gemini".
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    article_id: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=func.datetime("now")
+    )

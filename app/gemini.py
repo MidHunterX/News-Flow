@@ -18,6 +18,7 @@ from typing import Any
 import httpx
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.db.constants import NOTIF_WARNING
 from app.models import NewsItem
 
 logger = logging.getLogger(__name__)
@@ -211,6 +212,14 @@ async def suggest_categories(
         # type name — transport timeouts stringify to an empty message.
         logger.warning("Gemini categorization failed: %s: %s",
                        type(exc).__name__, exc)
+        # Surface it in the UI notification log (itself fail-soft).
+        from app.db.notifications import record_notification
+        await record_notification(
+            NOTIF_WARNING,
+            "gemini",
+            f"Categorization failed ({type(exc).__name__}): {exc or 'no details'}",
+            article_id=article.id,
+        )
         return []
 
     matched = _match_terms(parsed.get("categories"), category_triples)

@@ -27,6 +27,17 @@ WP_TERMS_SYNCED_KEY = "wp_terms_synced_at"
 # How long a WordPress terms sync stays fresh before being refreshed.
 WP_CATEGORIES_TTL = 24 * 60 * 60  # seconds
 
+# Notification log levels (stored in the notifications table, shown in the UI).
+NOTIF_INFO = "info"
+NOTIF_WARNING = "warning"
+NOTIF_ERROR = "error"
+
+# Cap on stored notifications; the oldest rows are trimmed on insert.
+MAX_NOTIFICATIONS = 100
+
+# Stored notification messages are truncated to this length.
+MAX_MESSAGE_CHARS = 500
+
 
 def now_iso() -> str:
     """Current UTC time as an ISO-8601 string with second precision."""

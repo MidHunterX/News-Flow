@@ -42,6 +42,21 @@
             Refresh Now
           </button>
           <button
+            onclick="openNotifications()"
+            class="relative p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition"
+            title="Notifications"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9">
+              </path>
+            </svg>
+            <span id="notif-badge"
+                  class="hidden absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold text-center leading-5">
+              0
+            </span>
+          </button>
+          <button
             onclick="openSettings()"
             class="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition"
             title="Settings"
@@ -106,6 +121,29 @@
               Save
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notifications Modal -->
+    <div id="notifications-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h3 class="text-lg font-bold text-gray-900">Notifications</h3>
+          <div class="flex items-center gap-1">
+            <button onclick="clearNotifications()"
+                    class="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition">
+              Clear all
+            </button>
+            <button onclick="closeNotifications()" class="p-2 text-gray-400 hover:text-gray-600 transition" title="Close">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="notifications-list" class="overflow-y-auto divide-y divide-gray-100">
+          <p class="px-6 py-8 text-sm text-gray-400 text-center">Loading…</p>
         </div>
       </div>
     </div>
@@ -195,6 +233,94 @@
         }
         window.location.reload();
       }
+
+      // ---- Notifications ----
+      const LEVEL_STYLES = {
+        error:   { dot: "bg-red-500",   text: "text-red-600",   label: "Error" },
+        warning: { dot: "bg-amber-500", text: "text-amber-600", label: "Warning" },
+        info:    { dot: "bg-indigo-500", text: "text-indigo-600", label: "Info" },
+      };
+
+      function notificationRow(n) {
+        const style = LEVEL_STYLES[n.level] || LEVEL_STYLES.info;
+        const when = n.created_at ? n.created_at.replace("T", " ") : "";
+        const link = n.article_id
+          ? `<a href="/article/${n.article_id}" class="ml-1 ${style.text} hover:underline">view article</a>`
+          : "";
+        return `
+          <div class="px-6 py-3 flex items-start gap-3">
+            <span class="mt-1.5 w-2 h-2 rounded-full shrink-0 ${style.dot}"></span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold uppercase ${style.text}">${style.label}</span>
+                <span class="text-xs font-semibold text-gray-400">${n.source}</span>
+                <span class="text-xs text-gray-300">${when}</span>
+              </div>
+              <p class="text-sm text-gray-700 break-words">${n.message}${link}</p>
+            </div>
+          </div>`;
+      }
+
+      function setNotifBadge(count) {
+        const badge = document.getElementById("notif-badge");
+        if (!badge) return;
+        if (count > 0) {
+          badge.textContent = count > 99 ? "99+" : String(count);
+          badge.classList.remove("hidden");
+        } else {
+          badge.classList.add("hidden");
+        }
+      }
+
+      function renderNotifications(items) {
+        const list = document.getElementById("notifications-list");
+        if (!items.length) {
+          list.innerHTML =
+            '<p class="px-6 py-8 text-sm text-gray-400 text-center">No notifications.</p>';
+          return;
+        }
+        list.innerHTML = items.map(notificationRow).join("");
+      }
+
+      async function fetchNotificationCount() {
+        try {
+          const res = await fetch("/api/notifications?limit=100");
+          if (!res.ok) return;
+          const data = await res.json();
+          setNotifBadge(data.count || 0);
+        } catch (err) {
+          /* badge stays hidden when the API is unreachable */
+        }
+      }
+
+      async function openNotifications() {
+        document.getElementById("notifications-modal").classList.remove("hidden");
+        setNotifBadge(0);
+        try {
+          const res = await fetch("/api/notifications?limit=100");
+          const data = await res.json();
+          renderNotifications(data.items || []);
+        } catch (err) {
+          document.getElementById("notifications-list").innerHTML =
+            '<p class="px-6 py-8 text-sm text-red-500 text-center">Failed to load notifications.</p>';
+        }
+      }
+
+      function closeNotifications() {
+        document.getElementById("notifications-modal").classList.add("hidden");
+      }
+
+      async function clearNotifications() {
+        try {
+          await fetch("/api/notifications", { method: "DELETE" });
+        } catch (err) {
+          /* fall through and re-render from the list endpoint */
+        }
+        setNotifBadge(0);
+        renderNotifications([]);
+      }
+
+      fetchNotificationCount();
     </script>
   </body>
 </html>
