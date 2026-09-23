@@ -54,9 +54,8 @@
     <path d="M72.5 51.5 L78 52.5 L75.5 58" stroke="#FDE68A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   </g>
 
-  <!-- Wordmark -->
-  <text x="248" y="150" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="72" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5">News</text>
-  <text x="404" y="150" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="72" font-weight="800" fill="url(#accentGrad)" letter-spacing="-1.5">Flow</text>
+  <!-- Wordmark: single text run so "Flow" always follows "News" without overlap -->
+  <text x="248" y="150" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="72" font-weight="800" letter-spacing="-1.5"><tspan fill="#FFFFFF">News</tspan><tspan dx="16" fill="url(#accentGrad)">Flow</tspan></text>
 
   <!-- Tagline -->
   <text x="250" y="186" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="19" font-weight="500" fill="#A5B4FC" letter-spacing="4.5">AGGREGATE · REVIEW · PUBLISH</text>
