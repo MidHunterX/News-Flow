@@ -1,48 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 120" width="400" height="120">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="News Flow logo">
   <defs>
-    <linearGradient id="flowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+    <linearGradient id="nfGrad" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#9333EA"/>
     </linearGradient>
-    <linearGradient id="waveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:0.3" />
-      <stop offset="50%" style="stop-color:#7C3AED;stop-opacity:0.5" />
-      <stop offset="100%" style="stop-color:#4F46E5;stop-opacity:0.3" />
+    <linearGradient id="nfCardGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
+    <filter id="nfShadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#312E81" flood-opacity="0.35"/>
+    </filter>
   </defs>
-  
-  <!-- Background wave pattern -->
-  <path d="M0,85 Q50,70 100,85 T200,85 T300,85 T400,85 L400,120 L0,120 Z" fill="url(#waveGrad)" opacity="0.4"/>
-  <path d="M0,95 Q50,80 100,95 T200,95 T300,95 T400,95 L400,120 L0,120 Z" fill="url(#waveGrad)" opacity="0.25"/>
-  
-  <!-- Icon: Stacked news cards flowing -->
-  <g transform="translate(20, 15)">
-    <!-- Back card -->
-    <rect x="8" y="12" width="44" height="60" rx="4" fill="#C7D2FE" opacity="0.6"/>
-    <!-- Middle card -->
-    <rect x="4" y="6" width="44" height="60" rx="4" fill="#A5B4FC" opacity="0.8"/>
-    <!-- Front card -->
-    <rect x="0" y="0" width="44" height="60" rx="4" fill="url(#flowGrad)"/>
-    <!-- News lines on front card -->
-    <rect x="6" y="8" width="24" height="3" rx="1.5" fill="white" opacity="0.9"/>
-    <rect x="6" y="15" width="32" height="2" rx="1" fill="white" opacity="0.6"/>
-    <rect x="6" y="21" width="28" height="2" rx="1" fill="white" opacity="0.6"/>
-    <rect x="6" y="27" width="32" height="2" rx="1" fill="white" opacity="0.6"/>
-    <!-- Flow arrow -->
-    <path d="M36,50 L44,56 L36,62" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
+
+  <!-- Rounded app-style background -->
+  <rect x="2" y="2" width="92" height="92" rx="22" fill="url(#nfGrad)"/>
+
+  <!-- Stacked news cards -->
+  <g filter="url(#nfShadow)">
+    <!-- back card -->
+    <rect x="38" y="18" width="34" height="46" rx="5" fill="#C7D2FE" opacity="0.55"/>
+    <!-- middle card -->
+    <rect x="32" y="22" width="34" height="46" rx="5" fill="#A5B4FC" opacity="0.8"/>
+    <!-- front card -->
+    <rect x="24" y="26" width="34" height="46" rx="5" fill="#ffffff"/>
+    <rect x="24" y="26" width="34" height="46" rx="5" fill="url(#nfCardGrad)"/>
   </g>
-  
-  <!-- Text: "News" -->
-  <text x="90" y="58" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="42" font-weight="900" fill="#1E1B4B" letter-spacing="-1">News</text>
-  
-  <!-- Text: "Flow" -->
-  <text x="238" y="58" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="42" font-weight="900" fill="url(#flowGrad)" letter-spacing="-1">Flow</text>
-  
-  <!-- Tagline -->
-  <text x="90" y="80" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="500" fill="#6366F1" letter-spacing="2" text-transform="uppercase">AGGREGATE · REVIEW · PUBLISH</text>
-  
-  <!-- Decorative dots -->
-  <circle cx="370" cy="30" r="3" fill="#4F46E5" opacity="0.4"/>
-  <circle cx="380" cy="45" r="2" fill="#7C3AED" opacity="0.3"/>
-  <circle cx="375" cy="60" r="2.5" fill="#4F46E5" opacity="0.25"/>
+
+  <!-- Headline + text lines on front card -->
+  <rect x="29" y="32" width="18" height="4" rx="2" fill="#4F46E5"/>
+  <rect x="29" y="41" width="24" height="2.5" rx="1.25" fill="#A5B4FC"/>
+  <rect x="29" y="47" width="20" height="2.5" rx="1.25" fill="#A5B4FC"/>
+  <rect x="29" y="53" width="24" height="2.5" rx="1.25" fill="#A5B4FC"/>
+
+  <!-- Flow arrow sweeping across the cards -->
+  <path d="M46 62 C56 70, 66 66, 74 56" stroke="#FDE68A" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M70.5 53.5 L76 54.5 L73.5 60" stroke="#FDE68A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

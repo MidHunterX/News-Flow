@@ -1,10 +1,5 @@
 <p align="center">
-  <img src="static/logo.svg" alt="News Flow" width="400"/>
-</p>
-
-<p align="center">
-  <strong>Aggregate · Review · Publish</strong><br/>
-  A FastAPI-powered news aggregator with a clean review UI
+  <img src="static/banner.svg" alt="News Flow — Aggregate · Review · Publish" width="100%"/>
 </p>
 
 <p align="center">
@@ -12,6 +7,8 @@
   <img src="https://img.shields.io/badge/FastAPI-0.141-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"/>
   <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS"/>
   <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite"/>
+  <img src="https://img.shields.io/badge/tests-passing-brightgreen?style=flat-square&logo=pytest&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/license-MIT-8B5CF6?style=flat-square" alt="MIT License"/>
 </p>
 
 ---
@@ -83,7 +80,7 @@ news-flow/
 │   │   └── scrape.py           # API + UI routes
 │   └── db/                     # SQLAlchemy models, schema, queries
 ├── templates/                  # Jinja2 HTML templates
-├── static/                     # Static assets (logo, etc.)
+├── static/                     # Static assets (logo, banner, footer)
 ├── public/                     # Downloaded covers & saved article content
 ├── tests/
 │   ├── fixtures/               # Offline HTML fixtures for testing
@@ -162,12 +159,6 @@ uv run python scripts/health_check.py [source ...]
 
 ---
 
-## 📝 License
-
-MIT
-
----
-
 <p align="center">
-  Built with ❤️ using FastAPI & Tailwind CSS
+  <img src="static/footer.svg" alt="News Flow — self-hosted, MIT licensed" width="100%"/>
 </p>
