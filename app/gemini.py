@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
-# Hard cap on the article text sent to Gemini (keeps prompts small; the news
-# body is a scrape, not literature).
-MAX_BODY_CHARS = 4000
+# Hard cap on the article text sent to Gemini (keeps prompts small; a heading
+# plus a short body excerpt is enough for categorization).
+MAX_BODY_CHARS = 100
 
 # Gemini (a thinking model) regularly needs >20s, longer than the shared
 # scrape client's TIMEOUT, so generateContent gets its own.
