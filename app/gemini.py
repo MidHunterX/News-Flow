@@ -27,7 +27,7 @@ API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 
 # Hard cap on the article text sent to Gemini (keeps prompts small; a heading
 # plus a short body excerpt is enough for categorization).
-MAX_BODY_CHARS = 100
+MAX_BODY_CHARS = 360
 
 # Gemini (a thinking model) regularly needs >20s, longer than the shared
 # scrape client's TIMEOUT, so generateContent gets its own.
