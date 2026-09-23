@@ -135,8 +135,8 @@ class TestResetDailyWorkspace:
         assert not (articles_dir / f"{article.id}.txt").exists()
         assert not (covers_dir / "x.png").exists()
 
-    def test_tolerates_missing_files_and_keeps_unrelated_ones(self, reset_env):
-        """Missing files are skipped; files of no known article survive."""
+    def test_wipes_orphans_and_whole_workspace(self, reset_env):
+        """The whole workspace is emptied, including files with no article row."""
         session_factory, articles_dir, covers_dir = reset_env
         with session_factory() as session:
             _set_last_run(session, "2000-01-01")
@@ -149,7 +149,10 @@ class TestResetDailyWorkspace:
 
         assert not (articles_dir / f"{article.id}.txt").exists()
         assert not (covers_dir / "gone.png").exists()  # never existed anyway
-        assert (covers_dir / "unrelated.png").exists()
+        # Orphaned covers are wiped too: the reset guarantees a clean slate.
+        assert not (covers_dir / "unrelated.png").exists()
+        assert covers_dir.is_dir()  # recreated empty, not removed
+        assert articles_dir.is_dir()
 
 
 # ---------------------------------------------------------------------------

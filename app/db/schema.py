@@ -1,6 +1,7 @@
 """Table creation, schema migrations, and startup initialization."""
 
 import logging
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,40 +36,37 @@ def _migrate() -> None:
             )
 
 
-def _collect_workspace_files(articles: list[Article]) -> list[Path]:
-    """Return the local files attached to the given articles, for deletion.
+def _clear_dir(path: Path) -> None:
+    """Remove everything inside *path*, recreating it as an empty directory.
 
-    These are the scraped-content files (``public/articles/<id>.txt``) and any
-    downloaded cover referenced by ``cover_file`` (a ``/covers/<name>`` web
-    path mapped back into ``public/covers/``). Missing paths are kept so the
-    caller can still try unlinking them — ``unlink`` is only attempted when
-    the file actually exists.
+    Used for the daily clean slate: the whole workspace (``public/articles/``,
+    ``public/covers/``) is wiped, not just files tied to known articles — this
+    also clears orphans whose article rows are already gone. Missing
+    directories are created; deletions that fail are logged and skipped.
     """
-    files: list[Path] = []
-    for article in articles:
-        files.append(ARTICLES_DIR / f"{article.id}.txt")
-        if article.cover_file:
-            files.append(COVERS_DIR / Path(article.cover_file).name)
-    return files
-
-
-def _delete_files(paths: list[Path]) -> None:
-    """Unlink the given files, ignoring missing ones and logging failures."""
-    for path in paths:
+    if not path.exists():
+        path.mkdir(parents=True, exist_ok=True)
+        return
+    for child in path.iterdir():
         try:
-            path.unlink(missing_ok=True)
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink(missing_ok=True)
         except OSError:
-            logger.warning("Could not delete workspace file %s", path, exc_info=True)
+            logger.warning("Could not delete workspace file %s", child,
+                           exc_info=True)
+    path.mkdir(parents=True, exist_ok=True)
 
 
 def _reset_daily_workspace() -> None:
-    """Clear the articles table and its attached files on a new UTC day.
+    """Clear the articles table and the whole workspace on a new UTC day.
 
     Fresh workspace per day: when the last run was on a previous day, every
-    article row is dropped together with the files created for it (covers and
-    scraped-content .txt). The file deletion happens *after* the row delete is
-    committed — losing a row but keeping its files is the safe failure mode,
-    and orphaned files are harmless.
+    article row is dropped and the workspace directories (scraped-content
+    ``.txt`` files and downloaded covers) are emptied entirely. The wipe
+    happens *after* the row delete is committed — losing a row but keeping
+    its files is the safe failure mode.
     """
     with SessionLocal() as session:
         today = datetime.now(timezone.utc).date().isoformat()
@@ -76,9 +74,6 @@ def _reset_daily_workspace() -> None:
         if last_run is not None and last_run.value == today:
             return  # Same day: nothing to reset.
 
-        # Files are collected before the delete; the rows are gone after
-        # commit, so this must happen inside the transaction.
-        files = _collect_workspace_files(session.query(Article).all())
         session.execute(delete(Article))
         if last_run is None:
             session.add(Setting(key=LAST_RUN_DATE_KEY, value=today))
@@ -86,7 +81,8 @@ def _reset_daily_workspace() -> None:
             last_run.value = today
         session.commit()
 
-    _delete_files(files)
+    for workspace_dir in (ARTICLES_DIR, COVERS_DIR):
+        _clear_dir(workspace_dir)
 
     # A fresh day is an event worth surfacing in the UI's notification bell.
     try:
