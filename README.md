@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white" alt="Tailwind CSS"/>
   <img src="https://img.shields.io/badge/SQLite-3-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite"/>
   <img src="https://img.shields.io/badge/tests-passing-brightgreen?style=flat-square&logo=pytest&logoColor=white" alt="Tests"/>
-  <img src="https://img.shields.io/badge/license-MIT-8B5CF6?style=flat-square" alt="MIT License"/>
+  <img src="https://img.shields.io/badge/license-Common--Sense-8B5CF6?style=flat-square" alt="Common-Sense License"/>
 </p>
 
 ---
@@ -159,6 +159,21 @@ uv run python scripts/health_check.py [source ...]
 
 ---
 
+## 📜 License
+
+News Flow is released under the **Common-Sense License** — a custom license, fitting for a fully custom codebase.
+
+This project was written end-to-end by an AI (Buffy, via Codebuff) at the direction of a human operator, so the license keeps the same spirit: simple, permissive, and honest. In short:
+
+- **Use it** for anything — commercial, personal, educational, or the hobby project you abandon in three weeks
+- **Modify it** freely; just don't pretend you wrote the original (keep a "Based on News Flow" notice)
+- **Your changes are yours** — bugs you fix belong to you, bugs you introduce belong to you too
+- **No warranty whatsoever** — it scrapes news sites; news sites change their markup at 2 a.m.; things will break
+
+See the full text in [LICENSE](LICENSE).
+
+---
+
 <p align="center">
-  <img src="static/footer.svg" alt="News Flow — self-hosted, MIT licensed" width="100%"/>
+  <img src="static/footer.svg" alt="News Flow — self-hosted, Common-Sense licensed" width="100%"/>
 </p>

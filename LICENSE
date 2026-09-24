@@ -1,0 +1,65 @@
+News Flow — The Common-Sense License
+=====================================
+
+Version 1.0, September 2026
+
+This project was written by an AI (Buffy, via Codebuff) at the direction of a
+human operator, and it carries the simplest license its author could legally
+draft. Not MIT, not GPL — something custom, because the whole codebase is
+custom too. Call it the **Common-Sense License**.
+
+Definitions
+-----------
+
+  "The Software"  — News Flow: every file in this repository, including the
+                    source code, templates, fixtures, scripts, and this
+                    license itself.
+  "You"           — anyone who has obtained a copy of The Software.
+  "The Authors"   — the AI that wrote it and the human who told it to,
+                    jointly. Blame is shared; so is credit.
+
+Grant
+-----
+
+Permission is granted, free of charge, to any person obtaining a copy of The
+Software to use, copy, modify, merge, publish, distribute, sublicense, sell,
+and/or ship copies of The Software, in source or compiled form, for any
+purpose whatsoever — commercial, personal, educational, or a hobby project
+you abandon in three weeks — subject to the following conditions:
+
+  1. Include this license (or a link to it) with any substantial portion of
+     The Software you distribute.
+
+  2. Change it, break it, fork it, rename it — just don't pretend you wrote
+     the original. Keep the notice "Based on News Flow" somewhere reasonable
+     in your derivative.
+
+  3. If you fix a bug, that fix is yours. If you introduce one, that bug is
+     also yours. The Authors accept credit only for the original state.
+
+The Fine Print
+--------------
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED — INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. In plain terms: it
+scrapes news sites; news sites change their markup at 2 a.m.; things will
+break. That is not a warranty breach; that is web scraping.
+
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY — including lost data, missed deadlines, angry editors, duplicate
+WordPress posts, or the existential realization that your news aggregator
+curation pipeline now has a license written by the same AI that wrote its
+database migrations — whether arising from contract, tort, or otherwise,
+in connection with The Software or its use.
+
+Additional terms
+----------------
+
+- Scraping: The Software fetches publicly available web pages. What you do
+  with the fetched content is your responsibility, not the Authors'.
+- Attribution of scraped content belongs to the original publishers. Be kind
+  to them; they wrote the articles your pipeline exists to process.
+- If The Software brings you joy, consider fixing someone else's bug today.
+
+THE SOFTWARE IS PROVIDED WITH LOVE, PROMPTS, AND TOKENS.

@@ -52,7 +52,7 @@
   <text x="336" y="86" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="15" font-weight="500" fill="#A5B4FC" letter-spacing="3">AGGREGATE · REVIEW · PUBLISH</text>
 
   <!-- Right side: badge -->
-  <text x="1136" y="86" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="14" font-weight="600" fill="#C4B5FD" letter-spacing="1.5">SELF-HOSTED · MIT LICENSE</text>
+  <text x="1136" y="86" text-anchor="end" font-family="'Segoe UI', system-ui, -apple-system, Roboto, sans-serif" font-size="14" font-weight="600" fill="#C4B5FD" letter-spacing="1.5">SELF-HOSTED · COMMON-SENSE LICENSE</text>
 
   <!-- Bottom accent line -->
   <rect x="64" y="106" width="1072" height="3" rx="1.5" fill="url(#ftrAccent)" opacity="0.55"/>
