@@ -7,12 +7,14 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
 from app.db import (ARTICLE_LAYOUTS, DEFAULT_SETTINGS, STATUS_ACCEPTED,
-                    STATUS_REJECTED, clear_notifications, get_accepted_items,
-                    get_all_settings, get_article_by_id, get_article_layout,
-                    get_cached_sources, get_completed_items,
-                    get_completion_interval, get_items, get_notifications,
-                    get_pending_items, get_rejected_items, save_items,
-                    set_article_status, set_setting, trim_articles,
+                    STATUS_REJECTED, TOGGLE_ENV_KEYS, TOGGLE_SETTINGS,
+                    clear_notifications, get_accepted_items, get_all_settings,
+                    get_all_toggle_states, get_article_by_id,
+                    get_article_layout, get_cached_sources,
+                    get_completed_items, get_completion_interval, get_items,
+                    get_notifications, get_pending_items, get_rejected_items,
+                    save_items, set_article_status, set_setting,
+                    toggle_is_available, trim_articles,
                     update_article_cover_file)
 from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.publisher import publish_due_articles
@@ -23,6 +25,34 @@ from app.browser import fetch_rendered_html
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+
+# Human-readable copy for the settings modal's feature toggles.
+TOGGLE_META = {
+    "ai_auto_categorization": {
+        "label": "AI Auto Categorization",
+        "description": "Gemini picks related WordPress categories for each article right before it is published.",
+    },
+    "auto_publish": {
+        "label": "Auto Publishing",
+        "description": "Completed articles are published to WordPress automatically.",
+    },
+}
+
+
+async def _toggle_context() -> dict:
+    """Settings-modal feature toggles: state, availability, and copy."""
+    states = await get_all_toggle_states()
+    return {
+        "toggles": {
+            key: {
+                **TOGGLE_META.get(key, {"label": key, "description": ""}),
+                "enabled": enabled,
+                "available": toggle_is_available(key),
+                "required_env": list(TOGGLE_ENV_KEYS[key]),
+            }
+            for key, enabled in states.items()
+        }
+    }
 
 
 def _validate_sources(sources: list[str]) -> None:
@@ -141,7 +171,17 @@ async def clear_article_status(article_id: int):
 
 @router.get("/api/settings")
 async def get_settings():
-    return await get_all_settings()
+    """All settings plus feature-toggle state and env availability."""
+    settings = await get_all_settings()
+    toggles = {
+        key: {
+            "enabled": enabled,
+            "available": toggle_is_available(key),
+            "required_env": list(TOGGLE_ENV_KEYS[key]),
+        }
+        for key, enabled in (await get_all_toggle_states()).items()
+    }
+    return {**settings, "toggles": toggles}
 
 
 @router.post("/api/settings")
@@ -163,6 +203,15 @@ async def update_settings(settings: dict[str, str]):
                 raise HTTPException(
                     400,
                     f"article_layout must be one of: {', '.join(ARTICLE_LAYOUTS)}",
+                )
+        elif key in TOGGLE_SETTINGS:
+            if value not in ("0", "1"):
+                raise HTTPException(400, f'{key} must be "1" or "0"')
+            if value == "1" and not toggle_is_available(key):
+                missing = ", ".join(TOGGLE_ENV_KEYS[key])
+                raise HTTPException(
+                    400,
+                    f"{key} requires the following environment variables: {missing}",
                 )
         await set_setting(key, value)
     return await get_all_settings()
@@ -222,6 +271,7 @@ async def article_view(request: Request, article_id: int):
             "scraped_heading": scraped_heading,
             "scraped_content": scraped_content,
             "cover_file": cover_file,
+            **await _toggle_context(),
         },
     )
 
@@ -259,5 +309,6 @@ async def get_news_ui(
             "count": len(items),
             "completion_interval": interval,
             "article_layout": layout,
+            **await _toggle_context(),
         },
     )

@@ -171,6 +171,20 @@ class TestPublishArticle:
         assert await publish_article(make_article()) is None
 
     @pytest.fixture(autouse=True)
+    def _toggles_on(self, monkeypatch):
+        """Default every publish test to both feature toggles on.
+
+        get_toggle reads the DB; stub it so tests never depend on the real
+        newsflow.db contents. Opt out per test with monkeypatch.setattr on
+        publisher.get_toggle.
+        """
+        async def enabled(key: str) -> bool:
+            return True
+
+        monkeypatch.setattr(publisher, "get_toggle", enabled)
+        return monkeypatch
+
+    @pytest.fixture(autouse=True)
     def _no_gemini(self, monkeypatch):
         """Default every publish test to Gemini disabled; opt in per test."""
         import app.gemini as gemini_mod
@@ -294,6 +308,58 @@ class TestPublishArticle:
                          if url == POSTS_URL)
         assert post_json["title"] == "First Article"
         assert post_json["content"] == "<p>Short description</p>"
+
+    async def test_auto_publish_off_skips_post(self, wp_env, article_dirs,
+                                               monkeypatch):
+        """The auto_publish setting gates the WordPress push entirely."""
+        articles_dir, _ = article_dirs
+        (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
+
+        async def disabled(key: str) -> bool:
+            return key != "auto_publish"
+
+        monkeypatch.setattr(publisher, "get_toggle", disabled)
+
+        async def fail_get_client():
+            raise AssertionError("no HTTP when auto_publish is off")
+
+        monkeypatch.setattr("app.client.get_client", fail_get_client)
+        assert await publish_article(make_article()) is None
+
+    async def test_ai_categorization_off_skips_gemini(self, wp_env,
+                                                      article_dirs,
+                                                      monkeypatch):
+        """The ai_auto_categorization setting gates the Gemini call."""
+        articles_dir, _ = article_dirs
+        (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
+
+        async def disabled(key: str) -> bool:
+            return key != "ai_auto_categorization"
+
+        monkeypatch.setattr(publisher, "get_toggle", disabled)
+
+        async def fail_suggest(article, heading, body):
+            raise AssertionError("no Gemini call when the toggle is off")
+
+        import app.gemini as gemini_mod
+
+        monkeypatch.setattr(gemini_mod, "suggest_categories", fail_suggest)
+
+        def handler(url, kwargs):
+            return FakeResponse({"id": 7, "link": f"{WP_BASE}/?p=7"})
+
+        client = FakeClient(handler)
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        link = await publish_article(make_article())
+        assert link == f"{WP_BASE}/?p=7"
+        # The post went out without categories (fallback to site default).
+        post_json = next(call["json"] for url, call in client.calls
+                         if url == POSTS_URL)
+        assert "categories" not in post_json
 
 
 # ---------------------------------------------------------------------------

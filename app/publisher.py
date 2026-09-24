@@ -26,7 +26,7 @@ import httpx
 
 from app.config import (WORDPRESS_APP_PASSWORD, WORDPRESS_CATEGORY_ID,
                         WORDPRESS_URL, WORDPRESS_USERNAME)
-from app.db import get_due_articles, mark_articles_completed
+from app.db import (get_due_articles, get_toggle, mark_articles_completed)
 from app.db.constants import NOTIF_ERROR, NOTIF_WARNING, STATUS_PUBLISHING
 from app.db.notifications import record_notification
 from app.db.wp_terms import set_article_category_ids
@@ -136,9 +136,12 @@ async def _upload_media(
 async def _mark_categories(article: NewsItem, heading: str, body: str) -> None:
     """Ask Gemini for related categories and store the IDs on the article.
 
-    Fail-soft: any failure leaves the article uncategorized and logged; the
-    post still goes out under the site default category.
+    Skipped when the ``ai_auto_categorization`` setting is off. Fail-soft:
+    any failure leaves the article uncategorized and logged; the post still
+    goes out under the site default category.
     """
+    if not await get_toggle("ai_auto_categorization"):
+        return
     from app.gemini import suggest_categories  # lazy: tests patch app.gemini
 
     try:
@@ -155,10 +158,11 @@ async def _mark_categories(article: NewsItem, heading: str, body: str) -> None:
 async def publish_article(article: NewsItem) -> str | None:
     """Create a WordPress post for *article*. Returns the post URL, or None.
 
-    Publishing can be disabled (no credentials configured) or fail (HTTP
-    error); both return None without raising.
+    Publishing can be disabled (no credentials configured, or the
+    ``auto_publish`` setting is off) or fail (HTTP error); both return None
+    without raising.
     """
-    if not is_configured():
+    if not is_configured() or not await get_toggle("auto_publish"):
         return None
 
     from app.client import get_client  # lazy: tests patch app.client.get_client

@@ -1,5 +1,6 @@
 """Shared constants and defaults for the database layer."""
 
+import os
 from datetime import datetime, timezone
 
 # User-overridable settings and their default values (seeded into the DB).
@@ -13,6 +14,37 @@ DEFAULT_SETTINGS = {
 
 # Layouts the article grid setting accepts (validated in the settings API).
 ARTICLE_LAYOUTS = ("grid", "rows", "compact")
+
+# Feature toggles. Each one can only be switched on when its backing
+# environment credentials are present (checked at runtime via
+# toggle_is_available); the settings API refuses the write otherwise.
+#   ai_auto_categorization: Gemini picks related WP categories for each
+#     accepted article right before it is published (needs GEMINI_API_KEY).
+#   auto_publish: completed articles are pushed to WordPress (needs
+#     WORDPRESS_URL + WORDPRESS_USERNAME + WORDPRESS_APP_PASSWORD).
+TOGGLE_SETTINGS = {
+    "ai_auto_categorization": "gemini",
+    "auto_publish": "wordpress",
+}
+
+# Defaults for the toggle settings ("0"/"1" stored as strings).
+DEFAULT_SETTINGS = {
+    **DEFAULT_SETTINGS,
+    **dict.fromkeys(TOGGLE_SETTINGS, "1"),
+}
+
+# Which env-var names must be present for each toggle to be available.
+TOGGLE_ENV_KEYS = {
+    "ai_auto_categorization": ("GEMINI_API_KEY",),
+    "auto_publish": ("WORDPRESS_URL", "WORDPRESS_USERNAME",
+                     "WORDPRESS_APP_PASSWORD"),
+}
+
+
+def toggle_is_available(key: str) -> bool:
+    """True when every env var *key* depends on is set to a non-empty value."""
+    return all(os.environ.get(name, "").strip() for name in TOGGLE_ENV_KEYS[key])
+
 
 # Article status flags. NULL (default) means the article is untouched.
 STATUS_ACCEPTED = "accepted"

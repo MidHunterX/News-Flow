@@ -2,7 +2,8 @@
 
 from sqlalchemy import select
 
-from app.db.constants import ARTICLE_LAYOUTS, DEFAULT_SETTINGS
+from app.db.constants import (ARTICLE_LAYOUTS, DEFAULT_SETTINGS,
+                              TOGGLE_SETTINGS)
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Setting
 
@@ -58,3 +59,20 @@ async def get_article_layout() -> str:
     """Return the article-list layout, falling back to the default if invalid."""
     raw = await get_setting("article_layout", DEFAULT_SETTINGS["article_layout"])
     return raw if raw in ARTICLE_LAYOUTS else DEFAULT_SETTINGS["article_layout"]
+
+
+async def get_toggle(key: str) -> bool:
+    """Return a feature toggle's on/off state ("1"/"0" stored as strings).
+
+    Unknown or invalid stored values fall back to the default (on).
+    """
+    default = DEFAULT_SETTINGS.get(key, "1")
+    raw = await get_setting(key, default)
+    if raw not in ("0", "1"):
+        return default == "1"
+    return raw == "1"
+
+
+async def get_all_toggle_states() -> dict[str, bool]:
+    """Return the on/off state of every feature toggle."""
+    return {key: await get_toggle(key) for key in TOGGLE_SETTINGS}

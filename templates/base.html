@@ -134,6 +134,36 @@
               </button>
             </div>
           </div>
+          {% for key, toggle in toggles.items() %}
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium text-gray-700">
+                  {{ toggle.label }}
+                </label>
+                {% if toggle.available %}
+                  <button type="button" data-toggle-key="{{ key }}"
+                          onclick="selectToggle('{{ key }}')"
+                          class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
+                                 {% if toggle.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
+                    <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
+                          style="transform: translateX({% if toggle.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
+                  </button>
+                {% else %}
+                  <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">
+                    Unavailable
+                  </span>
+                {% endif %}
+              </div>
+              <p class="text-xs text-gray-500">
+                {{ toggle.description }}
+                {% if not toggle.available %}
+                  <span class="text-amber-600 font-medium">
+                    Requires {{ toggle.required_env|join(", ") }} in the environment.
+                  </span>
+                {% endif %}
+              </p>
+            </div>
+          {% endfor %}
           <div class="flex justify-end gap-2 pt-2">
             <button
               onclick="closeSettings()"
@@ -227,6 +257,17 @@
 
       // ---- Settings modal ----
       let selectedLayout = "grid";
+      const toggleState = {};
+
+      function selectToggle(key) {
+        toggleState[key] = !toggleState[key];
+        const btn = document.querySelector(`.toggle-option[data-toggle-key="${key}"]`);
+        const knob = btn ? btn.querySelector(".toggle-knob") : null;
+        if (!btn || !knob) return;
+        btn.classList.toggle("bg-indigo-600", toggleState[key]);
+        btn.classList.toggle("bg-gray-300", !toggleState[key]);
+        knob.style.transform = toggleState[key] ? "translateX(1.5rem)" : "translateX(0.25rem)";
+      }
 
       function selectArticleLayout(layout) {
         selectedLayout = layout;
@@ -248,6 +289,11 @@
           const seconds = parseInt(settings.completion_interval, 10) || 600;
           document.getElementById("completion-interval-input").value = Math.max(1, Math.round(seconds / 60));
           selectArticleLayout(settings.article_layout || "grid");
+          for (const [key, toggle] of Object.entries(settings.toggles || {})) {
+            // Unavailable toggles have no switch; never send them on save so
+            // a stale "1" in the DB can't fail the whole settings write.
+            if (toggle.available) toggleState[key] = !!toggle.enabled;
+          }
         } catch (err) {
           document.getElementById("completion-interval-input").value = 10;
           selectArticleLayout("grid");
@@ -272,6 +318,9 @@
             body: JSON.stringify({
               completion_interval: String(minutes * 60),
               article_layout: selectedLayout,
+              ...Object.fromEntries(
+                Object.entries(toggleState).map(([key, on]) => [key, on ? "1" : "0"])
+              ),
             }),
           });
         } catch (err) {
