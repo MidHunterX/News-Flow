@@ -13,6 +13,16 @@ For each stage the script:
    matched WordPress categories.
 3. With --publish, creates a DRAFT post carrying those categories (mirroring
    the publisher payload), verifies it, then deletes it unless --keep.
+
+With --model, skips WordPress entirely and only smoke-tests the currently
+configured Gemini model (GEMINI_MODEL, default gemini-flash-lite-latest):
+
+    uv run python scripts/publish_check.py --model
+
+That pings the model with a trivial generateContent request and reports the
+model name, resolved model version, latency and token usage. Use it to verify
+an alias (which Google hot-swaps between releases) still answers, or after
+switching GEMINI_MODEL in .env.
 """
 
 from __future__ import annotations
@@ -20,6 +30,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,10 +38,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.client import HttpClient  # noqa: E402
-from app.config import (GEMINI_API_KEY, WORDPRESS_APP_PASSWORD,  # noqa: E402
-                        WORDPRESS_URL, WORDPRESS_USERNAME)
+from app.config import (GEMINI_API_KEY, GEMINI_MODEL,  # noqa: E402
+                        WORDPRESS_APP_PASSWORD, WORDPRESS_URL,
+                        WORDPRESS_USERNAME)
 from app.db import get_categories, get_tags, init_db  # noqa: E402
-from app.gemini import suggest_categories  # noqa: E402
+from app.gemini import API_BASE, REQUEST_TIMEOUT, suggest_categories  # noqa: E402
 from app.models import NewsItem  # noqa: E402
 from app.wordpress import sync_terms  # noqa: E402
 
@@ -155,6 +167,57 @@ async def check_gemini(report: Report) -> list[int]:
     return matched
 
 
+async def check_model(report: Report) -> None:
+    """Ping the configured GEMINI_MODEL directly, with no WordPress involved."""
+    if not GEMINI_API_KEY:
+        report.add("gemini config", ok=False,
+                   detail="GEMINI_API_KEY not set — nothing to smoke test")
+        return
+
+    from app.client import get_client
+
+    client = await get_client()
+    payload = {
+        "contents": [{"parts": [{"text": "Reply with exactly: OK"}]}],
+        "generationConfig": {"maxOutputTokens": 2048, "temperature": 0},
+    }
+    started = time.monotonic()
+    try:
+        resp = await client.post(
+            f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
+            headers={"x-goog-api-key": GEMINI_API_KEY},
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        elapsed = time.monotonic() - started
+        report.add(
+            "gemini model ping",
+            ok=False,
+            detail=f"{GEMINI_MODEL} -> {type(exc).__name__}: {exc or 'no details'} "
+                   f"after {elapsed:.1f}s (alias removed? key invalid? quota?)",
+        )
+        return
+
+    elapsed = time.monotonic() - started
+    candidate = (data.get("candidates") or [{}])[0]
+    finish = candidate.get("finishReason", "?")
+    usage = data.get("usageMetadata", {})
+    model_version = data.get("modelVersion", "?")
+    report.add(
+        "gemini model ping",
+        ok=True,
+        detail=(
+            f"{GEMINI_MODEL} responded in {elapsed:.1f}s — "
+            f"resolved to {model_version}, finishReason={finish}, "
+            f"prompt={usage.get('promptTokenCount', '?')} "
+            f"output={usage.get('candidatesTokenCount', '?')} tokens"
+        ),
+    )
+
+
 async def check_draft_publish(report: Report, category_ids: list[int],
                               keep: bool) -> None:
     """Create a draft post with the matched categories, then clean it up."""
@@ -194,15 +257,18 @@ async def check_draft_publish(report: Report, category_ids: list[int],
                    detail=f"could not delete draft {post_id}: {exc} (remove it in wp-admin)")
 
 
-async def run(publish: bool, keep: bool) -> int:
+async def run(model_only: bool, publish: bool, keep: bool) -> int:
     report = Report()
-    init_db()
 
-    terms_ok = await check_terms_sync(report)
-    if terms_ok:
-        ids = await check_gemini(report)
-        if publish:
-            await check_draft_publish(report, ids, keep)
+    if model_only:
+        await check_model(report)
+    else:
+        init_db()
+        terms_ok = await check_terms_sync(report)
+        if terms_ok:
+            ids = await check_gemini(report)
+            if publish:
+                await check_draft_publish(report, ids, keep)
 
     print_report(report)
     failed = [s for s in report.steps if not s.ok]
@@ -218,11 +284,14 @@ def main() -> None:
                         help="also create a DRAFT post carrying the matched categories")
     parser.add_argument("--keep", action="store_true",
                         help="with --publish: keep the draft instead of deleting it")
+    parser.add_argument("--model", action="store_true",
+                        help="only ping the configured Gemini model (no WordPress, "
+                             "no DB) and report latency/usage")
     args = parser.parse_args()
 
     HttpClient._instance = None
     try:
-        failed = asyncio.run(run(args.publish, args.keep))
+        failed = asyncio.run(run(args.model, args.publish, args.keep))
     finally:
         HttpClient._instance = None
     sys.exit(1 if failed else 0)
