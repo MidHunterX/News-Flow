@@ -407,6 +407,37 @@ class TestTemplateLayouts:
         assert "Review &amp; Status" in html
 
 
+class TestArticleView:
+    """The article view route must not reference missing imports."""
+
+    async def test_renders_without_name_error(self, db, monkeypatch, tmp_path):
+        """Regression: article_view used ARTICLES_DIR after its import was
+        removed during the accept-flow refactor, 500ing every article page."""
+        from app.models import NewsItem
+
+        articles_dir = tmp_path / "articles"
+        articles_dir.mkdir()
+        monkeypatch.setattr(scrape_routes, "ARTICLES_DIR", articles_dir)
+
+        async def fake_article(article_id):
+            return NewsItem(
+                title="T", url="https://example.com/a", image_url=None,
+                description="d", published_at="2026-09-19",
+                source="kaumudi", id=article_id, cover_file=None,
+            )
+
+        async def fake_toggles():
+            return {"toggles": {}}
+
+        monkeypatch.setattr(scrape_routes, "get_article_by_id", fake_article)
+        monkeypatch.setattr(scrape_routes, "_toggle_context", fake_toggles)
+
+        # Would raise NameError before the fix; Jinja reads the template from
+        # disk so no app startup is needed.
+        response = await scrape_routes.article_view(request=object(), article_id=1)
+        assert response.status_code == 200
+
+
 class TestAiPublishMeter:
     """The AI Publish countdown meter renders only when the feature is on."""
 

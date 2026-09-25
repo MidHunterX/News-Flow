@@ -20,7 +20,7 @@ from app.db import (AI_PUBLISH_LAST_RUN_KEY, ARTICLE_LAYOUTS,
                     toggle_is_available, trim_articles)
 from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.publisher import publish_due_articles
-from app.scrapers.init import scrape_source
+from app.utils import ARTICLES_DIR
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
