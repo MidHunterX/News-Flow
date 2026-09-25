@@ -66,4 +66,8 @@ WORDPRESS_CATEGORY_ID = _env_str("WORDPRESS_CATEGORY_ID")
 # site's categories/tags and the response marks the categories on the article
 # before publishing. Get a key at https://aistudio.google.com/apikey
 GEMINI_API_KEY = _env_str("GEMINI_API_KEY")
-GEMINI_MODEL = _env_str("GEMINI_MODEL") or "gemini-2.5-flash"
+# Default to the -latest alias, which Google hot-swaps to the current GA
+# Flash-Lite model on each release. Flash-Lite models carry much higher rate
+# limits than Flash (see AI Studio > Dashboard > Rate Limit): 15 vs 10 RPM on
+# the free tier, 4,000 vs 1,000 RPM / 4M vs 1M TPM with billing enabled.
+GEMINI_MODEL = _env_str("GEMINI_MODEL") or "gemini-flash-lite-latest"
