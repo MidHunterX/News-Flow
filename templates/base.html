@@ -82,8 +82,12 @@
 
     <!-- Settings Modal -->
     <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-        <div class="flex items-center justify-between mb-4">
+      <!-- Capped to the viewport: pinned header, scrollable body, pinned
+           footer — the close and Cancel/Save buttons stay reachable no
+           matter how many settings are added. To add a future settings
+           group, append another "border-t pt-4" group div to the body. -->
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
           <h3 class="text-lg font-bold text-gray-900">Settings</h3>
           <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600 transition" title="Close">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -91,7 +95,9 @@
             </svg>
           </button>
         </div>
-        <div class="space-y-4">
+        <div class="space-y-4 overflow-y-auto px-6 py-5 flex-1 min-h-0">
+          <!-- Group: General -->
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">General</p>
           <div>
             <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
               Completion interval (minutes)
@@ -136,7 +142,7 @@
           </div>
           {% if toggles.get("ai_publish", {}).get("available") %}
             <!-- AI Publish knobs: only meaningful when the feature can run. -->
-            <div class="border-t border-gray-200 pt-4 mt-4">
+            <div class="border-t border-gray-200 pt-4">
               <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
                 AI Publish
               </p>
@@ -189,6 +195,10 @@
               </div>
             </div>
           {% endif %}
+
+          <!-- Group: Feature toggles -->
+          <div class="border-t border-gray-200 pt-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Features</p>
           {% for key, toggle in toggles.items() %}
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -219,20 +229,23 @@
               </p>
             </div>
           {% endfor %}
-          <div class="flex justify-end gap-2 pt-2">
-            <button
-              onclick="closeSettings()"
-              class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
-            >
-              Cancel
-            </button>
-            <button
-              onclick="saveSettings()"
-              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
-            >
-              Save
-            </button>
           </div>
+        </div>
+
+        <!-- Pinned footer: always visible, outside the scroll area. -->
+        <div class="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
+          <button
+            onclick="closeSettings()"
+            class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onclick="saveSettings()"
+            class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
+          >
+            Save
+          </button>
         </div>
       </div>
     </div>
