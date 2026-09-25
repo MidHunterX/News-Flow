@@ -10,6 +10,13 @@ DEFAULT_SETTINGS = {
     # How the pending article list renders: "grid" (cards in columns),
     # "rows" (full-width rows with thumbnail), or "compact" (dense rows).
     "article_layout": "grid",
+    # AI Publish: how many pending articles Gemini picks per prompt, and how
+    # long to wait between prompts (seconds).
+    "ai_publish_count": "3",
+    "ai_publish_interval": "3600",  # 1 hour
+    # AI Publish: how many previously accepted headings are fed to Gemini as
+    # context so it avoids picking near-duplicates across sources.
+    "ai_publish_history": "10",
 }
 
 # Layouts the article grid setting accepts (validated in the settings API).
@@ -20,10 +27,13 @@ ARTICLE_LAYOUTS = ("grid", "rows", "compact")
 # toggle_is_available); the settings API refuses the write otherwise.
 #   ai_auto_categorization: Gemini picks related WP categories for each
 #     accepted article right before it is published (needs GEMINI_API_KEY).
+#   ai_publish: Gemini periodically picks pending articles to accept (needs
+#     GEMINI_API_KEY).
 #   auto_publish: completed articles are pushed to WordPress (needs
 #     WORDPRESS_URL + WORDPRESS_USERNAME + WORDPRESS_APP_PASSWORD).
 TOGGLE_SETTINGS = {
     "ai_auto_categorization": "gemini",
+    "ai_publish": "gemini",
     "auto_publish": "wordpress",
 }
 
@@ -36,6 +46,7 @@ DEFAULT_SETTINGS = {
 # Which env-var names must be present for each toggle to be available.
 TOGGLE_ENV_KEYS = {
     "ai_auto_categorization": ("GEMINI_API_KEY",),
+    "ai_publish": ("GEMINI_API_KEY",),
     "auto_publish": ("WORDPRESS_URL", "WORDPRESS_USERNAME",
                      "WORDPRESS_APP_PASSWORD"),
 }
@@ -61,6 +72,14 @@ LAST_RUN_DATE_KEY = "last_run_date"
 # Setting key storing the UTC timestamp of the last successful WordPress
 # terms (categories + tags) sync. WP_CATEGORIES_TTL drives re-syncing.
 WP_TERMS_SYNCED_KEY = "wp_terms_synced_at"
+
+# Setting key storing the UTC timestamp of the last AI Publish prompt. The
+# next prompt goes out ai_publish_interval seconds after it.
+AI_PUBLISH_LAST_RUN_KEY = "ai_publish_last_run"
+
+# Minimum gap (seconds) between AI Publish prompts — a floor enforced on the
+# user-settable interval so a 0-second setting can't hammer the API.
+AI_PUBLISH_MIN_INTERVAL = 30
 
 # How long a WordPress terms sync stays fresh before being refreshed.
 WP_CATEGORIES_TTL = 24 * 60 * 60  # seconds

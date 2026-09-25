@@ -41,6 +41,10 @@ class FakeClient:
         return self.handler(url, kwargs)
 
 
+async def async_noop(*_args, **_kwargs) -> None:
+    """Stand-in for asyncio.sleep in retry loops."""
+
+
 @pytest.fixture
 def gemini_env(monkeypatch):
     monkeypatch.setattr(gemini, "GEMINI_API_KEY", "test-key")
@@ -235,3 +239,105 @@ class TestSuggestCategories:
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
         assert await gemini.suggest_categories(_article(), "H", "B") == []
+
+
+# ---------------------------------------------------------------------------
+# AI Publish: prompt building / matching / pick_article_ids
+# ---------------------------------------------------------------------------
+
+
+def _ids_response(ids: list[int]) -> FakeResponse:
+    text = '{"ids": ' + __import__("json").dumps(ids) + "}"
+    return FakeResponse({
+        "candidates": [{"content": {"parts": [{"text": text}]}}],
+    })
+
+
+PENDING = [(1, "First story"), (2, "Second story"), (3, "Third story")]
+
+
+class TestBuildPickPrompt:
+    def test_lists_pending_as_id_heading_lines(self):
+        prompt = gemini.build_pick_prompt(PENDING, [], 2)
+        assert "1. First story" in prompt
+        assert "2. Second story" in prompt
+        assert "3. Third story" in prompt
+        assert "Pick 2 of the most newsworthy articles." in prompt
+
+    def test_includes_recently_accepted_context(self):
+        prompt = gemini.build_pick_prompt(PENDING, ["Old story"], 1)
+        assert "- Old story" in prompt
+        assert "Recently accepted headings" in prompt
+
+    def test_empty_history_renders_placeholder(self):
+        prompt = gemini.build_pick_prompt(PENDING, [], 1)
+        assert "(none)" in prompt
+
+
+class TestMatchIds:
+    def test_keeps_only_offered_ids_in_prompt_order(self):
+        assert gemini._match_ids([3, 1], [1, 2, 3]) == [1, 3]
+
+    def test_drops_unknown_and_non_integer_entries(self):
+        assert gemini._match_ids(["2", 2, 99, None], [1, 2, 3]) == [2]
+
+    def test_deduplicates(self):
+        assert gemini._match_ids([2, 2, 1], [1, 2, 3]) == [1, 2]
+
+    def test_non_list_returns_empty(self):
+        assert gemini._match_ids(None, [1, 2]) == []
+        assert gemini._match_ids("2", [1, 2]) == []
+
+    def test_bools_are_rejected(self):
+        # bool is an int subclass; True must not match ID 1.
+        assert gemini._match_ids([True], [1, 2]) == []
+
+
+class TestPickArticleIds:
+    async def test_unconfigured_returns_empty_without_http(self, monkeypatch):
+        monkeypatch.setattr(gemini, "GEMINI_API_KEY", "")
+        assert await gemini.pick_article_ids(PENDING, [], 2) == []
+
+    async def test_no_pending_returns_empty(self, gemini_env):
+        assert await gemini.pick_article_ids([], [], 2) == []
+
+    async def test_count_below_one_returns_empty(self, gemini_env):
+        assert await gemini.pick_article_ids(PENDING, [], 0) == []
+
+    async def test_returns_matched_ids(self, gemini_env, monkeypatch):
+        client = FakeClient(lambda url, kwargs: _ids_response([3, 1]))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await gemini.pick_article_ids(PENDING, ["Old"], 2) == [1, 3]
+        # Structured output requested; prompt carried the pending lines.
+        gen_config = client.calls[0][1]["json"]["generationConfig"]
+        assert gen_config["responseMimeType"] == "application/json"
+        assert "responseSchema" in gen_config
+        prompt_text = client.calls[0][1]["json"]["contents"][0]["parts"][0]["text"]
+        assert "1. First story" in prompt_text
+        assert "- Old" in prompt_text
+
+    async def test_rate_limit_returns_empty(self, gemini_env, monkeypatch):
+        """429 (after retries) fails soft: empty list, no exception."""
+        client = FakeClient(lambda url, kwargs: FakeResponse(status_code=429))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        monkeypatch.setattr(gemini.asyncio, "sleep", async_noop)
+        assert await gemini.pick_article_ids(PENDING, [], 2) == []
+
+    async def test_malformed_response_returns_empty(
+        self, gemini_env, monkeypatch
+    ):
+        client = FakeClient(lambda url, kwargs: FakeResponse({}))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await gemini.pick_article_ids(PENDING, [], 2) == []

@@ -16,20 +16,24 @@ Modules:
 from app.db.articles import (get_accepted_items, get_article_by_id,
                              get_cached_sources, get_completed_items,
                              get_due_articles, get_items, get_pending_items,
-                             get_rejected_items, mark_articles_completed,
-                             save_items, set_article_status, trim_articles,
+                             get_recent_accepted_titles, get_rejected_items,
+                             mark_articles_completed, save_items,
+                             set_article_status, trim_articles,
                              update_article_cover_file)
-from app.db.constants import (ARTICLE_LAYOUTS, DEFAULT_SETTINGS,
-                              LAST_RUN_DATE_KEY, STATUS_ACCEPTED,
-                              STATUS_COMPLETED, STATUS_PUBLISHING,
-                              STATUS_REJECTED, TOGGLE_SETTINGS,
-                              TOGGLE_ENV_KEYS, toggle_is_available)
+from app.db.constants import (AI_PUBLISH_LAST_RUN_KEY, ARTICLE_LAYOUTS,
+                              DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
+                              STATUS_ACCEPTED, STATUS_COMPLETED,
+                              STATUS_PUBLISHING, STATUS_REJECTED,
+                              TOGGLE_SETTINGS, TOGGLE_ENV_KEYS,
+                              toggle_is_available)
 from app.db.engine import DB_PATH, Base, SessionLocal, engine
 from app.db.models import Article, Notification, Setting
 from app.db.schema import init_db
 from app.db.notifications import (clear_notifications, get_notifications,
                                   record_notification)
-from app.db.settings import (get_all_settings, get_all_toggle_states,
+from app.db.settings import (get_ai_publish_count, get_ai_publish_history,
+                             get_ai_publish_interval, get_ai_publish_last_run,
+                             get_all_settings, get_all_toggle_states,
                              get_article_layout, get_completion_interval,
                              get_setting, get_toggle, set_setting)
 from app.db.wp_terms import (get_categories, get_last_terms_sync, get_tags,
@@ -43,6 +47,7 @@ __all__ = [
     "TOGGLE_ENV_KEYS",
     "toggle_is_available",
     "LAST_RUN_DATE_KEY",
+    "AI_PUBLISH_LAST_RUN_KEY",
     "STATUS_ACCEPTED",
     "STATUS_PUBLISHING",
     "STATUS_COMPLETED",
@@ -71,12 +76,17 @@ __all__ = [
     "mark_articles_completed",
     "get_cached_sources",
     "update_article_cover_file",
+    "get_recent_accepted_titles",
     # Settings.
     "get_setting",
     "set_setting",
     "get_all_settings",
     "get_completion_interval",
     "get_article_layout",
+    "get_ai_publish_count",
+    "get_ai_publish_interval",
+    "get_ai_publish_history",
+    "get_ai_publish_last_run",
     "get_toggle",
     "get_all_toggle_states",
     # WordPress terms (categories + tags).

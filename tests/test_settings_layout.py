@@ -71,7 +71,7 @@ class TestGetArticleLayout:
 class TestToggleHelpers:
     def test_every_toggle_has_env_keys(self):
         assert set(TOGGLE_SETTINGS) == {
-            "ai_auto_categorization", "auto_publish"
+            "ai_auto_categorization", "ai_publish", "auto_publish"
         }
         assert set(TOGGLE_ENV_KEYS) == set(TOGGLE_SETTINGS)
 
@@ -107,7 +107,11 @@ class TestToggleHelpers:
             session.add(Setting(key="ai_auto_categorization", value="0"))
             session.commit()
         states = await settings_mod.get_all_toggle_states()
-        assert states == {"ai_auto_categorization": False, "auto_publish": True}
+        assert states == {
+            "ai_auto_categorization": False,
+            "ai_publish": True,
+            "auto_publish": True,
+        }
 
 
 class TestToggleApi:
@@ -240,6 +244,44 @@ class TestSettingsApi:
             await scrape_routes.update_settings({"completion_interval": "0"})
         assert excinfo.value.status_code == 400
 
+    async def test_ai_publish_count_positive(self, recorded):
+        result = await scrape_routes.update_settings({"ai_publish_count": "5"})
+        assert recorded == {"ai_publish_count": "5"}
+        assert result["ai_publish_count"] == "5"
+
+    async def test_ai_publish_count_rejects_zero(self, recorded):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"ai_publish_count": "0"})
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_ai_publish_count_rejects_non_numeric(self, recorded):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"ai_publish_count": "three"})
+        assert excinfo.value.status_code == 400
+
+    @pytest.mark.parametrize("value", ["0", "-5", "abc"])
+    async def test_ai_publish_interval_rejects_below_one(self, recorded, value):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"ai_publish_interval": value})
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_ai_publish_interval_accepts_seconds(self, recorded):
+        result = await scrape_routes.update_settings({"ai_publish_interval": "1800"})
+        assert recorded == {"ai_publish_interval": "1800"}
+
+    @pytest.mark.parametrize("value", ["-1", "ten"])
+    async def test_ai_publish_history_rejects_negative(self, recorded, value):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"ai_publish_history": value})
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_ai_publish_history_accepts_zero(self, recorded):
+        result = await scrape_routes.update_settings({"ai_publish_history": "0"})
+        assert recorded == {"ai_publish_history": "0"}
+
 
 # ---------------------------------------------------------------------------
 # Template layout branches
@@ -264,13 +306,13 @@ def _item(idx: int, **overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def _render(layout: str, items: list) -> str:
+def _render(layout: str, items: list, **extra) -> str:
     env = Environment(
         loader=FileSystemLoader("templates"),
         autoescape=select_autoescape(["html"]),
     )
     template = env.get_template("index.html")
-    return template.render(
+    context = dict(
         items=items,
         accepted_items=[],
         completed_items=[],
@@ -281,7 +323,12 @@ def _render(layout: str, items: list) -> str:
         completion_interval=600,
         article_layout=layout,
         toggles={},
+        ai_publish_enabled=False,
+        ai_publish_interval=3600,
+        ai_publish_last_run=None,
     )
+    context.update(extra)
+    return template.render(**context)
 
 
 class TestSettingsModalToggles:
@@ -308,6 +355,23 @@ class TestSettingsModalToggles:
         assert "Auto Publishing" in html
         assert 'data-toggle-key="auto_publish"' in html
         assert "Requires" not in html
+        # AI Publish knobs only render when the ai_publish toggle exists.
+        assert 'id="ai-publish-count-input"' not in html
+
+    def test_ai_publish_available_renders_setting_inputs(self):
+        html = self._render_base({
+            "ai_publish": {
+                "label": "AI Publish",
+                "description": "Gemini picks articles.",
+                "enabled": True,
+                "available": True,
+                "required_env": ["GEMINI_API_KEY"],
+            },
+        })
+        assert 'id="ai-publish-count-input"' in html
+        assert 'id="ai-publish-interval-input"' in html
+        assert 'id="ai-publish-history-input"' in html
+        assert "Articles per prompt" in html
 
     def test_unavailable_toggle_says_missing_env(self):
         html = self._render_base({
@@ -341,3 +405,28 @@ class TestTemplateLayouts:
     def test_rows_layout_keeps_sidebar_panel(self):
         html = _render("rows", [_item(1)])
         assert "Review &amp; Status" in html
+
+
+class TestAiPublishMeter:
+    """The AI Publish countdown meter renders only when the feature is on."""
+
+    def test_meter_hidden_when_disabled(self):
+        html = _render("grid", [_item(1)], ai_publish_enabled=False)
+        assert 'id="ai-publish-meter"' not in html
+
+    def test_meter_renders_when_enabled(self):
+        html = _render("grid", [_item(1)], ai_publish_enabled=True,
+                       ai_publish_interval=1800, ai_publish_last_run=None)
+        assert 'id="ai-publish-meter"' in html
+        assert 'data-interval="1800"' in html
+        assert "AI Publish" in html
+
+    def test_meter_carries_last_run_timestamp(self):
+        html = _render("grid", [], ai_publish_enabled=True,
+                       ai_publish_last_run="2026-09-25T10:00:00+00:00")
+        assert 'data-last-run="2026-09-25T10:00:00+00:00"' in html
+
+    def test_meter_without_last_run_has_empty_marker(self):
+        html = _render("grid", [], ai_publish_enabled=True,
+                       ai_publish_last_run=None)
+        assert 'data-last-run=""' in html

@@ -1,11 +1,20 @@
-"""Google Gemini client for auto-categorizing articles.
+"""Google Gemini client.
 
-``suggest_categories`` sends the article (heading + body + description) along
-with the site's synced WordPress categories and tags, and asks Gemini to
-respond with every related category as JSON (structured output via
-responseMimeType/responseSchema). The response names are matched back against
-the synced categories case-insensitively, so only real WordPress category IDs
-are ever returned. Fail-soft: any error logs and returns an empty list.
+Two AI features share this module:
+
+* ``suggest_categories`` sends an accepted article (heading + body +
+  description) along with the site's synced WordPress categories and tags,
+  and asks Gemini to respond with every related category as JSON (structured
+  output via responseMimeType/responseSchema). The response names are matched
+  back against the synced categories case-insensitively, so only real
+  WordPress category IDs are ever returned. Fail-soft: any error logs and
+  returns an empty list.
+* ``pick_article_ids`` asks Gemini to pick the most newsworthy pending
+  articles for publication (the AI Publish feature). It receives the pending
+  articles as "<id>. <heading>" lines plus recently accepted headings as
+  duplicate-avoidance context, and responds with up to *count* article IDs
+  via a JSON schema. Matching drops any ID not in the offered list, so a
+  hallucinated ID can never accept a real article.
 """
 
 from __future__ import annotations
@@ -61,6 +70,32 @@ _RESPONSE_SCHEMA: dict[str, Any] = {
         },
     },
     "required": ["categories"],
+}
+
+# --- AI Publish (article selection) -----------------------------------------
+
+_PICK_SYSTEM_PROMPT = (
+    "You are an editor for a Malayalam WordPress news site. You are given a "
+    "list of pending news articles as 'ID. heading' lines, and a list of "
+    "headings that were already accepted recently. Pick exactly the requested "
+    "number of the most newsworthy articles, preferring diverse topics and "
+    "sources. Never pick a story that duplicates or merely paraphrases a "
+    "recently accepted heading, even when it comes from a different source. "
+    "Respond with JSON only: {{\"ids\": [<article IDs>]}} containing at most "
+    "the requested number of IDs, chosen only from the given list."
+)
+
+# Structured-output schema for the AI Publish selection response.
+_PICK_RESPONSE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "ids": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "description": "Chosen pending article IDs",
+        },
+    },
+    "required": ["ids"],
 }
 
 
@@ -227,4 +262,124 @@ async def suggest_categories(
         "Gemini suggested categories %s for article %s",
         matched, article.id,
     )
+    return matched
+
+
+# ---------------------------------------------------------------------------
+# AI Publish: ask Gemini to pick pending articles for publication
+# ---------------------------------------------------------------------------
+
+
+def build_pick_prompt(
+    pending: list[tuple[int, str]],
+    recent_accepted: list[str],
+    count: int,
+) -> str:
+    """User prompt for AI Publish: pending "<id>. <heading>" lines + context.
+
+    *pending* holds (article_id, heading) pairs; *recent_accepted* holds
+    headings already accepted recently (duplicate-avoidance context).
+    """
+    lines = [f"{article_id}. {heading}" for article_id, heading in pending]
+    if recent_accepted:
+        context_lines = "\n".join(f"- {heading}" for heading in recent_accepted)
+        context = (
+            f"\n\nRecently accepted headings (avoid picking stories that "
+            f"duplicate these):\n{context_lines}"
+        )
+    else:
+        context = "\n\nRecently accepted headings (avoid picking stories that duplicate these): (none)"
+    return (
+        f"Pending articles:\n{chr(10).join(lines)}\n"
+        f"{context}\n\n"
+        f"Pick {count} of the most newsworthy articles."
+    )
+
+
+def _match_ids(ids: Any, pending_ids: list[int]) -> list[int]:
+    """Map model-returned IDs back onto the offered pending IDs.
+
+    Unknown, non-integer, or duplicate entries are dropped, and the order
+    follows the pending list so accepted_order lands chronologically. A
+    hallucinated ID can therefore never accept a real article.
+    """
+    if not isinstance(ids, list):
+        return []
+    offered = set(pending_ids)
+    seen: set[int] = set()
+    matched: list[int] = []
+    for raw in ids:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            continue
+        if raw in offered and raw not in seen:
+            seen.add(raw)
+            matched.append(raw)
+    # Keep the prompt's (oldest-first) order rather than the model's ranking.
+    return [pid for pid in pending_ids if pid in seen]
+
+
+async def pick_article_ids(
+    pending: list[tuple[int, str]], recent_accepted: list[str], count: int
+) -> list[int]:
+    """Ask Gemini to pick *count* pending articles; return their IDs.
+
+    Returns [] when Gemini is not configured, nothing is pending, or the
+    request/parsing fails — the caller then simply waits for the next
+    interval. Fail-soft like every other Gemini call.
+    """
+    if not is_configured() or not pending or count < 1:
+        return []
+
+    from app.client import get_client  # lazy: tests patch app.client.get_client
+
+    payload = {
+        "systemInstruction": {"parts": [{"text": _PICK_SYSTEM_PROMPT}]},
+        "contents": [{"parts": [{"text": build_pick_prompt(
+            pending, recent_accepted, count
+        )}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseSchema": _PICK_RESPONSE_SCHEMA,
+            "temperature": 0.2,
+        },
+    }
+    try:
+        client = await get_client()
+        resp = None
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                resp = await client.post(
+                    f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
+                    headers={"x-goog-api-key": GEMINI_API_KEY},
+                    json=payload,
+                    timeout=REQUEST_TIMEOUT,
+                )
+                if resp.status_code not in _RETRY_STATUSES:
+                    break
+                retry_after = float(resp.headers.get("retry-after") or 0)
+            except httpx.TransportError:
+                if attempt == _MAX_ATTEMPTS - 1:
+                    raise
+                retry_after = 1.0
+            if attempt < _MAX_ATTEMPTS - 1:
+                await asyncio.sleep(min(5.0, retry_after or 0.5 * (attempt + 1)))
+        resp.raise_for_status()
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        parsed = _extract_json(text)
+    except Exception as exc:
+        # Fail-soft: a 429 or any other error just skips this round.
+        logger.warning("Gemini article selection failed: %s: %s",
+                       type(exc).__name__, exc)
+        from app.db.notifications import record_notification
+        await record_notification(
+            NOTIF_WARNING,
+            "gemini",
+            f"AI Publish selection failed ({type(exc).__name__}): "
+            f"{exc or 'no details'}",
+        )
+        return []
+
+    matched = _match_ids(parsed.get("ids"), [pid for pid, _ in pending])
+    logger.info("Gemini picked articles %s for AI Publish", matched)
     return matched

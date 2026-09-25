@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.client import get_client
+from app.curator import run_due_selection
 from app.db import get_completion_interval, init_db
 from app.publisher import publish_due_articles
 from app.routes import scrape
@@ -32,12 +33,15 @@ async def _completion_loop() -> None:
 
     Each due article is pushed to WordPress (when configured) right before
     being marked completed. The WordPress terms sync is refreshed here on
-    its TTL so Gemini always categorizes against a current term list.
+    its TTL so Gemini always categorizes against a current term list. The AI
+    Publish curator also ticks here, prompting Gemini to pick pending
+    articles once its (user-settable) interval has elapsed.
     """
     while True:
         try:
             interval = await get_completion_interval()
             await publish_due_articles(interval)
+            await run_due_selection()
             await sync_terms_if_stale()
         except Exception:
             # Keep the loop alive on transient errors (e.g. locked DB).

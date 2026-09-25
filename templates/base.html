@@ -134,6 +134,61 @@
               </button>
             </div>
           </div>
+          {% if toggles.get("ai_publish", {}).get("available") %}
+            <!-- AI Publish knobs: only meaningful when the feature can run. -->
+            <div class="border-t border-gray-200 pt-4 mt-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
+                AI Publish
+              </p>
+              <div class="space-y-4">
+                <div>
+                  <label for="ai-publish-count-input" class="block text-sm font-medium text-gray-700 mb-1">
+                    Articles per prompt
+                  </label>
+                  <p class="text-xs text-gray-500 mb-2">
+                    How many pending articles Gemini picks each time.
+                  </p>
+                  <input
+                    id="ai-publish-count-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label for="ai-publish-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
+                    Prompt interval (minutes)
+                  </label>
+                  <p class="text-xs text-gray-500 mb-2">
+                    How long to wait between Gemini selection prompts.
+                  </p>
+                  <input
+                    id="ai-publish-interval-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label for="ai-publish-history-input" class="block text-sm font-medium text-gray-700 mb-1">
+                    Duplicate-avoidance context
+                  </label>
+                  <p class="text-xs text-gray-500 mb-2">
+                    How many previously accepted headings Gemini sees so it avoids picking the same story from other sources.
+                  </p>
+                  <input
+                    id="ai-publish-history-input"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          {% endif %}
           {% for key, toggle in toggles.items() %}
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -289,6 +344,16 @@
           const seconds = parseInt(settings.completion_interval, 10) || 600;
           document.getElementById("completion-interval-input").value = Math.max(1, Math.round(seconds / 60));
           selectArticleLayout(settings.article_layout || "grid");
+          const countInput = document.getElementById("ai-publish-count-input");
+          const intervalInput = document.getElementById("ai-publish-interval-input");
+          const historyInput = document.getElementById("ai-publish-history-input");
+          // The AI Publish fields only exist when the feature is available.
+          if (countInput) countInput.value = Math.max(1, parseInt(settings.ai_publish_count, 10) || 3);
+          if (intervalInput) {
+            const intervalSeconds = parseInt(settings.ai_publish_interval, 10) || 3600;
+            intervalInput.value = Math.max(1, Math.round(intervalSeconds / 60));
+          }
+          if (historyInput) historyInput.value = Math.max(0, parseInt(settings.ai_publish_history, 10) || 10);
           for (const [key, toggle] of Object.entries(settings.toggles || {})) {
             // Unavailable toggles have no switch; never send them on save so
             // a stale "1" in the DB can't fail the whole settings write.
@@ -311,17 +376,46 @@
           alert("Completion interval must be at least 1 minute.");
           return;
         }
+        const payload = {
+          completion_interval: String(minutes * 60),
+          article_layout: selectedLayout,
+          ...Object.fromEntries(
+            Object.entries(toggleState).map(([key, on]) => [key, on ? "1" : "0"])
+          ),
+        };
+        // AI Publish fields exist only when the feature is available.
+        const countInput = document.getElementById("ai-publish-count-input");
+        const intervalInput = document.getElementById("ai-publish-interval-input");
+        const historyInput = document.getElementById("ai-publish-history-input");
+        if (countInput) {
+          const count = parseInt(countInput.value, 10);
+          if (!count || count < 1) {
+            alert("Articles per prompt must be at least 1.");
+            return;
+          }
+          payload.ai_publish_count = String(count);
+        }
+        if (intervalInput) {
+          const intervalMinutes = parseInt(intervalInput.value, 10);
+          if (!intervalMinutes || intervalMinutes < 1) {
+            alert("Prompt interval must be at least 1 minute.");
+            return;
+          }
+          payload.ai_publish_interval = String(intervalMinutes * 60);
+        }
+        if (historyInput) {
+          const history = parseInt(historyInput.value, 10);
+          if (isNaN(history) || history < 0) {
+            alert("Duplicate-avoidance context must be 0 or more.");
+            return;
+          }
+          payload.ai_publish_history = String(history);
+        }
         try {
           await fetch("/api/settings", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              completion_interval: String(minutes * 60),
-              article_layout: selectedLayout,
-              ...Object.fromEntries(
-                Object.entries(toggleState).map(([key, on]) => [key, on ? "1" : "0"])
-              ),
-            }),
+            body: JSON.stringify(payload),
           });
         } catch (err) {
           alert("Failed to save settings.");

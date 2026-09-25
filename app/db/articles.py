@@ -326,6 +326,30 @@ async def mark_articles_completed(
     )
 
 
+def _get_recent_accepted_titles_sync(limit: int) -> list[tuple[str, str]]:
+    """Return the *limit* most recently accepted (source, title) pairs.
+
+    Feeds the AI Publish prompt as duplicate-avoidance context: headings
+    already accepted (any accepted → completed stage) are things the site has
+    already covered, so Gemini should not pick the same story again. Oldest
+    first so the prompt reads chronologically; ties broken by newer ID first.
+    """
+    with SessionLocal() as session:
+        rows = session.execute(
+            select(Article.source, Article.title)
+            .where(Article.status.in_([STATUS_ACCEPTED, STATUS_COMPLETED,
+                                       STATUS_PUBLISHING]))
+            .order_by(Article.id.desc())
+            .limit(limit)
+        ).all()
+    return list(reversed(rows))
+
+
+async def get_recent_accepted_titles(limit: int) -> list[tuple[str, str]]:
+    """Most recently accepted article headings, oldest first."""
+    return await run_in_thread(_get_recent_accepted_titles_sync, limit)
+
+
 def _get_cached_sources_sync() -> set[str]:
     with SessionLocal() as session:
         return set(session.scalars(select(Article.source).distinct()).all())

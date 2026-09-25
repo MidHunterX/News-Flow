@@ -2,8 +2,9 @@
 
 from sqlalchemy import select
 
-from app.db.constants import (ARTICLE_LAYOUTS, DEFAULT_SETTINGS,
-                              TOGGLE_SETTINGS)
+from app.db.constants import (AI_PUBLISH_LAST_RUN_KEY,
+                              AI_PUBLISH_MIN_INTERVAL, ARTICLE_LAYOUTS,
+                              DEFAULT_SETTINGS, TOGGLE_SETTINGS)
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Setting
 
@@ -59,6 +60,44 @@ async def get_article_layout() -> str:
     """Return the article-list layout, falling back to the default if invalid."""
     raw = await get_setting("article_layout", DEFAULT_SETTINGS["article_layout"])
     return raw if raw in ARTICLE_LAYOUTS else DEFAULT_SETTINGS["article_layout"]
+
+
+async def get_ai_publish_count() -> int:
+    """How many articles the AI Publish feature picks per prompt (default 3)."""
+    raw = await get_setting("ai_publish_count", DEFAULT_SETTINGS["ai_publish_count"])
+    try:
+        return max(1, int(raw))
+    except TypeError, ValueError:
+        return int(DEFAULT_SETTINGS["ai_publish_count"])
+
+
+async def get_ai_publish_interval() -> int:
+    """Seconds to wait between AI Publish prompts, clamped to the minimum gap."""
+    raw = await get_setting(
+        "ai_publish_interval", DEFAULT_SETTINGS["ai_publish_interval"]
+    )
+    try:
+        interval = int(raw)
+    except TypeError, ValueError:
+        interval = int(DEFAULT_SETTINGS["ai_publish_interval"])
+    return max(AI_PUBLISH_MIN_INTERVAL, interval)
+
+
+async def get_ai_publish_history() -> int:
+    """How many previously accepted headings feed the prompt as context."""
+    raw = await get_setting(
+        "ai_publish_history", DEFAULT_SETTINGS["ai_publish_history"]
+    )
+    try:
+        return max(0, int(raw))
+    except TypeError, ValueError:
+        return int(DEFAULT_SETTINGS["ai_publish_history"])
+
+
+async def get_ai_publish_last_run() -> str | None:
+    """UTC ISO timestamp of the last AI Publish prompt, or None when never run."""
+    raw = await get_setting(AI_PUBLISH_LAST_RUN_KEY, "")
+    return raw or None
 
 
 async def get_toggle(key: str) -> bool:

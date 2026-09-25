@@ -1,27 +1,26 @@
 import asyncio
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
-from app.db import (ARTICLE_LAYOUTS, DEFAULT_SETTINGS, STATUS_ACCEPTED,
-                    STATUS_REJECTED, TOGGLE_ENV_KEYS, TOGGLE_SETTINGS,
-                    clear_notifications, get_accepted_items, get_all_settings,
+from app.curator import enrich_accepted_article
+from app.db import (AI_PUBLISH_LAST_RUN_KEY, ARTICLE_LAYOUTS,
+                    DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
+                    TOGGLE_ENV_KEYS, TOGGLE_SETTINGS, clear_notifications,
+                    get_accepted_items, get_ai_publish_count,
+                    get_ai_publish_history, get_ai_publish_interval,
+                    get_ai_publish_last_run, get_all_settings,
                     get_all_toggle_states, get_article_by_id,
                     get_article_layout, get_cached_sources,
                     get_completed_items, get_completion_interval, get_items,
                     get_notifications, get_pending_items, get_rejected_items,
                     save_items, set_article_status, set_setting,
-                    toggle_is_available, trim_articles,
-                    update_article_cover_file)
+                    toggle_is_available, trim_articles)
 from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
 from app.publisher import publish_due_articles
-from app.scrapers.init import SCRAPERS, scrape_source
-from app.utils import ARTICLES_DIR, download_image, fetch_html
-
-from app.browser import fetch_rendered_html
+from app.scrapers.init import scrape_source
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -31,6 +30,10 @@ TOGGLE_META = {
     "ai_auto_categorization": {
         "label": "AI Auto Categorization",
         "description": "Gemini picks related WordPress categories for each article right before it is published.",
+    },
+    "ai_publish": {
+        "label": "AI Publish",
+        "description": "Gemini periodically picks pending articles to accept, avoiding stories already covered.",
     },
     "auto_publish": {
         "label": "Auto Publishing",
@@ -117,38 +120,8 @@ async def accept_article(article_id: int):
         raise HTTPException(404, "Article not found")
 
     # Scrape the article page for cover image and content, then download.
-    if article.url and article.source in SCRAPERS:
-        scraper = SCRAPERS[article.source]
-        try:
-            if scraper.needs_browser:
-                html = await fetch_rendered_html(
-                    article.url,
-                    wait_selector="div.single-news-content h1",
-                )
-            else:
-                html = await fetch_html(article.url)
-            scraped = await scraper.scrape_article_page(html)
-            if scraped:
-                local_path = None
-                if scraped.cover_path:
-                    local_path = await download_image(scraped.cover_path)
-                    if local_path is None and article.image_url:
-                        # Cover download failed; fall back to the thumbnail
-                        # image from the listing page.
-                        local_path = await download_image(article.image_url)
-                if local_path:
-                    # Store the web-accessible path relative to covers dir.
-                    cover_name = Path(local_path).name
-                    cover_web = f"/covers/{cover_name}"
-                    await update_article_cover_file(article_id, cover_web)
-                # Persist scraped content for the article view page.
-                ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
-                content_file = ARTICLES_DIR / f"{article_id}.txt"
-                content_file.write_text(
-                    f"{scraped.heading}\n\n{scraped.content}", encoding="utf-8"
-                )
-        except Exception:
-            pass  # Don't fail the accept if scraping fails
+    # Failures are swallowed — accept never fails because scraping did.
+    await enrich_accepted_article(article)
 
     return {"ok": True}
 
@@ -197,6 +170,30 @@ async def update_settings(settings: dict[str, str]):
             except ValueError:
                 raise HTTPException(
                     400, "completion_interval must be a positive number of seconds"
+                )
+        elif key == "ai_publish_count":
+            try:
+                if int(value) < 1:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "ai_publish_count must be a positive number"
+                )
+        elif key == "ai_publish_interval":
+            try:
+                if int(value) < 1:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "ai_publish_interval must be a positive number of seconds"
+                )
+        elif key == "ai_publish_history":
+            try:
+                if int(value) < 0:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "ai_publish_history must be a non-negative number"
                 )
         elif key == "article_layout":
             if value not in ARTICLE_LAYOUTS:
@@ -295,6 +292,7 @@ async def get_news_ui(
     rejected_items = await get_rejected_items(current_source)
     layout = await get_article_layout()
 
+    toggles = await _toggle_context()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -309,6 +307,9 @@ async def get_news_ui(
             "count": len(items),
             "completion_interval": interval,
             "article_layout": layout,
-            **await _toggle_context(),
+            "ai_publish_enabled": toggles["toggles"]["ai_publish"]["enabled"],
+            "ai_publish_interval": await get_ai_publish_interval(),
+            "ai_publish_last_run": await get_ai_publish_last_run(),
+            **toggles,
         },
     )
