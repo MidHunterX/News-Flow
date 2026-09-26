@@ -72,7 +72,7 @@ from app.db.wp_terms import (
                              upsert_terms,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022
     "DEFAULT_SETTINGS",
     "ARTICLE_LAYOUTS",
     "TOGGLE_SETTINGS",

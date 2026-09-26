@@ -255,7 +255,6 @@ class TestWordPressIntegration:
     ):
         cover = tmp_path / "cover.png"
         cover.write_bytes(b"png")
-        posts_url = "https://wp.example.com/wp-json/wp/v2/posts"
 
         def handler(url, kwargs):
             if url.endswith("/media"):

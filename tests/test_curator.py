@@ -14,15 +14,15 @@ from app.models import NewsItem
 
 
 def _item(idx: int, **overrides) -> NewsItem:
-    defaults = dict(
-        id=idx,
-        title=f"Article {idx}",
-        url=f"https://example.com/{idx}",
-        image_url=None,
-        description="desc",
-        published_at="2026-09-19",
-        source="kaumudi",
-    )
+    defaults = {
+        "id": idx,
+        "title": f"Article {idx}",
+        "url": f"https://example.com/{idx}",
+        "image_url": None,
+        "description": "desc",
+        "published_at": "2026-09-19",
+        "source": "kaumudi",
+    }
     defaults.update(overrides)
     return NewsItem(**defaults)
 

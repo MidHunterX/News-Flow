@@ -201,7 +201,6 @@ async def check_article_page(report: SourceReport, items: list) -> object | None
 
 async def check_cover_image(report: SourceReport, scraped) -> None:
     """Download the cover image of the scraped article, if present."""
-    source = report.source
     if not scraped.cover_path:
         report.add(
             "download cover image",

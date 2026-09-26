@@ -49,14 +49,14 @@ def _today() -> str:
 
 
 def _insert_article(session, **overrides) -> Article:
-    defaults = dict(
-        title="First Article",
-        url="https://example.com/a",
-        image_url=None,
-        description="desc",
-        published_at="2026-09-19",
-        source="kaumudi",
-    )
+    defaults = {
+        "title": "First Article",
+        "url": "https://example.com/a",
+        "image_url": None,
+        "description": "desc",
+        "published_at": "2026-09-19",
+        "source": "kaumudi",
+    }
     defaults.update(overrides)
     article = Article(**defaults)
     session.add(article)
@@ -179,7 +179,7 @@ class TestInitDb:
 
     def test_same_day_requeues_stale_publishing_claims(self, reset_env):
         """Same-day restart: rows stay, a crashed publish claim is requeued."""
-        session_factory, articles_dir, covers_dir = reset_env
+        session_factory, _articles_dir, covers_dir = reset_env
         with session_factory() as session:
             _set_last_run(session, _today())
             stale = _insert_article(

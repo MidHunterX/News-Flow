@@ -87,17 +87,17 @@ def article_dirs(tmp_path, monkeypatch):
 
 
 def make_article(**overrides) -> NewsItem:
-    defaults = dict(
-        id=1,
-        title="First Article",
-        url="https://example.com/a",
-        image_url=None,
-        description="Short description",
-        published_at="2026-09-19",
-        source="kaumudi",
-        status=STATUS_ACCEPTED,
-        cover_file=None,
-    )
+    defaults = {
+        "id": 1,
+        "title": "First Article",
+        "url": "https://example.com/a",
+        "image_url": None,
+        "description": "Short description",
+        "published_at": "2026-09-19",
+        "source": "kaumudi",
+        "status": STATUS_ACCEPTED,
+        "cover_file": None,
+    }
     defaults.update(overrides)
     return NewsItem(**defaults)
 
@@ -584,17 +584,17 @@ def _insert_article(session, **overrides) -> Article:
     past = (datetime.now(UTC) - timedelta(seconds=700)).isoformat(
         timespec="seconds"
     )
-    defaults = dict(
-        title="First Article",
-        url="https://example.com/a",
-        image_url=None,
-        description="desc",
-        published_at="2026-09-19",
-        source="kaumudi",
-        status=STATUS_ACCEPTED,
-        accepted_at=past,
-        accepted_order=1,
-    )
+    defaults = {
+        "title": "First Article",
+        "url": "https://example.com/a",
+        "image_url": None,
+        "description": "desc",
+        "published_at": "2026-09-19",
+        "source": "kaumudi",
+        "status": STATUS_ACCEPTED,
+        "accepted_at": past,
+        "accepted_order": 1,
+    }
     defaults.update(overrides)
     article = Article(**defaults)
     session.add(article)

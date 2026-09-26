@@ -272,7 +272,7 @@ class TestSettingsApi:
         assert recorded == {}
 
     async def test_ai_publish_interval_accepts_seconds(self, recorded):
-        result = await scrape_routes.update_settings({"ai_publish_interval": "1800"})
+        await scrape_routes.update_settings({"ai_publish_interval": "1800"})
         assert recorded == {"ai_publish_interval": "1800"}
 
     @pytest.mark.parametrize("value", ["-1", "ten"])
@@ -283,7 +283,7 @@ class TestSettingsApi:
         assert recorded == {}
 
     async def test_ai_publish_history_accepts_zero(self, recorded):
-        result = await scrape_routes.update_settings({"ai_publish_history": "0"})
+        await scrape_routes.update_settings({"ai_publish_history": "0"})
         assert recorded == {"ai_publish_history": "0"}
 
 
@@ -293,19 +293,19 @@ class TestSettingsApi:
 
 
 def _item(idx: int, **overrides) -> SimpleNamespace:
-    defaults = dict(
-        id=idx,
-        title=f"Article {idx}",
-        url=f"https://example.com/{idx}",
-        image_url=f"https://example.com/{idx}.jpg",
-        description="desc",
-        published_at="2026-09-19",
-        source="kaumudi",
-        status=None,
-        accepted_at=None,
-        cover_file=None,
-        wp_category_ids=None,
-    )
+    defaults = {
+        "id": idx,
+        "title": f"Article {idx}",
+        "url": f"https://example.com/{idx}",
+        "image_url": f"https://example.com/{idx}.jpg",
+        "description": "desc",
+        "published_at": "2026-09-19",
+        "source": "kaumudi",
+        "status": None,
+        "accepted_at": None,
+        "cover_file": None,
+        "wp_category_ids": None,
+    }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
 
@@ -316,21 +316,21 @@ def _render(layout: str, items: list, **extra) -> str:
         autoescape=select_autoescape(["html"]),
     )
     template = env.get_template("index.html")
-    context = dict(
-        items=items,
-        accepted_items=[],
-        completed_items=[],
-        rejected_items=[],
-        sources=["kaumudi"],
-        selected_source=None,
-        count=len(items),
-        completion_interval=600,
-        article_layout=layout,
-        toggles={},
-        ai_publish_enabled=False,
-        ai_publish_interval=3600,
-        ai_publish_last_run=None,
-    )
+    context = {
+        "items": items,
+        "accepted_items": [],
+        "completed_items": [],
+        "rejected_items": [],
+        "sources": ["kaumudi"],
+        "selected_source": None,
+        "count": len(items),
+        "completion_interval": 600,
+        "article_layout": layout,
+        "toggles": {},
+        "ai_publish_enabled": False,
+        "ai_publish_interval": 3600,
+        "ai_publish_last_run": None,
+    }
     context.update(extra)
     return template.render(**context)
 

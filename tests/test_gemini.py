@@ -78,16 +78,16 @@ def synced_terms(monkeypatch, CATEGORIES=CATEGORIES, TAGS=TAGS):
 
 
 def _article(**overrides) -> NewsItem:
-    defaults = dict(
-        id=1,
-        title="Floods in Wayanad",
-        url="https://example.com/a",
-        image_url=None,
-        description="Landslide hits hills",
-        published_at="2026-09-19",
-        source="kaumudi",
-        cover_file=None,
-    )
+    defaults = {
+        "id": 1,
+        "title": "Floods in Wayanad",
+        "url": "https://example.com/a",
+        "image_url": None,
+        "description": "Landslide hits hills",
+        "published_at": "2026-09-19",
+        "source": "kaumudi",
+        "cover_file": None,
+    }
     defaults.update(overrides)
     return NewsItem(**defaults)
 
