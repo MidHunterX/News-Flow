@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from app.models import NewsItem, ScrapedArticleContent
+from app.models import NewsItem
 from app.scrapers.init import SCRAPERS, scrape_source
 from app.utils import resolve_image_url
 

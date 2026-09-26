@@ -25,12 +25,11 @@ from pathlib import Path
 # Make "app" importable when running from the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.browser import fetch_rendered_html  # noqa: E402
-from app.client import HttpClient  # noqa: E402
-from app.config import SOURCES  # noqa: E402
-from app.scrapers.init import SCRAPERS  # noqa: E402
-from app.utils import download_image, fetch_html  # noqa: E402
-
+from app.browser import fetch_rendered_html
+from app.client import HttpClient
+from app.config import SOURCES
+from app.scrapers.init import SCRAPERS
+from app.utils import download_image, fetch_html
 
 # ---------------------------------------------------------------------------
 # Result bookkeeping

@@ -24,9 +24,13 @@ from pathlib import Path
 
 import httpx
 
-from app.config import (WORDPRESS_APP_PASSWORD, WORDPRESS_CATEGORY_ID,
-                        WORDPRESS_URL, WORDPRESS_USERNAME)
-from app.db import (get_due_articles, get_toggle, mark_articles_completed)
+from app.config import (
+    WORDPRESS_APP_PASSWORD,
+    WORDPRESS_CATEGORY_ID,
+    WORDPRESS_URL,
+    WORDPRESS_USERNAME,
+)
+from app.db import get_due_articles, get_toggle, mark_articles_completed
 from app.db.constants import NOTIF_ERROR, NOTIF_WARNING, STATUS_PUBLISHING
 from app.db.notifications import record_notification
 from app.db.wp_terms import set_article_category_ids

@@ -10,13 +10,18 @@ failed sync is logged and retried on the next cycle.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
 from app.config import WORDPRESS_URL
-from app.db import (get_categories, get_last_terms_sync, get_tags,
-                    set_last_terms_sync, upsert_terms)
+from app.db import (
+    get_categories,
+    get_last_terms_sync,
+    get_tags,
+    set_last_terms_sync,
+    upsert_terms,
+)
 from app.db.constants import NOTIF_WARNING, WP_CATEGORIES_TTL
 from app.db.notifications import record_notification
 from app.db.wp_terms import TAXONOMY_CATEGORY, TAXONOMY_TAG
@@ -101,7 +106,7 @@ def _terms_stale_from(last_synced: str | None) -> bool:
         last = datetime.fromisoformat(last_synced)
     except (TypeError, ValueError):
         return True
-    age = datetime.now(timezone.utc).timestamp() - last.timestamp()
+    age = datetime.now(UTC).timestamp() - last.timestamp()
     return age >= WP_CATEGORIES_TTL
 
 

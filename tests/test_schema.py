@@ -6,17 +6,15 @@ so the real newsflow.db / public/ files are never touched (no network).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.db.schema as schema
-from app.db.constants import (LAST_RUN_DATE_KEY, STATUS_ACCEPTED,
-                              STATUS_PUBLISHING)
+from app.db import schema
+from app.db.constants import LAST_RUN_DATE_KEY, STATUS_ACCEPTED, STATUS_PUBLISHING
 from app.db.models import Article, Base, Setting
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -47,7 +45,7 @@ def _set_last_run(session, value: str) -> None:
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 def _insert_article(session, **overrides) -> Article:

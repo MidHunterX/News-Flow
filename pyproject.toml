@@ -21,3 +21,10 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.ruff.lint]
+ignore = [
+    "BLE001",   # Do not catch blind exception
+    "S110",     # `try`-`except`-`pass` detected, consider logging the exception
+    "TRY004",   # Prefer `TypeError` exception for invalid type
+]

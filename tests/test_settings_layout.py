@@ -17,8 +17,12 @@ from sqlalchemy.orm import sessionmaker
 
 import app.db.settings as settings_mod
 import app.routes.scrape as scrape_routes
-from app.db.constants import (DEFAULT_SETTINGS, TOGGLE_ENV_KEYS,
-                              TOGGLE_SETTINGS, toggle_is_available)
+from app.db.constants import (
+    DEFAULT_SETTINGS,
+    TOGGLE_ENV_KEYS,
+    TOGGLE_SETTINGS,
+    toggle_is_available,
+)
 from app.db.models import Base, Setting
 
 LAYOUTS = ("grid", "rows", "compact")

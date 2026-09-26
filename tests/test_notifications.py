@@ -35,9 +35,7 @@ class FakeResponse:
 
     def json(self):
         return self._json
-from app.db.constants import (MAX_NOTIFICATIONS, NOTIF_ERROR, NOTIF_INFO,
-                              NOTIF_WARNING)
-from app.db.models import Base, Notification
+from app.db.constants import MAX_NOTIFICATIONS, NOTIF_ERROR, NOTIF_INFO, NOTIF_WARNING
 
 # gemini's record_notification resolves lazily via the module attribute on
 # app.db.notifications, so patching that module's SessionLocal covers it.
@@ -150,7 +148,7 @@ class TestGeminiIntegration:
     """Gemini failures surface as warning notifications."""
 
     async def test_http_failure_records_notification(self, db, monkeypatch):
-        import app.gemini as gemini
+        from app import gemini
 
         monkeypatch.setattr(gemini, "GEMINI_API_KEY", "test-key")
         monkeypatch.setattr(gemini, "GEMINI_MODEL", "test-model")

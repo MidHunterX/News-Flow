@@ -6,20 +6,37 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
 from app.curator import enrich_accepted_article
-from app.db import (AI_PUBLISH_LAST_RUN_KEY, ARTICLE_LAYOUTS,
-                    DEFAULT_SETTINGS, STATUS_ACCEPTED, STATUS_REJECTED,
-                    TOGGLE_ENV_KEYS, TOGGLE_SETTINGS, clear_notifications,
-                    get_accepted_items, get_ai_publish_count,
-                    get_ai_publish_history, get_ai_publish_interval,
-                    get_ai_publish_last_run, get_all_settings,
-                    get_all_toggle_states, get_article_by_id,
-                    get_article_layout, get_cached_sources,
-                    get_completed_items, get_completion_interval, get_items,
-                    get_notifications, get_pending_items, get_rejected_items,
-                    save_items, set_article_status, set_setting,
-                    toggle_is_available, trim_articles)
-from app.models import NewsItem, ScrapedArticleContent, ScrapeResponse
+from app.db import (
+    ARTICLE_LAYOUTS,
+    DEFAULT_SETTINGS,
+    STATUS_ACCEPTED,
+    STATUS_REJECTED,
+    TOGGLE_ENV_KEYS,
+    TOGGLE_SETTINGS,
+    clear_notifications,
+    get_accepted_items,
+    get_ai_publish_interval,
+    get_ai_publish_last_run,
+    get_all_settings,
+    get_all_toggle_states,
+    get_article_by_id,
+    get_article_layout,
+    get_cached_sources,
+    get_completed_items,
+    get_completion_interval,
+    get_items,
+    get_notifications,
+    get_pending_items,
+    get_rejected_items,
+    save_items,
+    set_article_status,
+    set_setting,
+    toggle_is_available,
+    trim_articles,
+)
+from app.models import NewsItem, ScrapeResponse
 from app.publisher import publish_due_articles
+from app.scrapers.init import scrape_source
 from app.utils import ARTICLES_DIR
 
 router = APIRouter()

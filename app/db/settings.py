@@ -2,9 +2,13 @@
 
 from sqlalchemy import select
 
-from app.db.constants import (AI_PUBLISH_LAST_RUN_KEY,
-                              AI_PUBLISH_MIN_INTERVAL, ARTICLE_LAYOUTS,
-                              DEFAULT_SETTINGS, TOGGLE_SETTINGS)
+from app.db.constants import (
+    AI_PUBLISH_LAST_RUN_KEY,
+    AI_PUBLISH_MIN_INTERVAL,
+    ARTICLE_LAYOUTS,
+    DEFAULT_SETTINGS,
+    TOGGLE_SETTINGS,
+)
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Setting
 

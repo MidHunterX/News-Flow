@@ -2,15 +2,19 @@
 
 import logging
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import delete, inspect, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.db.constants import (DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
-                              STATUS_PUBLISHING, STATUS_ACCEPTED,
-                              NOTIF_INFO)
+from app.db.constants import (
+    DEFAULT_SETTINGS,
+    LAST_RUN_DATE_KEY,
+    NOTIF_INFO,
+    STATUS_ACCEPTED,
+    STATUS_PUBLISHING,
+)
 from app.db.engine import Base, SessionLocal, engine
 from app.db.models import Article, Notification, Setting
 from app.utils import ARTICLES_DIR, COVERS_DIR
@@ -69,7 +73,7 @@ def _reset_daily_workspace() -> None:
     its files is the safe failure mode.
     """
     with SessionLocal() as session:
-        today = datetime.now(timezone.utc).date().isoformat()
+        today = datetime.now(UTC).date().isoformat()
         last_run = session.get(Setting, LAST_RUN_DATE_KEY)
         if last_run is not None and last_run.value == today:
             return  # Same day: nothing to reset.

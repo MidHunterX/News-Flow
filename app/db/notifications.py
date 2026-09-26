@@ -12,9 +12,14 @@ import logging
 
 from sqlalchemy import delete, select
 
-from app.db.constants import (MAX_MESSAGE_CHARS, MAX_NOTIFICATIONS,
-                              NOTIF_ERROR, NOTIF_INFO, NOTIF_WARNING,
-                              now_iso)
+from app.db.constants import (
+    MAX_MESSAGE_CHARS,
+    MAX_NOTIFICATIONS,
+    NOTIF_ERROR,
+    NOTIF_INFO,
+    NOTIF_WARNING,
+    now_iso,
+)
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Notification
 

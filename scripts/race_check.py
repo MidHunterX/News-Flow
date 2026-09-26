@@ -17,14 +17,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sqlalchemy import create_engine  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+from app import publisher
 from app.db import articles as articles_mod
 from app.db.constants import STATUS_ACCEPTED
 from app.db.models import Article, Base
-import app.publisher as publisher
 from app.models import NewsItem
+
 
 async def main() -> None:
     tmp = Path(tempfile.mkdtemp())

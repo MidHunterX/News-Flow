@@ -1,4 +1,4 @@
-from pydantic import AnyUrl, BaseModel, HttpUrl
+from pydantic import BaseModel
 
 
 class ScrapedArticleContent(BaseModel):

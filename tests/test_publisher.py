@@ -7,21 +7,27 @@ engine so the real newsflow.db is never touched.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.publisher as publisher
-from app.db.constants import (STATUS_ACCEPTED, STATUS_COMPLETED,
-                              STATUS_PUBLISHING, now_iso)
+from app import publisher
+from app.db.constants import (
+    STATUS_ACCEPTED,
+    STATUS_COMPLETED,
+    STATUS_PUBLISHING,
+)
 from app.db.models import Article, Base
 from app.models import NewsItem
-from app.publisher import (body_to_html, is_configured, publish_article,
-                           publish_due_articles, read_article_content)
+from app.publisher import (
+    body_to_html,
+    publish_article,
+    publish_due_articles,
+    read_article_content,
+)
 
 WP_BASE = "https://wp.example.com"
 POSTS_URL = f"{WP_BASE}/wp-json/wp/v2/posts"
@@ -575,7 +581,7 @@ def db_session(monkeypatch, tmp_path):
 
 
 def _insert_article(session, **overrides) -> Article:
-    past = (datetime.now(timezone.utc) - timedelta(seconds=700)).isoformat(
+    past = (datetime.now(UTC) - timedelta(seconds=700)).isoformat(
         timespec="seconds"
     )
     defaults = dict(
@@ -641,7 +647,7 @@ class TestDueArticlesDb:
         with db_session() as session:
             _insert_article(
                 session,
-                accepted_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                accepted_at=datetime.now(UTC).isoformat(timespec="seconds"),
             )
         assert await articles_mod_get_due(600) == []
 

@@ -1,7 +1,7 @@
 """Shared constants and defaults for the database layer."""
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # User-overridable settings and their default values (seeded into the DB).
 DEFAULT_SETTINGS = {
@@ -98,4 +98,4 @@ MAX_MESSAGE_CHARS = 500
 
 def now_iso() -> str:
     """Current UTC time as an ISO-8601 string with second precision."""
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")

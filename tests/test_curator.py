@@ -5,11 +5,11 @@ The Gemini call and DB layer are faked/monkeypatched — no network.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-import app.curator as curator
+from app import curator
 from app.models import NewsItem
 
 
@@ -130,14 +130,14 @@ async def test_disabled_toggle_is_noop(env):
 
 
 async def test_interval_not_elapsed_is_noop(env):
-    env.last_run = _iso(datetime.now(timezone.utc) - timedelta(seconds=60))
+    env.last_run = _iso(datetime.now(UTC) - timedelta(seconds=60))
     env.interval = 3600
     assert await curator.run_due_selection() == 0
     assert env.accepted_ids == []
 
 
 async def test_runs_when_interval_elapsed(env):
-    env.last_run = _iso(datetime.now(timezone.utc) - timedelta(seconds=3601))
+    env.last_run = _iso(datetime.now(UTC) - timedelta(seconds=3601))
     env.interval = 3600
     assert await curator.run_due_selection() == 2
     assert env.accepted_ids == [2, 3]
@@ -238,7 +238,7 @@ async def test_invalid_last_run_treated_as_due(env):
 
 async def test_interval_elapsed_helper():
     assert curator._interval_elapsed(None, 60) is True
-    future = _iso(datetime.now(timezone.utc) + timedelta(seconds=120))
+    future = _iso(datetime.now(UTC) + timedelta(seconds=120))
     assert curator._interval_elapsed(future, 60) is False
-    past = _iso(datetime.now(timezone.utc) - timedelta(seconds=61))
+    past = _iso(datetime.now(UTC) - timedelta(seconds=61))
     assert curator._interval_elapsed(past, 60) is True

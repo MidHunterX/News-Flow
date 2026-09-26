@@ -6,12 +6,17 @@ concurrent triggers (the background completion loop and UI reloads) can never
 publish the same article twice. """
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select, text
 
-from app.db.constants import (STATUS_ACCEPTED, STATUS_COMPLETED,
-                              STATUS_PUBLISHING, STATUS_REJECTED, now_iso)
+from app.db.constants import (
+    STATUS_ACCEPTED,
+    STATUS_COMPLETED,
+    STATUS_PUBLISHING,
+    STATUS_REJECTED,
+    now_iso,
+)
 from app.db.engine import SessionLocal, run_in_thread
 from app.db.models import Article
 from app.models import NewsItem
@@ -238,7 +243,7 @@ def _get_due_articles_sync(interval_seconds: int) -> list[NewsItem]:
     concurrent trigger (background loop racing a UI reload) cannot return the
     same article again — this is what prevents duplicate WordPress posts.
     """
-    now = datetime.now(timezone.utc).timestamp()
+    now = datetime.now(UTC).timestamp()
     current = now_iso()
     due: list[NewsItem] = []
     with SessionLocal() as session:

@@ -6,7 +6,7 @@ categories; ``set_article_category_ids`` stores the chosen IDs on the article.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -41,7 +41,7 @@ def _upsert_terms_sync(
                 session.add(row)
             row.name = str(term.get("name", ""))
             row.slug = str(term.get("slug", ""))
-            row.synced_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            row.synced_at = datetime.now(UTC).isoformat(timespec="seconds")
         # Drop terms deleted on the WordPress side.
         for wp_id, row in existing.items():
             if wp_id not in seen:
@@ -101,5 +101,5 @@ async def set_last_terms_sync() -> None:
     """Record a successful terms sync as of now."""
     await set_setting(
         WP_TERMS_SYNCED_KEY,
-        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        datetime.now(UTC).isoformat(timespec="seconds"),
     )

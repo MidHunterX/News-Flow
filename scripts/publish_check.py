@@ -37,14 +37,18 @@ from pathlib import Path
 # Make "app" importable when running from the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.client import HttpClient  # noqa: E402
-from app.config import (GEMINI_API_KEY, GEMINI_MODEL,  # noqa: E402
-                        WORDPRESS_APP_PASSWORD, WORDPRESS_URL,
-                        WORDPRESS_USERNAME)
-from app.db import get_categories, get_tags, init_db  # noqa: E402
-from app.gemini import API_BASE, REQUEST_TIMEOUT, suggest_categories  # noqa: E402
-from app.models import NewsItem  # noqa: E402
-from app.wordpress import sync_terms  # noqa: E402
+from app.client import HttpClient
+from app.config import (
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+    WORDPRESS_APP_PASSWORD,
+    WORDPRESS_URL,
+    WORDPRESS_USERNAME,
+)
+from app.db import get_categories, get_tags, init_db
+from app.gemini import API_BASE, REQUEST_TIMEOUT, suggest_categories
+from app.models import NewsItem
+from app.wordpress import sync_terms
 
 # Deliberately unambiguous sample: a cricket match should trip any sports
 # category on a news site, making "no match" a meaningful smoke failure.

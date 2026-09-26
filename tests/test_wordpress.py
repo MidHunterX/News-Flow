@@ -7,15 +7,15 @@ HTTP is faked with the FakeClient pattern (no network); DB-backed tests bind
 from __future__ import annotations
 
 import importlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-import app.publisher as publisher
 import app.wordpress as wp
+from app import publisher
 from app.db.constants import WP_TERMS_SYNCED_KEY
 from app.db.models import Base, Setting, WpCategory
 
@@ -198,7 +198,7 @@ class TestSyncTerms:
         with db() as session:
             session.add(Setting(
                 key=WP_TERMS_SYNCED_KEY,
-                value=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                value=datetime.now(UTC).isoformat(timespec="seconds"),
             ))
             session.commit()
 

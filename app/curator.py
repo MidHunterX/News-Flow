@@ -23,16 +23,26 @@ crashed call can't put the loop into a hot retry spin.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from app.db import (get_ai_publish_count, get_ai_publish_history,
-                    get_ai_publish_interval, get_ai_publish_last_run,
-                    get_article_by_id, get_pending_items,
-                    get_recent_accepted_titles, record_notification,
-                    set_article_status)
-from app.db.constants import (AI_PUBLISH_LAST_RUN_KEY, NOTIF_ERROR,
-                              NOTIF_INFO, STATUS_ACCEPTED, now_iso)
+from app.db import (
+    get_ai_publish_count,
+    get_ai_publish_history,
+    get_ai_publish_interval,
+    get_ai_publish_last_run,
+    get_pending_items,
+    get_recent_accepted_titles,
+    record_notification,
+    set_article_status,
+)
+from app.db.constants import (
+    AI_PUBLISH_LAST_RUN_KEY,
+    NOTIF_ERROR,
+    NOTIF_INFO,
+    STATUS_ACCEPTED,
+    now_iso,
+)
 from app.db.settings import set_setting
 from app.models import NewsItem
 
@@ -176,7 +186,7 @@ def _interval_elapsed(last_run: str | None, interval_seconds: int) -> bool:
         last_ts = datetime.fromisoformat(last_run).timestamp()
     except (TypeError, ValueError):
         return True
-    now_ts = datetime.now(timezone.utc).timestamp()
+    now_ts = datetime.now(UTC).timestamp()
     return now_ts - last_ts >= interval_seconds
 
 

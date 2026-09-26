@@ -8,7 +8,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-import app.gemini as gemini
+from app import gemini
 from app.models import NewsItem
 
 API_URL = (f"{gemini.API_BASE}/models/{gemini.GEMINI_MODEL}:generateContent")
