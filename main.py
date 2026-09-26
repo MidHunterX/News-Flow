@@ -8,6 +8,7 @@ from app.client import get_client
 from app.curator import run_due_selection
 from app.db import get_completion_interval, init_db
 from app.publisher import publish_due_articles
+from app.refresher import run_due_refresh
 from app.routes import scrape
 from app.scrapers.init import SCRAPERS
 from app.utils import COVERS_DIR
@@ -34,12 +35,14 @@ async def _completion_loop() -> None:
     being marked completed. The WordPress terms sync is refreshed here on
     its TTL so Gemini always categorizes against a current term list. The AI
     Publish curator also ticks here, prompting Gemini to pick pending
-    articles once its (user-settable) interval has elapsed.
+    articles once its (user-settable) interval has elapsed, and every
+    source is re-scraped once its (user-settable) refresh interval elapses.
     """
     while True:
         try:
             interval = await get_completion_interval()
             await publish_due_articles(interval)
+            await run_due_refresh()
             await run_due_selection()
             await sync_terms_if_stale()
         except Exception:

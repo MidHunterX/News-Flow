@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 DEFAULT_SETTINGS = {
     # Seconds between an article being accepted and it being marked completed.
     "completion_interval": "600",  # 10 minutes
+    # Seconds between automatic background re-scrapes of every source.
+    "refresh_interval": "900",  # 15 minutes
     # How the pending article list renders: "grid" (cards in columns),
     # "rows" (full-width rows with thumbnail), or "compact" (dense rows).
     "article_layout": "grid",
@@ -80,6 +82,14 @@ AI_PUBLISH_LAST_RUN_KEY = "ai_publish_last_run"
 # Minimum gap (seconds) between AI Publish prompts — a floor enforced on the
 # user-settable interval so a 0-second setting can't hammer the API.
 AI_PUBLISH_MIN_INTERVAL = 30
+
+# Setting key storing the UTC timestamp of the last background source refresh.
+# The next refresh goes out refresh_interval seconds after it.
+REFRESH_LAST_RUN_KEY = "refresh_last_run"
+
+# Floor (seconds) on the refresh interval so a tiny setting can't hammer the
+# news sites with back-to-back scrapes.
+REFRESH_MIN_INTERVAL = 30
 
 # How long a WordPress terms sync stays fresh before being refreshed.
 WP_CATEGORIES_TTL = 24 * 60 * 60  # seconds

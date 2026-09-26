@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
+from app.config import SOURCES
 from app.curator import enrich_accepted_article
 from app.db import (
     ARTICLE_LAYOUTS,
@@ -32,10 +32,10 @@ from app.db import (
     set_article_status,
     set_setting,
     toggle_is_available,
-    trim_articles,
 )
 from app.models import NewsItem, ScrapeResponse
 from app.publisher import publish_due_articles
+from app.refresher import refresh_sources
 from app.scrapers.init import scrape_source
 from app.utils import ARTICLES_DIR
 
@@ -109,16 +109,17 @@ async def get_news_api(
 async def refresh_news(
     source: str | None = Query(None, description="Filter by source")
 ):
-    """Re-scrape the requested sources and replace their cached articles."""
+    """Re-scrape the requested sources and replace their cached articles.
+
+    Manual trigger for the same work the background loop performs on its
+    ``refresh_interval`` schedule (both go through app.refresher).
+    """
     if source:
         _validate_sources([source])
         sources = [source]
     else:
         sources = list(SOURCES)
-    results = await asyncio.gather(*[scrape_source(name) for name in sources])
-    items = [item for sublist in results for item in sublist]
-    await save_items(items)
-    await trim_articles(MAX_ARTICLES_PER_SOURCE)
+    items = await refresh_sources(sources)
     return ScrapeResponse(sources=sources, count=len(items), items=items)
 
 
@@ -187,6 +188,14 @@ async def update_settings(settings: dict[str, str]):
             except ValueError:
                 raise HTTPException(
                     400, "completion_interval must be a positive number of seconds"
+                )
+        elif key == "refresh_interval":
+            try:
+                if int(value) < 1:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "refresh_interval must be a positive number of seconds"
                 )
         elif key == "ai_publish_count":
             try:

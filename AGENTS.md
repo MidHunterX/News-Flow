@@ -16,6 +16,9 @@ their scraped content saved to `public/articles/<id>.txt`.
   httpx fetching (via `fastapi[standard]`), Playwright for JS-heavy pages
 - A background asyncio task auto-completes accepted articles once
   `completion_interval` (a user-editable setting, default 600 s) elapses
+- The same background task re-scrapes every source once `refresh_interval`
+  (a user-editable setting, default 900 s) elapses (`app/refresher.py`);
+  the browser never triggers refreshes
 - WordPress publishing: categories/tags are synced from the site at startup
   (`app/wordpress.py`, TTL-refreshed) and Gemini picks related categories for
   each article (`app/gemini.py`) right before it is published
@@ -70,6 +73,7 @@ app/
     wp_terms.py      # WordPress terms (categories/tags) queries/mutations
     settings.py      # settings queries/mutations
   wordpress.py       # WordPress terms sync (categories + tags → wp_terms)
+  refresher.py       # backend source refresh (refresh_sources, run_due_refresh)
   gemini.py          # Gemini categorization (article + terms → category IDs)
 templates/           # Jinja2 UI (base/index/article.html), Tailwind via CDN
 static/              # logo.svg
@@ -86,13 +90,18 @@ scripts/health_check.py
 - **Daily reset:** `init_db()` clears the entire articles table whenever the
   app starts on a new UTC day (`LAST_RUN_DATE_KEY` setting). Don't be
   surprised by an empty DB the next morning.
-- **Refresh trimming:** `/api/refresh` re-scrapes and keeps at most
-  `MAX_ARTICLES_PER_SOURCE` (10) articles per source.
+- **Refresh trimming:** `/api/refresh` and the scheduled background refresh
+  both keep at most `MAX_ARTICLES_PER_SOURCE` (10) articles per source.
 - **Accept flow** (`routes/scrape.py`): marks the article accepted → scrapes
   its page (via Playwright when `needs_browser`) → downloads the cover to
   `public/covers/` → saves heading+content to `public/articles/<id>.txt` and
   the web path `/covers/<name>` into `article.cover_file`. Scraping failures
   are swallowed — accept never fails because of them.
+- **Scheduled refresh** (`app/refresher.py`): `refresh_sources()` is shared by
+  the manual `POST /api/refresh` and the background loop — scrape →
+  `save_items` → `trim_articles` → stamp `refresh_last_run`. `run_due_refresh()`
+  mirrors the AI Publish curator: stamp-before-scrape so a crashed run can't
+  hot-retry, fail-soft (logged + notification, never kills the caller's loop).
 
 ## Testing philosophy (important)
 

@@ -16,31 +16,7 @@
           >
         </div>
 
-        <!-- Timer Visual Indicator -->
         <div class="flex items-center space-x-4">
-          <div class="flex items-center space-x-2 bg-gray-100 px-3 py-1.5 rounded-full border border-gray-200 text-sm">
-            <svg
-              class="w-4 h-4 text-indigo-600 animate-spin-slow"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-              ></path>
-            </svg>
-            <span class="text-gray-600 font-medium">Next update in:</span>
-            <span id="timer-display" class="font-bold text-indigo-600 w-12">--:--</span>
-          </div>
-          <button
-            onclick="refreshNews()"
-            class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition shadow-sm"
-          >
-            Refresh Now
-          </button>
           <button
             onclick="openNotifications()"
             class="relative p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition"
@@ -107,6 +83,21 @@
             </p>
             <input
               id="completion-interval-input"
+              type="number"
+              min="1"
+              step="1"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div>
+            <label for="refresh-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
+              Refresh interval (minutes)
+            </label>
+            <p class="text-xs text-gray-500 mb-2">
+              How often the backend re-scrapes every source in the background.
+            </p>
+            <input
+              id="refresh-interval-input"
               type="number"
               min="1"
               step="1"
@@ -282,47 +273,6 @@
     {% block scripts %}{% endblock %}
 
     <script>
-      // Auto-refresh every 15 minutes (900 seconds)
-      const autoRefreshSeconds = 15 * 60;
-      let refreshing = false;
-      const timerDisplay = document.getElementById("timer-display");
-
-      // Re-scrape via the refresh endpoint, then reload to show fresh data.
-      async function refreshNews() {
-        if (refreshing) return;
-        refreshing = true;
-        const source = new URLSearchParams(window.location.search).get("source");
-        const url = source ? `/api/refresh?source=${encodeURIComponent(source)}` : "/api/refresh";
-        try {
-          await fetch(url, { method: "POST" });
-        } finally {
-          window.location.reload();
-        }
-      }
-
-      function updateTimer() {
-        // Calculate seconds until next 15-minute interval based on system time
-        const now = new Date();
-        const secondsSinceMidnight = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-        const secondsUntilNextInterval = autoRefreshSeconds - (secondsSinceMidnight % autoRefreshSeconds);
-
-        // If we're exactly at an interval boundary, trigger refresh
-        if (secondsUntilNextInterval === autoRefreshSeconds) {
-          refreshNews();
-          return;
-        }
-
-        const minutes = Math.floor(secondsUntilNextInterval / 60);
-        const seconds = secondsUntilNextInterval % 60;
-        timerDisplay.textContent = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-      }
-
-      // Initial update
-      updateTimer();
-
-      // Update every second
-      setInterval(updateTimer, 1000);
-
       // ---- Settings modal ----
       let selectedLayout = "grid";
       const toggleState = {};
@@ -356,6 +306,8 @@
           const settings = await res.json();
           const seconds = parseInt(settings.completion_interval, 10) || 600;
           document.getElementById("completion-interval-input").value = Math.max(1, Math.round(seconds / 60));
+          const refreshSeconds = parseInt(settings.refresh_interval, 10) || 900;
+          document.getElementById("refresh-interval-input").value = Math.max(1, Math.round(refreshSeconds / 60));
           selectArticleLayout(settings.article_layout || "grid");
           const countInput = document.getElementById("ai-publish-count-input");
           const intervalInput = document.getElementById("ai-publish-interval-input");
@@ -374,6 +326,7 @@
           }
         } catch (err) {
           document.getElementById("completion-interval-input").value = 10;
+          document.getElementById("refresh-interval-input").value = 15;
           selectArticleLayout("grid");
         }
         document.getElementById("settings-modal").classList.remove("hidden");
@@ -389,8 +342,14 @@
           alert("Completion interval must be at least 1 minute.");
           return;
         }
+        const refreshMinutes = parseInt(document.getElementById("refresh-interval-input").value, 10);
+        if (!refreshMinutes || refreshMinutes < 1) {
+          alert("Refresh interval must be at least 1 minute.");
+          return;
+        }
         const payload = {
           completion_interval: String(minutes * 60),
+          refresh_interval: String(refreshMinutes * 60),
           article_layout: selectedLayout,
           ...Object.fromEntries(
             Object.entries(toggleState).map(([key, on]) => [key, on ? "1" : "0"])

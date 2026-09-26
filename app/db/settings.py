@@ -7,6 +7,7 @@ from app.db.constants import (
     AI_PUBLISH_MIN_INTERVAL,
     ARTICLE_LAYOUTS,
     DEFAULT_SETTINGS,
+    REFRESH_MIN_INTERVAL,
     TOGGLE_SETTINGS,
 )
 from app.db.engine import SessionLocal, run_in_thread
@@ -96,6 +97,16 @@ async def get_ai_publish_history() -> int:
         return max(0, int(raw))
     except TypeError, ValueError:
         return int(DEFAULT_SETTINGS["ai_publish_history"])
+
+
+async def get_refresh_interval() -> int:
+    """Seconds between background source refreshes, clamped to the floor."""
+    raw = await get_setting("refresh_interval", DEFAULT_SETTINGS["refresh_interval"])
+    try:
+        interval = int(raw)
+    except TypeError, ValueError:
+        interval = int(DEFAULT_SETTINGS["refresh_interval"])
+    return max(REFRESH_MIN_INTERVAL, interval)
 
 
 async def get_ai_publish_last_run() -> str | None:

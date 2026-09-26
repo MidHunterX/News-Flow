@@ -67,6 +67,38 @@ class TestGetArticleLayout:
         ]
 
 
+class TestGetRefreshInterval:
+    async def test_defaults_when_unseeded(self, db):
+        assert await settings_mod.get_refresh_interval() == int(
+            DEFAULT_SETTINGS["refresh_interval"]
+        )
+
+    async def test_stored_value_wins(self, db, monkeypatch):
+        async def fake_get(key, default):
+            return "300"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_refresh_interval() == 300
+
+    async def test_invalid_value_falls_back_to_default(self, db, monkeypatch):
+        async def fake_get(key, default):
+            return "bogus"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_refresh_interval() == int(
+            DEFAULT_SETTINGS["refresh_interval"]
+        )
+
+    async def test_below_floor_is_clamped(self, db, monkeypatch):
+        from app.db.constants import REFRESH_MIN_INTERVAL
+
+        async def fake_get(key, default):
+            return "5"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_refresh_interval() == REFRESH_MIN_INTERVAL
+
+
 # ---------------------------------------------------------------------------
 # Feature toggles (ai_auto_categorization / auto_publish)
 # ---------------------------------------------------------------------------
@@ -247,6 +279,18 @@ class TestSettingsApi:
         with pytest.raises(HTTPException) as excinfo:
             await scrape_routes.update_settings({"completion_interval": "0"})
         assert excinfo.value.status_code == 400
+
+    @pytest.mark.parametrize("value", ["0", "-5", "abc"])
+    async def test_refresh_interval_rejects_below_one(self, recorded, value):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"refresh_interval": value})
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_refresh_interval_accepts_seconds(self, recorded):
+        result = await scrape_routes.update_settings({"refresh_interval": "1200"})
+        assert recorded == {"refresh_interval": "1200"}
+        assert result["refresh_interval"] == "1200"
 
     async def test_ai_publish_count_positive(self, recorded):
         result = await scrape_routes.update_settings({"ai_publish_count": "5"})
@@ -440,6 +484,31 @@ class TestArticleView:
         # disk so no app startup is needed.
         response = await scrape_routes.article_view(request=object(), article_id=1)
         assert response.status_code == 200
+
+
+class TestRefreshIntervalInput:
+    """The settings modal renders the backend refresh interval field."""
+
+    def _render_base(self, toggles: dict) -> str:
+        env = Environment(
+            loader=FileSystemLoader("templates"),
+            autoescape=select_autoescape(["html"]),
+        )
+        template = env.get_template("base.html")
+        return template.render(toggles=toggles)
+
+    def test_refresh_interval_input_renders(self):
+        html = self._render_base({})
+        assert 'id="refresh-interval-input"' in html
+        assert "Refresh interval (minutes)" in html
+
+    def test_frontend_refresh_trigger_removed(self):
+        """The JS timer + Refresh Now button are gone; backend refreshes now."""
+        html = self._render_base({})
+        assert "refreshNews" not in html
+        assert "timer-display" not in html
+        assert "Refresh Now" not in html
+        assert "autoRefreshSeconds" not in html
 
 
 class TestAiPublishMeter:
