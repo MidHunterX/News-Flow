@@ -28,7 +28,7 @@ from app.db import (
     set_setting,
     trim_articles,
 )
-from app.db.constants import NOTIF_ERROR, NOTIF_INFO, REFRESH_LAST_RUN_KEY
+from app.db.constants import NOTIF_ERROR, REFRESH_LAST_RUN_KEY
 from app.models import NewsItem
 
 logger = logging.getLogger(__name__)
@@ -68,12 +68,6 @@ async def run_due_refresh() -> int:
         await set_setting(REFRESH_LAST_RUN_KEY, now_iso())
 
         count = len(await refresh_sources())
-        logger.info("Background refresh scraped %d articles", count)
-        await record_notification(
-            NOTIF_INFO,
-            "refresh",
-            f"Scheduled refresh scraped {count} article(s).",
-        )
         return count
     except Exception as exc:
         # Never let a refresh error kill the caller's loop.

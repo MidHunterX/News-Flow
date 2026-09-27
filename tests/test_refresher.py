@@ -156,10 +156,10 @@ async def test_last_run_stamped_before_scraping(env):
     assert "refresh_last_run" in [key for key, _ in env["stamps"]]
 
 
-async def test_success_records_info_notification(env):
+async def test_success_records_no_notification(env):
+    """Successful runs stay silent — only failures notify."""
     await refresher.run_due_refresh()
-    infos = [msg for level, _, msg in env["notifications"] if level == "info"]
-    assert any(str(len(_all_source_names())) in msg for msg in infos)
+    assert env["notifications"] == []
 
 
 async def test_scrape_error_is_swallowed_and_notified(env):
