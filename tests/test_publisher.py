@@ -480,12 +480,12 @@ class TestCategorization:
         A post without its AI categories is worse than a delayed one, so the
         whole publish is retried later instead of going out uncategorized.
         """
-        from app import curator
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
         from app.db import articles as articles_mod
         from app.db.constants import STATUS_PUBLISHING
         from app.db.models import Base
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
 
         engine = create_engine(f"sqlite:///{article_dirs[0].parent / 'pub.db'}")
         Base.metadata.create_all(engine)
@@ -534,7 +534,6 @@ class TestCategorization:
         async def requeue_publish(article):
             # publish_article cleared the status and returned None.
             article.status = None
-            return None
 
         marked: list[list[int]] = []
 

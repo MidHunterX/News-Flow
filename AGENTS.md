@@ -37,11 +37,15 @@ uv run python scripts/publish_check.py [--publish] [--model]
                               # (--publish also POSTs a draft, then deletes it;
                               # --model only pings the configured Gemini model)
 uv sync                       # install/update dependencies
+uv run ruff check .           # lint (auto-fix with --fix); runs offline
 uv run playwright install chromium   # once, for browser-rendered pages
 ```
 
 There is no separate typechecker configured; run `uv run pytest` as the
-verification gate.
+verification gate. `uv run ruff check .` is the lint gate (ruff is a dev
+dependency, rules configured in `pyproject.toml` under `[tool.ruff.lint]`) —
+run it before committing and prefer `ruff check --fix` over manual cleanup
+for findings it can autofix.
 
 ## Layout
 
