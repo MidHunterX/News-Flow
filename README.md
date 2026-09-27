@@ -27,14 +27,15 @@ Both modes run side by side. A human operator can pair-publish with the agent al
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending: scraped into the cache
-    Pending --> Accepted: human click · AI Publish pick
-    Pending --> Rejected: rejected
-    Rejected --> Pending: restore
-    Accepted --> Pending: cancel
-    Accepted --> Publishing: completion timer elapsed (atomic claim)
-    Publishing --> Completed: post created (failures still complete)
-    Publishing --> Accepted: startup crash recovery requeues
+    [*] --> Pending: scraped into cache
+    Pending --> Accepted: Accept
+    Pending --> Accepted: AI Curated Articles
+    Pending --> Rejected: Reject
+    Rejected --> Pending: Restore
+    Accepted --> Pending: Cancel
+    Accepted --> Publishing: completion timer elapsed
+    Publishing --> Completed: WordPress post created
+    Publishing --> Accepted: startup crash recovery
     Completed --> [*]
 ```
 
@@ -80,7 +81,7 @@ Every article has a dedicated page at `/article/{id}` — reach it via the **Pre
 
 | Zone | Click to copy |
 |------|---------------|
-| 🖼️ Cover image | The web path of the downloaded cover (e.g. `/covers/kaumudi-123.jpg`) |
+| 🖼️ Cover image | The web path of the downloaded cover (e.g. `/covers/img-123.jpg`) |
 | 📰 Heading | The scraped headline, clean and newline-free |
 | 📄 Article body | The full scraped text, ready for your editor |
 
