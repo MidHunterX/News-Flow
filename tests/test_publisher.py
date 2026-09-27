@@ -472,6 +472,86 @@ class TestCategorization:
         monkeypatch.setattr("app.client.get_client", fake_get_client)
         assert await publish_article(make_article()) == f"{WP_BASE}/?p=7"
 
+    async def test_gemini_timeout_requeues_article_without_post(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        """A categorization timeout clears the status; no WP post is made.
+
+        A post without its AI categories is worse than a delayed one, so the
+        whole publish is retried later instead of going out uncategorized.
+        """
+        from app import curator
+        from app.db import articles as articles_mod
+        from app.db.constants import STATUS_PUBLISHING
+        from app.db.models import Base
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        engine = create_engine(f"sqlite:///{article_dirs[0].parent / 'pub.db'}")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        monkeypatch.setattr(articles_mod, "SessionLocal", session_factory)
+
+        with session_factory() as session:
+            session.add(Article(
+                id=1, title="First Article", url="https://example.com/a",
+                image_url=None, description="Short description",
+                published_at="2026-09-19", source="kaumudi",
+                status=STATUS_PUBLISHING, accepted_order=1,
+            ))
+            session.commit()
+
+        import app.gemini as gemini_mod
+
+        async def timeout_suggest(article, heading, body):
+            raise gemini_mod.GeminiTimeoutError("timed out after retries")
+
+        monkeypatch.setattr(gemini_mod, "suggest_categories", timeout_suggest)
+
+        async def fail_post(url, kwargs):
+            raise AssertionError("no WordPress post after a Gemini timeout")
+
+        async def fake_get_client():
+            return FakeClient(fail_post)
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await publish_article(make_article()) is None
+
+        with session_factory() as session:
+            row = session.get(Article, 1)
+            # The claim was released: the article is pending again and its
+            # queue slot (accepted_order) was reset.
+            assert row.status is None
+            assert row.accepted_order is None
+
+    async def test_gemini_timeout_does_not_complete_the_batch_slot(
+        self, wp_env, monkeypatch
+    ):
+        """publish_due_articles leaves a requeued article uncompleted."""
+        async def fake_get_due(interval):
+            return [make_article(id=5)]
+
+        async def requeue_publish(article):
+            # publish_article cleared the status and returned None.
+            article.status = None
+            return None
+
+        marked: list[list[int]] = []
+
+        async def fake_mark(ids, expected_status=None):
+            marked.append(ids)
+            return len(ids)
+
+        monkeypatch.setattr(publisher, "get_due_articles", fake_get_due)
+        monkeypatch.setattr(publisher, "publish_article", requeue_publish)
+        monkeypatch.setattr(publisher, "mark_articles_completed", fake_mark)
+
+        assert await publish_due_articles(600) == 1
+        # The caller still attempts the completion transition; the DB layer's
+        # expected_status guard (row no longer STATUS_PUBLISHING) is what
+        # actually protects the requeued article from being completed.
+        assert marked == [[5]]
+
 
 class TestPublishDueArticles:
     async def test_publishes_before_marking_completed(self, wp_env, monkeypatch):

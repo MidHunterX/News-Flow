@@ -129,6 +129,9 @@ async def accept_article(article_id: int):
 
     Also scrapes the article page to download the cover image, falling back
     to the listing-page thumbnail (``image_url``) when that download fails.
+    When the article page itself cannot be scraped (fetch error, unparseable
+    markup, empty body) the acceptance is rolled back — all parts of an
+    article matter, so it stays pending instead of flowing on half-empty.
     """
     article = await get_article_by_id(article_id)
     if article is None:
@@ -137,9 +140,12 @@ async def accept_article(article_id: int):
     if not await set_article_status(article_id, STATUS_ACCEPTED):
         raise HTTPException(404, "Article not found")
 
-    # Scrape the article page for cover image and content, then download.
-    # Failures are swallowed — accept never fails because scraping did.
-    await enrich_accepted_article(article)
+    # Scrape the article page for cover image and content.
+    if not await enrich_accepted_article(article):
+        # Scraping failed and nothing usable was saved: clear the status so
+        # the article waits as pending instead of heading to publishing.
+        await set_article_status(article_id, None)
+        return {"ok": False, "cleared": True}
 
     return {"ok": True}
 

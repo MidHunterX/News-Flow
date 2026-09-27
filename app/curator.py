@@ -40,6 +40,7 @@ from app.db.constants import (
     AI_PUBLISH_LAST_RUN_KEY,
     NOTIF_ERROR,
     NOTIF_INFO,
+    NOTIF_WARNING,
     STATUS_ACCEPTED,
     now_iso,
 )
@@ -49,15 +50,21 @@ from app.models import NewsItem
 logger = logging.getLogger(__name__)
 
 
-async def enrich_accepted_article(article: NewsItem) -> None:
+async def enrich_accepted_article(article: NewsItem) -> bool:
     """Scrape an accepted article's page for cover + content.
 
     Shared by the UI's accept endpoint and the AI Publish curator so both
     paths produce identical workspaces: the cover is downloaded to
     ``public/covers/`` (falling back to the listing thumbnail) and the
     scraped heading + body are saved to ``public/articles/<id>.txt`` for the
-    article view and the WordPress publisher. Every failure is swallowed —
-    acceptance must never fail because scraping did.
+    article view and the WordPress publisher.
+
+    Returns False when the article page could not be used: the fetch raised,
+    the page didn't parse, or the parsed body came back empty. The caller is
+    expected to clear the article's status (an article without its full
+    content must not flow on to publishing). Failures in the *cover*
+    download or file writes still count as success — those have their own
+    fallbacks and are not essential to the article being publishable.
     """
     from app.browser import fetch_rendered_html
     from app.scrapers.init import SCRAPERS
@@ -65,7 +72,7 @@ async def enrich_accepted_article(article: NewsItem) -> None:
 
     article_id = article.id
     if not article_id or not article.url or article.source not in SCRAPERS:
-        return
+        return False
     scraper = SCRAPERS[article.source]
     try:
         if scraper.needs_browser:
@@ -76,29 +83,34 @@ async def enrich_accepted_article(article: NewsItem) -> None:
         else:
             html = await fetch_html(article.url)
         scraped = await scraper.scrape_article_page(html)
-        if scraped:
-            local_path = None
-            if scraped.cover_path:
-                local_path = await download_image(scraped.cover_path)
-                if local_path is None and article.image_url:
-                    # Cover download failed; fall back to the thumbnail
-                    # image from the listing page.
-                    local_path = await download_image(article.image_url)
-            if local_path:
-                # Store the web-accessible path relative to covers dir.
-                cover_name = Path(local_path).name
-                cover_web = f"/covers/{cover_name}"
-                from app.db import update_article_cover_file
-
-                await update_article_cover_file(article_id, cover_web)
-            # Persist scraped content for the article view page.
-            ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
-            content_file = ARTICLES_DIR / f"{article_id}.txt"
-            content_file.write_text(
-                f"{scraped.heading}\n\n{scraped.content}", encoding="utf-8"
-            )
+        if not scraped or not scraped.content.strip():
+            # Unparseable page or an article without a body: the workspace
+            # would end up empty, so treat it as a scraping failure.
+            return False
     except Exception:
-        pass  # Don't fail the accept if scraping fails
+        return False  # Fetch or parse failed; nothing was persisted.
+
+    local_path = None
+    if scraped.cover_path:
+        local_path = await download_image(scraped.cover_path)
+        if local_path is None and article.image_url:
+            # Cover download failed; fall back to the thumbnail
+            # image from the listing page.
+            local_path = await download_image(article.image_url)
+    if local_path:
+        # Store the web-accessible path relative to covers dir.
+        cover_name = Path(local_path).name
+        cover_web = f"/covers/{cover_name}"
+        from app.db import update_article_cover_file
+
+        await update_article_cover_file(article_id, cover_web)
+    # Persist scraped content for the article view page.
+    ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
+    content_file = ARTICLES_DIR / f"{article_id}.txt"
+    content_file.write_text(
+        f"{scraped.heading}\n\n{scraped.content}", encoding="utf-8"
+    )
+    return True
 
 
 async def run_due_selection() -> int:
@@ -195,7 +207,9 @@ async def _accept_picked(pending: list[NewsItem], picked_ids: list[int]) -> list
 
     Articles already transitioned (accepted/rejected in the meantime) are
     skipped by the status guard inside set_article_status's flow — a picked ID
-    that is no longer pending simply doesn't get accepted again.
+    that is no longer pending simply doesn't get accepted again. An article
+    whose page could not be scraped is sent back to pending instead: AI
+    Publish counts only fully enriched articles as accepted.
     """
     accepted: list[int] = []
     pending_by_id = {item.id: item for item in pending if item.id is not None}
@@ -205,8 +219,19 @@ async def _accept_picked(pending: list[NewsItem], picked_ids: list[int]) -> list
         if item is None:
             continue
         if await set_article_status(article_id, STATUS_ACCEPTED):
-            accepted.append(article_id)
             # Give the AI-picked article the same treatment as one accepted
             # from the UI: cover downloaded + content saved for publishing.
-            await enrich_accepted_article(item)
+            if await enrich_accepted_article(item):
+                accepted.append(article_id)
+            else:
+                # All parts of an article matter: without its scraped content
+                # it must not flow on to publishing — clear the status so it
+                # waits as pending (and may be picked again later).
+                await set_article_status(article_id, None)
+                await record_notification(
+                    NOTIF_WARNING,
+                    "ai_publish",
+                    f"Article {article_id} accepted but its page could not be "
+                    "scraped; moved back to pending",
+                )
     return accepted

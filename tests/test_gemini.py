@@ -167,6 +167,99 @@ class TestMatchTerms:
 
 
 # ---------------------------------------------------------------------------
+# Shared _generate_content retry policy (ReadTimeout + transient failures)
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateContent:
+    """The shared request/retry helper behind both AI features."""
+
+    async def test_success_returns_parsed_json(self, gemini_env, monkeypatch):
+        client = FakeClient(lambda url, kwargs: _gemini_response(["Sports"]))
+        parsed = await gemini._generate_content(client, {})
+        assert parsed == {"categories": ["Sports"]}
+        assert len(client.calls) == 1
+
+    async def test_readtimeout_retried_with_growing_backoff(
+        self, gemini_env, monkeypatch
+    ):
+        """A ReadTimeout is retried 'after a while' with a longer backoff."""
+        sleeps: list[float] = []
+
+        async def fake_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        calls = {"n": 0}
+
+        def handler(url, kwargs):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                raise httpx.ReadTimeout("timed out")
+            return _gemini_response(["Sports"])
+
+        client = FakeClient(handler)
+        assert await gemini._generate_content(client, {}) == {
+            "categories": ["Sports"]
+        }
+        assert len(client.calls) == 3
+        # The timeout backoff is deliberately longer than the transient
+        # one ("retry again after a while"), and grows per attempt.
+        assert sleeps == [
+            gemini._TIMEOUT_BACKOFF_SECONDS,
+            gemini._TIMEOUT_BACKOFF_SECONDS * 2,
+        ]
+
+    async def test_readtimeout_exhausted_raises_gemini_timeout_error(
+        self, gemini_env, monkeypatch
+    ):
+        """Still timing out after every retry raises GeminiTimeoutError."""
+
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        client = FakeClient(lambda url, kwargs: (_ for _ in ()).throw(
+            httpx.ReadTimeout("timed out")
+        ))
+        with pytest.raises(gemini.GeminiTimeoutError):
+            await gemini._generate_content(client, {})
+        # Initial attempt + _TIMEOUT_RETRIES retries.
+        assert len(client.calls) == gemini._TIMEOUT_RETRIES + 1
+
+    async def test_transient_transport_error_retried(
+        self, gemini_env, monkeypatch
+    ):
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        calls = {"n": 0}
+
+        def handler(url, kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise httpx.ConnectError("conn refused")
+            return _gemini_response([])
+
+        client = FakeClient(handler)
+        assert await gemini._generate_content(client, {})
+        assert len(client.calls) == 2
+
+    async def test_retryable_status_retried_then_gives_up(
+        self, gemini_env, monkeypatch
+    ):
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        client = FakeClient(lambda url, kwargs: FakeResponse(status_code=500))
+        with pytest.raises(httpx.HTTPError):
+            await gemini._generate_content(client, {})
+        assert len(client.calls) == gemini._MAX_ATTEMPTS
+
+
+# ---------------------------------------------------------------------------
 # suggest_categories end-to-end (faked HTTP)
 # ---------------------------------------------------------------------------
 
@@ -224,6 +317,35 @@ class TestSuggestCategories:
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
         assert await gemini.suggest_categories(_article(), "H", "B") == []
+
+    async def test_timeout_after_retries_raises_and_notifies(
+        self, gemini_env, synced_terms, monkeypatch
+    ):
+        """A stubborn ReadTimeout propagates instead of failing soft."""
+
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        client = FakeClient(lambda url, kwargs: (_ for _ in ()).throw(
+            httpx.ReadTimeout("timed out")
+        ))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        with pytest.raises(gemini.GeminiTimeoutError):
+            await gemini.suggest_categories(_article(), "H", "B")
+        # Every timeout retry was attempted.
+        assert len(client.calls) == gemini._TIMEOUT_RETRIES + 1
+        # The UI notification log records the timeout.
+        from app.db import get_notifications
+
+        rows = await get_notifications()
+        assert len(rows) == 1
+        assert rows[0].level == "warning"
+        assert "timed out" in rows[0].message
 
     async def test_malformed_response_returns_empty(
         self, gemini_env, synced_terms, monkeypatch
@@ -330,6 +452,31 @@ class TestPickArticleIds:
         monkeypatch.setattr("app.client.get_client", fake_get_client)
         monkeypatch.setattr(gemini.asyncio, "sleep", async_noop)
         assert await gemini.pick_article_ids(PENDING, [], 2) == []
+
+    async def test_timeout_skips_round_after_retries(
+        self, gemini_env, monkeypatch
+    ):
+        """A stubborn ReadTimeout skips the round (nothing to requeue)."""
+
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        client = FakeClient(lambda url, kwargs: (_ for _ in ()).throw(
+            httpx.ReadTimeout("timed out")
+        ))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await gemini.pick_article_ids(PENDING, [], 2) == []
+        assert len(client.calls) == gemini._TIMEOUT_RETRIES + 1
+        from app.db import get_notifications
+
+        rows = await get_notifications()
+        assert len(rows) == 1
+        assert "timed out" in rows[0].message
 
     async def test_malformed_response_returns_empty(
         self, gemini_env, monkeypatch

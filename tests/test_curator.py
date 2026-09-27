@@ -49,6 +49,7 @@ def env(monkeypatch):
     settings = _Settings()
     notifications: list[tuple[str, str, str]] = []
     accepted_ids: list[int] = []
+    cleared: list[int] = []
     enriched: list[int] = []
 
     async def fake_get_toggle(key: str) -> bool:
@@ -83,10 +84,13 @@ def env(monkeypatch):
     async def fake_set_article_status(article_id: int, status) -> bool:
         if status == "accepted":
             accepted_ids.append(article_id)
+        elif status is None:
+            cleared.append(article_id)
         return True
 
-    async def fake_enrich(article: NewsItem) -> None:
+    async def fake_enrich(article: NewsItem) -> bool:
         enriched.append(article.id)
+        return True  # scraping succeeded by default
 
     monkeypatch.setattr("app.db.get_toggle", fake_get_toggle)
     # The rest are bound into app.curator's namespace at import time.
@@ -106,6 +110,7 @@ def env(monkeypatch):
     settings.pending = [_item(1), _item(2), _item(3)]
     settings.notifications = notifications
     settings.accepted_ids = accepted_ids
+    settings.cleared = cleared
     settings.enriched = enriched
     settings.picked = [2, 3]
     return settings
@@ -206,6 +211,20 @@ async def test_hallucinated_ids_never_accept(env, monkeypatch):
 async def test_accept_enriches_article_for_publishing(env):
     await curator.run_due_selection()
     assert env.enriched == [2, 3]
+
+
+async def test_scrape_failure_clears_status_and_counts_nothing(env, monkeypatch):
+    """An article whose page can't be scraped goes back to pending."""
+
+    async def failing_enrich(article):
+        return False  # scraping failed, nothing usable was saved
+
+    monkeypatch.setattr(curator, "enrich_accepted_article", failing_enrich)
+    assert await curator.run_due_selection() == 0
+    assert env.accepted_ids == [2, 3]  # acceptance was attempted...
+    assert env.cleared == [2, 3]       # ...but rolled back to pending
+    levels = [level for level, _, _ in env.notifications]
+    assert "warning" in levels
 
 
 async def test_unconfigured_gemini_skips_round(env, monkeypatch):

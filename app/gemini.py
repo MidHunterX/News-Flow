@@ -15,6 +15,15 @@ Two AI features share this module:
   duplicate-avoidance context, and responds with up to *count* article IDs
   via a JSON schema. Matching drops any ID not in the offered list, so a
   hallucinated ID can never accept a real article.
+
+Both calls share a retry policy: retryable HTTP statuses (429/5xx) and
+transient transport errors are retried with a short backoff, and
+ReadTimeouts — the thinking model regularly needs longer than one request
+window — are retried after a longer pause. A call that still times out after
+those retries raises :class:`GeminiTimeoutError` so the caller can react
+properly: the publisher sends the article back to pending (a post without
+categories is worse than a delayed one) and AI Publish simply skips the
+round.
 """
 
 from __future__ import annotations
@@ -45,6 +54,22 @@ REQUEST_TIMEOUT = httpx.Timeout(60.0)
 # Transient failures worth retrying with a short backoff.
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 _MAX_ATTEMPTS = 3
+
+# A ReadTimeout usually means the model is still thinking: retrying "after a
+# while" (a longer, fixed backoff) succeeds far more often than failing the
+# call outright. These are the extra attempts beyond the initial request.
+_TIMEOUT_RETRIES = 2
+_TIMEOUT_BACKOFF_SECONDS = 5.0
+
+
+class GeminiTimeoutError(TimeoutError):
+    """generateContent still timed out after every retry.
+
+    Raised (not swallowed) so callers can distinguish "Gemini is slow" from
+    other failures: the publisher clears the article's status and retries the
+    whole publish later, instead of posting it uncategorized.
+    """
+
 
 # A synced term as fed to the model/matcher: (wp_term_id, name, slug).
 TermTriple = tuple[int, str, str]
@@ -182,6 +207,71 @@ def _match_terms(names: Any, available: list[TermTriple]) -> list[int]:
     return matched
 
 
+async def _generate_content(
+    client: httpx.AsyncClient, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """POST one generateContent request; return the parsed JSON response.
+
+    Shared retry policy for both AI features:
+
+    * retryable HTTP statuses (429/5xx) and transient transport errors are
+      retried with a short backoff (``_MAX_ATTEMPTS`` posts in total);
+    * ReadTimeout — the thinking model regularly needs longer than one
+      request window — is retried after a while with a longer, growing
+      backoff (``_TIMEOUT_RETRIES`` extra attempts).
+
+    Raises :class:`GeminiTimeoutError` when the request still times out
+    after every retry; other terminal failures raise the underlying httpx
+    error and stay fail-soft at the caller.
+    """
+    url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
+    retries = 0
+    timeout_retries = 0
+    while True:
+        try:
+            resp = await client.post(
+                url,
+                headers={"x-goog-api-key": GEMINI_API_KEY},
+                json=payload,
+                timeout=REQUEST_TIMEOUT,
+            )
+        except httpx.ReadTimeout as exc:
+            timeout_retries += 1
+            if timeout_retries > _TIMEOUT_RETRIES:
+                logger.warning(
+                    "Gemini generateContent still timing out after %d attempts",
+                    timeout_retries,
+                )
+                raise GeminiTimeoutError(
+                    f"generateContent timed out after {timeout_retries} attempts"
+                ) from exc
+            backoff = _TIMEOUT_BACKOFF_SECONDS * timeout_retries
+            logger.warning(
+                "Gemini ReadTimeout; retrying after a while "
+                "(%.0fs, attempt %d/%d)",
+                backoff, timeout_retries + 1, _TIMEOUT_RETRIES + 1,
+            )
+            await asyncio.sleep(backoff)
+            continue
+        except httpx.TransportError:
+            if retries >= _MAX_ATTEMPTS - 1:
+                raise
+            retries += 1
+            await asyncio.sleep(1.0)
+            continue
+        if resp.status_code not in _RETRY_STATUSES:
+            break
+        if retries >= _MAX_ATTEMPTS - 1:
+            break  # Terminal 429/5xx: raise_for_status below reports it.
+        retries += 1
+        retry_after = float(getattr(resp, "headers", {}).get("retry-after") or 0)
+        await asyncio.sleep(min(5.0, retry_after or 0.5 * retries))
+    resp.raise_for_status()
+    data = resp.json()
+    text = data["candidates"][0]["content"]["parts"][0]["text"]
+    return _extract_json(text)
+
+
 async def suggest_categories(
     article: NewsItem, heading: str, body: str
 ) -> list[int]:
@@ -217,30 +307,20 @@ async def suggest_categories(
     }
     try:
         client = await get_client()
-        resp = None
-        for attempt in range(_MAX_ATTEMPTS):
-            try:
-                resp = await client.post(
-                    f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
-                    headers={"x-goog-api-key": GEMINI_API_KEY},
-                    json=payload,
-                    timeout=REQUEST_TIMEOUT,
-                )
-                if resp.status_code not in _RETRY_STATUSES:
-                    break
-                retry_after = float(
-                    resp.headers.get("retry-after") or 0
-                )
-            except httpx.TransportError:
-                if attempt == _MAX_ATTEMPTS - 1:
-                    raise
-                retry_after = 1.0
-            if attempt < _MAX_ATTEMPTS - 1:
-                await asyncio.sleep(min(5.0, retry_after or 0.5 * (attempt + 1)))
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        parsed = _extract_json(text)
+        parsed = await _generate_content(client, payload)
+    except GeminiTimeoutError:
+        # Distinct from a generic failure: the caller reacts specifically
+        # (the publisher requeues the article; the smoke script reports it).
+        # Surface it in the UI notification log before propagating.
+        from app.db.notifications import record_notification
+
+        await record_notification(
+            NOTIF_WARNING,
+            "gemini",
+            "Categorization timed out after retries",
+            article_id=article.id,
+        )
+        raise
     except Exception as exc:
         # Fail-soft like publishing: log and skip categorization. Include the
         # type name — transport timeouts stringify to an empty message.
@@ -344,28 +424,18 @@ async def pick_article_ids(
     }
     try:
         client = await get_client()
-        resp = None
-        for attempt in range(_MAX_ATTEMPTS):
-            try:
-                resp = await client.post(
-                    f"{API_BASE}/models/{GEMINI_MODEL}:generateContent",
-                    headers={"x-goog-api-key": GEMINI_API_KEY},
-                    json=payload,
-                    timeout=REQUEST_TIMEOUT,
-                )
-                if resp.status_code not in _RETRY_STATUSES:
-                    break
-                retry_after = float(resp.headers.get("retry-after") or 0)
-            except httpx.TransportError:
-                if attempt == _MAX_ATTEMPTS - 1:
-                    raise
-                retry_after = 1.0
-            if attempt < _MAX_ATTEMPTS - 1:
-                await asyncio.sleep(min(5.0, retry_after or 0.5 * (attempt + 1)))
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        parsed = _extract_json(text)
+        parsed = await _generate_content(client, payload)
+    except GeminiTimeoutError:
+        # No article exists yet, so there is nothing to requeue: skipping the
+        # round (the curator waits one interval) is the right recovery.
+        from app.db.notifications import record_notification
+
+        await record_notification(
+            NOTIF_WARNING,
+            "gemini",
+            "AI Publish selection timed out after retries; skipping this round",
+        )
+        return []
     except Exception as exc:
         # Fail-soft: a 429 or any other error just skips this round.
         logger.warning("Gemini article selection failed: %s: %s",

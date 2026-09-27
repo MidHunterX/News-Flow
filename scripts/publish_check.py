@@ -46,7 +46,12 @@ from app.config import (
     WORDPRESS_USERNAME,
 )
 from app.db import get_categories, get_tags, init_db
-from app.gemini import API_BASE, REQUEST_TIMEOUT, suggest_categories
+from app.gemini import (
+    API_BASE,
+    REQUEST_TIMEOUT,
+    GeminiTimeoutError,
+    suggest_categories,
+)
 from app.models import NewsItem
 from app.wordpress import sync_terms
 
@@ -153,9 +158,18 @@ async def check_gemini(report: Report) -> list[int]:
                    detail="GEMINI_API_KEY not set — categorization disabled")
         return []
 
-    matched = await suggest_categories(
-        SAMPLE, SAMPLE.title, SAMPLE.description
-    )
+    try:
+        matched = await suggest_categories(
+            SAMPLE, SAMPLE.title, SAMPLE.description
+        )
+    except GeminiTimeoutError as exc:
+        report.add(
+            "gemini categorization",
+            ok=False,
+            detail=f"ReadTimeout even after retries ({exc}) — check "
+                   f"GEMINI_MODEL latency or the API quota",
+        )
+        return []
     if not matched:
         report.add(
             "gemini categorization",

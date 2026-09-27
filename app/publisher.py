@@ -11,7 +11,10 @@ Authentication uses a WordPress application password over HTTP Basic auth
 
 Publishing is fail-soft: a failed request is logged and skipped, and the
 article is still marked completed (mirroring how the accept endpoint never
-fails because of scraping errors).
+fails because of scraping errors). One exception: when Gemini categorization
+times out after every retry, the article's status is cleared back to pending
+instead — a post without its categories is worse than a delayed one, so the
+whole publish (cover, categories, post) is retried once Gemini responds.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from app.config import (
     WORDPRESS_USERNAME,
 )
 from app.db import get_due_articles, get_toggle, mark_articles_completed
+from app.db.articles import set_article_status
 from app.db.constants import NOTIF_ERROR, NOTIF_WARNING, STATUS_PUBLISHING
 from app.db.notifications import record_notification
 from app.db.wp_terms import set_article_category_ids
@@ -137,26 +141,38 @@ async def _upload_media(
         return None
 
 
-async def _mark_categories(article: NewsItem, heading: str, body: str) -> None:
+async def _mark_categories(article: NewsItem, heading: str, body: str) -> bool:
     """Ask Gemini for related categories and store the IDs on the article.
 
-    Skipped when the ``ai_auto_categorization`` setting is off. Fail-soft:
-    any failure leaves the article uncategorized and logged; the post still
-    goes out under the site default category.
+    Skipped when the ``ai_auto_categorization`` setting is off (returns True —
+    there was nothing to wait for). Fail-soft otherwise: any non-timeout
+    failure leaves the article uncategorized and logged; the post still goes
+    out under the site default category.
+
+    Returns False only when Gemini timed out after every retry: publishing a
+    post without its categories is worse than a delayed one, so the caller
+    sends the article back to pending and retries the whole publish later.
     """
     if not await get_toggle("ai_auto_categorization"):
-        return
-    from app.gemini import suggest_categories  # lazy: tests patch app.gemini
+        return True
+    from app.gemini import GeminiTimeoutError, suggest_categories  # lazy: tests
 
     try:
         ids = await suggest_categories(article, heading, body)
+    except GeminiTimeoutError:
+        logger.warning(
+            "Gemini categorization timed out; requeueing article %s as pending",
+            article.id,
+        )
+        return False
     except Exception as exc:
         logger.warning("Category suggestion failed for %s: %s", article.id, exc)
-        return
+        return True
     if ids:
         await set_article_category_ids(article.id, ids)
         # Reflect on the in-memory item so _post_fields picks it up.
         article.wp_category_ids = ids
+    return True
 
 
 async def publish_article(article: NewsItem) -> str | None:
@@ -164,7 +180,10 @@ async def publish_article(article: NewsItem) -> str | None:
 
     Publishing can be disabled (no credentials configured, or the
     ``auto_publish`` setting is off) or fail (HTTP error); both return None
-    without raising.
+    without raising. A Gemini categorization timeout additionally clears the
+    article's status back to pending — the caller then skips completion (the
+    mark_articles_completed status guard ignores the requeued row) and the
+    article is published on a later run.
     """
     if not is_configured() or not await get_toggle("auto_publish"):
         return None
@@ -178,7 +197,13 @@ async def publish_article(article: NewsItem) -> str | None:
     )
 
     heading, body = read_article_content(article.id)
-    await _mark_categories(article, heading, body)
+    if not await _mark_categories(article, heading, body):
+        # Gemini timed out after every retry: clear the status so the article
+        # waits as pending and the whole publish (cover upload, categories,
+        # post) is retried once Gemini is responsive again. Nothing was
+        # created on WordPress, so requeueing is safe.
+        await set_article_status(article.id, None)
+        return None
     try:
         resp = await client.post(
             _api_url("/posts"),
