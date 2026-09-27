@@ -71,155 +71,170 @@
             </svg>
           </button>
         </div>
-        <div class="space-y-4 overflow-y-auto px-6 py-5 flex-1 min-h-0">
-          <!-- Group: General -->
-          <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">General</p>
-          <div>
-            <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
-              Completion interval (minutes)
-            </label>
-            <p class="text-xs text-gray-500 mb-2">
-              Accepted articles are marked completed one by one, each this long after being accepted.
-            </p>
-            <input
-              id="completion-interval-input"
-              type="number"
-              min="1"
-              step="1"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-          <div>
-            <label for="refresh-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
-              Refresh interval (minutes)
-            </label>
-            <p class="text-xs text-gray-500 mb-2">
-              How often the backend re-scrapes every source in the background.
-            </p>
-            <input
-              id="refresh-interval-input"
-              type="number"
-              min="1"
-              step="1"
-              class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Article list layout</label>
-            <p class="text-xs text-gray-500 mb-2">How pending articles are displayed on the left.</p>
-            <div id="article-layout-picker" class="grid grid-cols-3 gap-2">
-              <button type="button" data-layout="grid" onclick="selectArticleLayout('grid')"
-                      class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
-                </svg>
-                Grid
-              </button>
-              <button type="button" data-layout="rows" onclick="selectArticleLayout('rows')"
-                      class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
-                </svg>
-                Rows
-              </button>
-              <button type="button" data-layout="compact" onclick="selectArticleLayout('compact')"
-                      class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
-                </svg>
-                Compact
-              </button>
+        <div class="space-y-6 overflow-y-auto px-6 py-5 flex-1 min-h-0">
+
+          <!-- ============================================================ -->
+          <!-- Group 1: Display                                             -->
+          <!-- ============================================================ -->
+          <div class="space-y-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Display</p>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Article list layout</label>
+              <p class="text-xs text-gray-500 mb-2">How pending articles are displayed on the left.</p>
+              <div id="article-layout-picker" class="grid grid-cols-3 gap-2">
+                <button type="button" data-layout="grid" onclick="selectArticleLayout('grid')"
+                        class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                  </svg>
+                  Grid
+                </button>
+                <button type="button" data-layout="rows" onclick="selectArticleLayout('rows')"
+                        class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
+                  </svg>
+                  Rows
+                </button>
+                <button type="button" data-layout="compact" onclick="selectArticleLayout('compact')"
+                        class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                  </svg>
+                  Compact
+                </button>
+              </div>
             </div>
           </div>
-          {% if toggles.get("ai_publish", {}).get("available") %}
-            <!-- AI Publish knobs: only meaningful when the feature can run. -->
-            <div class="border-t border-gray-200 pt-4">
-              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
-                AI Publish
+
+          <!-- ============================================================ -->
+          <!-- Group 2: Scraping & Completion                               -->
+          <!-- ============================================================ -->
+          <div class="border-t border-gray-200 pt-4 space-y-4">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Scraping &amp; Completion</p>
+            <div>
+              <label for="refresh-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
+                Refresh interval (minutes)
+              </label>
+              <p class="text-xs text-gray-500 mb-2">
+                How often the backend re-scrapes every source in the background.
               </p>
-              <div class="space-y-4">
-                <div>
-                  <label for="ai-publish-count-input" class="block text-sm font-medium text-gray-700 mb-1">
-                    Articles per prompt
-                  </label>
-                  <p class="text-xs text-gray-500 mb-2">
-                    How many pending articles Gemini picks each time.
-                  </p>
-                  <input
-                    id="ai-publish-count-input"
-                    type="number"
-                    min="1"
-                    step="1"
-                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label for="ai-publish-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
-                    Prompt interval (minutes)
-                  </label>
-                  <p class="text-xs text-gray-500 mb-2">
-                    How long to wait between Gemini selection prompts.
-                  </p>
-                  <input
-                    id="ai-publish-interval-input"
-                    type="number"
-                    min="1"
-                    step="1"
-                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label for="ai-publish-history-input" class="block text-sm font-medium text-gray-700 mb-1">
-                    Duplicate-avoidance context
-                  </label>
-                  <p class="text-xs text-gray-500 mb-2">
-                    How many previously accepted headings Gemini sees so it avoids picking the same story from other sources.
-                  </p>
-                  <input
-                    id="ai-publish-history-input"
-                    type="number"
-                    min="0"
-                    step="1"
-                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+              <input
+                id="refresh-interval-input"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
+                Completion interval (minutes)
+              </label>
+              <p class="text-xs text-gray-500 mb-2">
+                Accepted articles are marked completed one by one, each this long after being accepted.
+              </p>
+              <input
+                id="completion-interval-input"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Group 3: AI Curation                                         -->
+          <!-- ============================================================ -->
+          {% if toggles.get("ai_publish", {}).get("available") %}
+            <div class="border-t border-gray-200 pt-4 space-y-4">
+              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                AI Curation
+              </p>
+              <div>
+                <label for="ai-publish-count-input" class="block text-sm font-medium text-gray-700 mb-1">
+                  Articles per prompt
+                </label>
+                <p class="text-xs text-gray-500 mb-2">
+                  How many pending articles Gemini picks each time.
+                </p>
+                <input
+                  id="ai-publish-count-input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label for="ai-publish-interval-input" class="block text-sm font-medium text-gray-700 mb-1">
+                  Prompt interval (minutes)
+                </label>
+                <p class="text-xs text-gray-500 mb-2">
+                  How long to wait between Gemini selection prompts.
+                </p>
+                <input
+                  id="ai-publish-interval-input"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label for="ai-publish-history-input" class="block text-sm font-medium text-gray-700 mb-1">
+                  Duplicate-avoidance context
+                </label>
+                <p class="text-xs text-gray-500 mb-2">
+                  How many previously accepted headings Gemini sees so it avoids picking the same story from other sources.
+                </p>
+                <input
+                  id="ai-publish-history-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
               </div>
             </div>
           {% endif %}
 
-          <!-- Group: Feature toggles -->
-          <div class="border-t border-gray-200 pt-4">
+          <!-- ============================================================ -->
+          <!-- Group 4: Features / Toggles                                  -->
+          <!-- ============================================================ -->
+          <div class="border-t border-gray-200 pt-4 space-y-4">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Features</p>
-          {% for key, toggle in toggles.items() %}
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-gray-700">
-                  {{ toggle.label }}
-                </label>
-                {% if toggle.available %}
-                  <button type="button" data-toggle-key="{{ key }}"
-                          onclick="selectToggle('{{ key }}')"
-                          class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
-                                 {% if toggle.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
-                    <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
-                          style="transform: translateX({% if toggle.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
-                  </button>
-                {% else %}
-                  <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">
-                    Unavailable
-                  </span>
-                {% endif %}
+            {% for key, toggle in toggles.items() %}
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-sm font-medium text-gray-700">
+                    {{ toggle.label }}
+                  </label>
+                  {% if toggle.available %}
+                    <button type="button" data-toggle-key="{{ key }}"
+                            onclick="selectToggle('{{ key }}')"
+                            class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
+                                   {% if toggle.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
+                      <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
+                            style="transform: translateX({% if toggle.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
+                    </button>
+                  {% else %}
+                    <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded">
+                      Unavailable
+                    </span>
+                  {% endif %}
+                </div>
+                <p class="text-xs text-gray-500">
+                  {{ toggle.description }}
+                  {% if not toggle.available %}
+                    <span class="text-amber-600 font-medium">
+                      Requires {{ toggle.required_env|join(", ") }} in the environment.
+                    </span>
+                  {% endif %}
+                </p>
               </div>
-              <p class="text-xs text-gray-500">
-                {{ toggle.description }}
-                {% if not toggle.available %}
-                  <span class="text-amber-600 font-medium">
-                    Requires {{ toggle.required_env|join(", ") }} in the environment.
-                  </span>
-                {% endif %}
-              </p>
-            </div>
-          {% endfor %}
+            {% endfor %}
           </div>
         </div>
 
