@@ -187,7 +187,8 @@ class TestGeminiIntegration:
             published_at="2026-09-19",
             source="kaumudi",
         )
-        assert await gemini.suggest_categories(article, "H", "B") == []
+        with pytest.raises(gemini.GeminiError):
+            await gemini.suggest_categories(article, "H", "B")
 
         rows = await _get()
         assert len(rows) == 1

@@ -49,7 +49,7 @@ from app.db import get_categories, get_tags, init_db
 from app.gemini import (
     API_BASE,
     REQUEST_TIMEOUT,
-    GeminiTimeoutError,
+    GeminiError,
     suggest_categories,
 )
 from app.models import NewsItem
@@ -162,12 +162,13 @@ async def check_gemini(report: Report) -> list[int]:
         matched = await suggest_categories(
             SAMPLE, SAMPLE.title, SAMPLE.description
         )
-    except GeminiTimeoutError as exc:
+    except GeminiError as exc:
         report.add(
             "gemini categorization",
             ok=False,
-            detail=f"ReadTimeout even after retries ({exc}) — check "
-                   f"GEMINI_MODEL latency or the API quota",
+            detail=f"{type(exc).__name__}: {exc or 'no details'} — after "
+                   f"retries; check GEMINI_MODEL availability, the API "
+                   f"quota, or network reachability",
         )
         return []
     if not matched:

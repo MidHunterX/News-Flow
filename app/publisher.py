@@ -9,11 +9,12 @@ Authentication uses a WordPress application password over HTTP Basic auth
   using the scraped content saved by the accept endpoint
   (``public/articles/<id>.txt``) when available.
 
-Publishing is fail-soft: a failed request is logged and skipped, and the
+    Publishing is fail-soft: a failed request is logged and skipped, and the
 article is still marked completed (mirroring how the accept endpoint never
 fails because of scraping errors). One exception: when Gemini categorization
-times out after every retry, the article's status is cleared back to pending
-instead — a post without its categories is worse than a delayed one, so the
+fails after every retry — timeout, HTTP error (e.g. 503), transport failure,
+or an unusable response — the article's status is cleared back to pending
+instead: a post without its categories is worse than a delayed one, so the
 whole publish (cover, categories, post) is retried once Gemini responds.
 """
 
@@ -145,29 +146,31 @@ async def _mark_categories(article: NewsItem, heading: str, body: str) -> bool:
     """Ask Gemini for related categories and store the IDs on the article.
 
     Skipped when the ``ai_auto_categorization`` setting is off (returns True —
-    there was nothing to wait for). Fail-soft otherwise: any non-timeout
-    failure leaves the article uncategorized and logged; the post still goes
-    out under the site default category.
+    there was nothing to wait for). Categorization is non-negotiable: any
+    categorization failure (GeminiError, or anything unexpected) leaves the
+    article uncategorized, so the article is sent back to pending and the
+    whole publish is retried later — a post without its categories is worse
+    than a delayed one. An empty result from a *successful* call ("no
+    category fits") still publishes under the site default category.
 
-    Returns False only when Gemini timed out after every retry: publishing a
-    post without its categories is worse than a delayed one, so the caller
-    sends the article back to pending and retries the whole publish later.
+    Returns False when the article must be requeued (categorization did not
+    happen); True when the publish may proceed.
     """
     if not await get_toggle("ai_auto_categorization"):
         return True
-    from app.gemini import GeminiTimeoutError, suggest_categories  # lazy: tests
+    from app.gemini import suggest_categories  # lazy: tests
 
     try:
         ids = await suggest_categories(article, heading, body)
-    except GeminiTimeoutError:
+    except Exception as exc:
+        # suggest_categories wraps Gemini failures in GeminiError; catch
+        # everything so even an unexpected bug can't publish the article
+        # uncategorized (nor skip its completion below).
         logger.warning(
-            "Gemini categorization timed out; requeueing article %s as pending",
-            article.id,
+            "Gemini categorization failed (%s); requeueing article %s as pending",
+            type(exc).__name__, article.id,
         )
         return False
-    except Exception as exc:
-        logger.warning("Category suggestion failed for %s: %s", article.id, exc)
-        return True
     if ids:
         await set_article_category_ids(article.id, ids)
         # Reflect on the in-memory item so _post_fields picks it up.
@@ -180,7 +183,8 @@ async def publish_article(article: NewsItem) -> str | None:
 
     Publishing can be disabled (no credentials configured, or the
     ``auto_publish`` setting is off) or fail (HTTP error); both return None
-    without raising. A Gemini categorization timeout additionally clears the
+    without raising. A Gemini categorization failure (timeout, HTTP error,
+    transport failure, or an unusable response) additionally clears the
     article's status back to pending — the caller then skips completion (the
     mark_articles_completed status guard ignores the requeued row) and the
     article is published on a later run.
@@ -198,10 +202,11 @@ async def publish_article(article: NewsItem) -> str | None:
 
     heading, body = read_article_content(article.id)
     if not await _mark_categories(article, heading, body):
-        # Gemini timed out after every retry: clear the status so the article
-        # waits as pending and the whole publish (cover upload, categories,
-        # post) is retried once Gemini is responsive again. Nothing was
-        # created on WordPress, so requeueing is safe.
+        # Categorization failed (timeout, HTTP error, transport error, or an
+        # unusable response): clear the status so the article waits as
+        # pending and the whole publish (cover upload, categories, post) is
+        # retried once Gemini is responsive again. Nothing was created on
+        # WordPress, so requeueing is safe.
         await set_article_status(article.id, None)
         return None
     try:

@@ -448,9 +448,15 @@ class TestCategorization:
         post_json = client.calls[0][1]["json"]
         assert post_json["categories"] == [5]
 
-    async def test_suggestion_failure_still_publishes(
+    async def test_suggestion_failure_requeues_article_without_post(
         self, wp_env, article_dirs, monkeypatch
     ):
+        """Any categorization failure requeues: no WP post is made.
+
+        Categorization is non-negotiable — a post without its AI categories
+        is worse than a delayed one, so the whole publish is retried later
+        instead of going out uncategorized.
+        """
         articles_dir, _ = article_dirs
         (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
 
@@ -461,16 +467,14 @@ class TestCategorization:
 
         monkeypatch.setattr(gemini_mod, "suggest_categories", boom)
 
-        def handler(url, kwargs):
-            return FakeResponse({"id": 7, "link": f"{WP_BASE}/?p=7"})
-
-        client = FakeClient(handler)
+        async def fail_post(url, kwargs):
+            raise AssertionError("no WordPress post after a categorization failure")
 
         async def fake_get_client():
-            return client
+            return FakeClient(fail_post)
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
-        assert await publish_article(make_article()) == f"{WP_BASE}/?p=7"
+        assert await publish_article(make_article()) is None
 
     async def test_gemini_timeout_requeues_article_without_post(
         self, wp_env, article_dirs, monkeypatch
@@ -522,6 +526,54 @@ class TestCategorization:
             # The claim was released: the article is pending again and its
             # queue slot (accepted_order) was reset.
             assert row.status is None
+            assert row.accepted_order is None
+
+    async def test_gemini_http_error_requeues_article_without_post(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        """A terminal 503 (the incident from TASK.md) requeues, never publishes."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from app.db import articles as articles_mod
+        from app.db.constants import STATUS_PUBLISHING
+        from app.db.models import Base
+
+        engine = create_engine(f"sqlite:///{article_dirs[0].parent / 'pub503.db'}")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        monkeypatch.setattr(articles_mod, "SessionLocal", session_factory)
+
+        with session_factory() as session:
+            session.add(Article(
+                id=1, title="First Article", url="https://example.com/a",
+                image_url=None, description="Short description",
+                published_at="2026-09-19", source="kaumudi",
+                status=STATUS_PUBLISHING, accepted_order=1,
+            ))
+            session.commit()
+
+        import app.gemini as gemini_mod
+
+        async def http_error_suggest(article, heading, body):
+            raise gemini_mod.GeminiHTTPError(
+                "generateContent failed: HTTP 503"
+            )
+
+        monkeypatch.setattr(gemini_mod, "suggest_categories", http_error_suggest)
+
+        async def fail_post(url, kwargs):
+            raise AssertionError("no WordPress post after a categorization failure")
+
+        async def fake_get_client():
+            return FakeClient(fail_post)
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        assert await publish_article(make_article()) is None
+
+        with session_factory() as session:
+            row = session.get(Article, 1)
+            assert row.status is None  # back to pending, retried later
             assert row.accepted_order is None
 
     async def test_gemini_timeout_does_not_complete_the_batch_slot(

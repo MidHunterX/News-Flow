@@ -144,9 +144,17 @@ class TestExtractJson:
             '```json\n{"categories": ["A"]}\n```'
         ) == {"categories": ["A"]}
 
-    def test_garbage_raises(self):
-        with pytest.raises(ValueError):
+    def test_garbage_raises_typed_error(self):
+        with pytest.raises(gemini.GeminiResponseError):
             gemini._extract_json("no json here")
+
+    def test_invalid_json_raises_typed_error(self):
+        with pytest.raises(gemini.GeminiResponseError):
+            gemini._extract_json('{"categories": ["A",}')
+
+    def test_non_object_raises_typed_error(self):
+        with pytest.raises(gemini.GeminiResponseError):
+            gemini._extract_json("[1, 2, 3]")
 
 
 class TestMatchTerms:
@@ -254,9 +262,53 @@ class TestGenerateContent:
 
         monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
         client = FakeClient(lambda url, kwargs: FakeResponse(status_code=500))
-        with pytest.raises(httpx.HTTPError):
+        with pytest.raises(gemini.GeminiHTTPError):
             await gemini._generate_content(client, {})
         assert len(client.calls) == gemini._MAX_ATTEMPTS
+
+    async def test_non_retryable_status_fails_immediately(
+        self, gemini_env, monkeypatch
+    ):
+        """A 401 is terminal on the first attempt — no retries wasted."""
+        client = FakeClient(lambda url, kwargs: FakeResponse(status_code=401))
+        with pytest.raises(gemini.GeminiHTTPError):
+            await gemini._generate_content(client, {})
+        assert len(client.calls) == 1
+
+    async def test_transport_error_exhausted_raises_typed_error(
+        self, gemini_env, monkeypatch
+    ):
+        """Persistent connect failures raise GeminiTransportError."""
+
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        client = FakeClient(lambda url, kwargs: (_ for _ in ()).throw(
+            httpx.ConnectError("conn refused")
+        ))
+        with pytest.raises(gemini.GeminiTransportError):
+            await gemini._generate_content(client, {})
+        assert len(client.calls) == gemini._MAX_ATTEMPTS
+
+    async def test_unusable_response_raises_typed_error(
+        self, gemini_env, monkeypatch
+    ):
+        """A safety block (no candidates) surfaces as GeminiResponseError."""
+        client = FakeClient(lambda url, kwargs: FakeResponse({}))
+        with pytest.raises(gemini.GeminiResponseError):
+            await gemini._generate_content(client, {})
+
+    async def test_error_hierarchy(self):
+        """One except GeminiError catches every terminal failure mode."""
+        for exc_type in (
+            gemini.GeminiTimeoutError,
+            gemini.GeminiHTTPError,
+            gemini.GeminiTransportError,
+            gemini.GeminiResponseError,
+        ):
+            assert issubclass(exc_type, gemini.GeminiError)
+        assert issubclass(gemini.GeminiTimeoutError, TimeoutError)
 
 
 # ---------------------------------------------------------------------------
@@ -304,11 +356,18 @@ class TestSuggestCategories:
         monkeypatch.setattr(wp_terms_mod, "get_categories", empty)
         assert await gemini.suggest_categories(_article(), "H", "B") == []
 
-    async def test_http_failure_returns_empty(
+    async def test_http_failure_raises_and_notifies(
         self, gemini_env, synced_terms, monkeypatch
     ):
+        """A terminal 503 propagates as GeminiHTTPError (never fail-soft [])."""
+
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+
         def handler(url, kwargs):
-            return FakeResponse(status_code=500)
+            return FakeResponse(status_code=503)
 
         client = FakeClient(handler)
 
@@ -316,12 +375,40 @@ class TestSuggestCategories:
             return client
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
-        assert await gemini.suggest_categories(_article(), "H", "B") == []
+        with pytest.raises(gemini.GeminiError):
+            await gemini.suggest_categories(_article(), "H", "B")
+        # The UI notification log records the failure.
+        from app.db import get_notifications
+
+        rows = await get_notifications()
+        assert len(rows) == 1
+        assert rows[0].level == "warning"
+        assert "Categorization failed" in rows[0].message
+
+    async def test_transport_failure_raises_and_notifies(
+        self, gemini_env, synced_terms, monkeypatch
+    ):
+        """Exhausted transport retries also propagate, not fail-soft."""
+
+        async def fake_sleep(seconds: float) -> None:
+            pass
+
+        monkeypatch.setattr(gemini.asyncio, "sleep", fake_sleep)
+        client = FakeClient(lambda url, kwargs: (_ for _ in ()).throw(
+            httpx.ConnectError("conn refused")
+        ))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        with pytest.raises(gemini.GeminiError):
+            await gemini.suggest_categories(_article(), "H", "B")
 
     async def test_timeout_after_retries_raises_and_notifies(
         self, gemini_env, synced_terms, monkeypatch
     ):
-        """A stubborn ReadTimeout propagates instead of failing soft."""
+        """A stubborn ReadTimeout propagates as GeminiTimeoutError."""
 
         async def fake_sleep(seconds: float) -> None:
             pass
@@ -345,13 +432,13 @@ class TestSuggestCategories:
         rows = await get_notifications()
         assert len(rows) == 1
         assert rows[0].level == "warning"
-        assert "timed out" in rows[0].message
+        assert "Categorization failed" in rows[0].message
 
-    async def test_malformed_response_returns_empty(
+    async def test_malformed_response_raises(
         self, gemini_env, synced_terms, monkeypatch
     ):
         def handler(url, kwargs):
-            # No candidates -> KeyError path -> fail-soft empty.
+            # No candidates (safety block) -> unusable response -> raise.
             return FakeResponse({})
 
         client = FakeClient(handler)
@@ -360,7 +447,22 @@ class TestSuggestCategories:
             return client
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
-        assert await gemini.suggest_categories(_article(), "H", "B") == []
+        with pytest.raises(gemini.GeminiResponseError):
+            await gemini.suggest_categories(_article(), "H", "B")
+
+    async def test_unexpected_error_wrapped_in_gemini_error(
+        self, gemini_env, synced_terms, monkeypatch
+    ):
+        """Non-Gemini failures (e.g. a DB hiccup) also surface as GeminiError."""
+        import app.db.wp_terms as wp_terms_mod
+
+        async def boom():
+            raise RuntimeError("db locked")
+
+        monkeypatch.setattr(wp_terms_mod, "get_tags", boom)
+
+        with pytest.raises(gemini.GeminiError, match="unexpected categorization"):
+            await gemini.suggest_categories(_article(), "H", "B")
 
 
 # ---------------------------------------------------------------------------

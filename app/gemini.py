@@ -7,23 +7,27 @@ Two AI features share this module:
   and asks Gemini to respond with every related category as JSON (structured
   output via responseMimeType/responseSchema). The response names are matched
   back against the synced categories case-insensitively, so only real
-  WordPress category IDs are ever returned. Fail-soft: any error logs and
-  returns an empty list.
+  WordPress category IDs are ever returned. It never fails soft: any error
+  (after retries are exhausted) is recorded as a warning notification and
+  raised as :class:`GeminiError` so the publisher can send the article back
+  to pending — categorization is non-negotiable, a post without its
+  categories is worse than a delayed one.
 * ``pick_article_ids`` asks Gemini to pick the most newsworthy pending
   articles for publication (the AI Publish feature). It receives the pending
   articles as "<id>. <heading>" lines plus recently accepted headings as
   duplicate-avoidance context, and responds with up to *count* article IDs
   via a JSON schema. Matching drops any ID not in the offered list, so a
-  hallucinated ID can never accept a real article.
+  hallucinated ID can never accept a real article. Fail-soft: any error
+  merely skips the round.
 
 Both calls share a retry policy: retryable HTTP statuses (429/5xx) and
 transient transport errors are retried with a short backoff, and
 ReadTimeouts — the thinking model regularly needs longer than one request
-window — are retried after a longer pause. A call that still times out after
-those retries raises :class:`GeminiTimeoutError` so the caller can react
-properly: the publisher sends the article back to pending (a post without
-categories is worse than a delayed one) and AI Publish simply skips the
-round.
+window — are retried after a longer pause. Every failure that survives the
+retries is raised as a :class:`GeminiError` subclass (timeout, HTTP status,
+transport, or malformed response) so callers can tell "Gemini failed" from
+"Gemini said this article fits no category" — only the latter means an
+empty-list result.
 """
 
 from __future__ import annotations
@@ -62,12 +66,46 @@ _TIMEOUT_RETRIES = 2
 _TIMEOUT_BACKOFF_SECONDS = 5.0
 
 
-class GeminiTimeoutError(TimeoutError):
+class GeminiError(Exception):
+    """A generateContent call failed after every retry.
+
+    Base class for all terminal Gemini failures, raised (never swallowed)
+    so callers can distinguish "Gemini failed" from "Gemini answered and
+    matched nothing": the publisher requeues the article on the former and
+    publishes with the matched IDs (possibly none) on the latter.
+    """
+
+
+class GeminiTimeoutError(GeminiError, TimeoutError):
     """generateContent still timed out after every retry.
 
     Raised (not swallowed) so callers can distinguish "Gemini is slow" from
     other failures: the publisher clears the article's status and retries the
     whole publish later, instead of posting it uncategorized.
+    """
+
+
+class GeminiHTTPError(GeminiError):
+    """generateContent answered with a terminal HTTP error (e.g. 503).
+
+    Retryable statuses are retried first; this is raised only when the
+    retries are exhausted or the status is not retryable at all.
+    """
+
+
+class GeminiTransportError(GeminiError):
+    """generateContent could not be delivered (DNS, connect, reset, ...).
+
+    Transient transport errors are retried first; this is raised only once
+    the retries are exhausted.
+    """
+
+
+class GeminiResponseError(GeminiError):
+    """generateContent answered but the response could not be used.
+
+    Covers truncated/blocked candidates, missing text parts, and bodies
+    that do not parse as a JSON object.
     """
 
 
@@ -176,10 +214,15 @@ def _extract_json(text: str) -> dict[str, Any]:
         cleaned = cleaned.removeprefix("json")
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start == -1 or end == -1:
-        raise ValueError(f"no JSON object in response: {text[:200]!r}")
-    parsed = json.loads(cleaned[start : end + 1])
+        raise GeminiResponseError(f"no JSON object in response: {text[:200]!r}")
+    try:
+        parsed = json.loads(cleaned[start : end + 1])
+    except json.JSONDecodeError as exc:
+        raise GeminiResponseError(
+            f"invalid JSON in response: {text[:200]!r}"
+        ) from exc
     if not isinstance(parsed, dict):
-        raise ValueError("response is not a JSON object")
+        raise GeminiResponseError("response is not a JSON object")
     return parsed
 
 
@@ -220,9 +263,12 @@ async def _generate_content(
       request window — is retried after a while with a longer, growing
       backoff (``_TIMEOUT_RETRIES`` extra attempts).
 
-    Raises :class:`GeminiTimeoutError` when the request still times out
-    after every retry; other terminal failures raise the underlying httpx
-    error and stay fail-soft at the caller.
+    Every failure that survives the retries raises a :class:`GeminiError`
+    subclass (:class:`GeminiTimeoutError`, :class:`GeminiHTTPError`,
+    :class:`GeminiTransportError`, or :class:`GeminiResponseError`) — never a
+    raw httpx/KeyError/ValueError — so callers can react to "Gemini failed"
+    with one except clause and the response *content* (e.g. a safety
+    block or truncated body) is not lost.
     """
     url = f"{API_BASE}/models/{GEMINI_MODEL}:generateContent"
     retries = 0
@@ -253,22 +299,35 @@ async def _generate_content(
             )
             await asyncio.sleep(backoff)
             continue
-        except httpx.TransportError:
+        except httpx.TransportError as exc:
             if retries >= _MAX_ATTEMPTS - 1:
-                raise
+                raise GeminiTransportError(
+                    f"generateContent transport failed after {retries + 1} "
+                    f"attempts: {type(exc).__name__}: {exc or 'no details'}"
+                ) from exc
             retries += 1
             await asyncio.sleep(1.0)
             continue
         if resp.status_code not in _RETRY_STATUSES:
             break
         if retries >= _MAX_ATTEMPTS - 1:
-            break  # Terminal 429/5xx: raise_for_status below reports it.
+            break  # Terminal 429/5xx: reported as GeminiHTTPError below.
         retries += 1
         retry_after = float(getattr(resp, "headers", {}).get("retry-after") or 0)
         await asyncio.sleep(min(5.0, retry_after or 0.5 * retries))
-    resp.raise_for_status()
-    data = resp.json()
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
+    if resp.status_code >= 400:
+        # Terminal HTTP failure (exhausted retries or a non-retryable
+        # status): the caller needs to know categorization did not happen.
+        raise GeminiHTTPError(f"generateContent failed: HTTP {resp.status_code}")
+    try:
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        # Missing candidates (safety block), empty parts, or a non-JSON
+        # body: the response is unusable either way.
+        raise GeminiResponseError(
+            f"unexpected generateContent response shape: {type(exc).__name__}: {exc}"
+        ) from exc
     return _extract_json(text)
 
 
@@ -277,8 +336,11 @@ async def suggest_categories(
 ) -> list[int]:
     """Ask Gemini which site categories relate to *article*; return their IDs.
 
-    Returns [] when Gemini is not configured, no categories are synced, or
-    the request/parsing fails — the caller then publishes uncategorized.
+    Returns [] only when Gemini is not configured, no categories are synced,
+    or Gemini answered and the article genuinely fits no category. Any
+    Gemini failure (after retries) is recorded as a warning notification and
+    raised as :class:`GeminiError` — categorization is non-negotiable, so
+    the caller must not publish the article uncategorized on a failure.
     """
     if not is_configured():
         return []
@@ -286,55 +348,62 @@ async def suggest_categories(
     from app.client import get_client  # lazy: tests patch app.client.get_client
     from app.db.wp_terms import get_categories, get_tags
 
-    category_triples = [
-        (c.wp_id, c.name, c.slug) for c in await get_categories()
-    ]
-    if not category_triples:
-        logger.warning("No synced WordPress categories; skipping Gemini")
-        return []
-    tag_triples = [(t.wp_id, t.name, t.slug) for t in await get_tags()]
-
-    payload = {
-        "systemInstruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
-        "contents": [{"parts": [{"text": build_prompt(
-            article, heading, body, category_triples, tag_triples
-        )}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "responseSchema": _RESPONSE_SCHEMA,
-            "temperature": 0.2,
-        },
-    }
     try:
+        category_triples = [
+            (c.wp_id, c.name, c.slug) for c in await get_categories()
+        ]
+        if not category_triples:
+            logger.warning("No synced WordPress categories; skipping Gemini")
+            return []
+        tag_triples = [(t.wp_id, t.name, t.slug) for t in await get_tags()]
+
+        payload = {
+            "systemInstruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
+            "contents": [{"parts": [{"text": build_prompt(
+                article, heading, body, category_triples, tag_triples
+            )}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": _RESPONSE_SCHEMA,
+                "temperature": 0.2,
+            },
+        }
         client = await get_client()
         parsed = await _generate_content(client, payload)
-    except GeminiTimeoutError:
-        # Distinct from a generic failure: the caller reacts specifically
-        # (the publisher requeues the article; the smoke script reports it).
-        # Surface it in the UI notification log before propagating.
-        from app.db.notifications import record_notification
-
-        await record_notification(
-            NOTIF_WARNING,
-            "gemini",
-            "Categorization timed out after retries",
-            article_id=article.id,
-        )
-        raise
-    except Exception as exc:
-        # Fail-soft like publishing: log and skip categorization. Include the
-        # type name — transport timeouts stringify to an empty message.
+    except GeminiError as exc:
+        # Never fail soft: the publisher requeues the article instead of
+        # posting it without its AI categories. Include the type name —
+        # transport timeouts stringify to an empty message.
         logger.warning("Gemini categorization failed: %s: %s",
                        type(exc).__name__, exc)
         # Surface it in the UI notification log (itself fail-soft).
         from app.db.notifications import record_notification
+
         await record_notification(
             NOTIF_WARNING,
             "gemini",
             f"Categorization failed ({type(exc).__name__}): {exc or 'no details'}",
             article_id=article.id,
         )
-        return []
+        raise
+    except Exception as exc:
+        # Unexpected non-Gemini failures (a DB hiccup while reading terms, a
+        # bug in prompt building) count as failures too: wrap them so the
+        # publisher's single GeminiError contract holds.
+        logger.warning("Gemini categorization failed unexpectedly: %s: %s",
+                       type(exc).__name__, exc)
+        from app.db.notifications import record_notification
+
+        await record_notification(
+            NOTIF_WARNING,
+            "gemini",
+            f"Categorization failed ({type(exc).__name__}): {exc or 'no details'}",
+            article_id=article.id,
+        )
+        raise GeminiError(
+            f"unexpected categorization failure: {type(exc).__name__}: "
+            f"{exc or 'no details'}"
+        ) from exc
 
     matched = _match_terms(parsed.get("categories"), category_triples)
     logger.info(
