@@ -9,6 +9,7 @@ from app.curator import enrich_accepted_article
 from app.db import (
     ARTICLE_LAYOUTS,
     DEFAULT_SETTINGS,
+    RESET_TIMEZONES,
     STATUS_ACCEPTED,
     STATUS_REJECTED,
     TOGGLE_ENV_KEYS,
@@ -28,6 +29,7 @@ from app.db import (
     get_notifications,
     get_pending_items,
     get_rejected_items,
+    get_reset_timezone,
     save_items,
     set_article_status,
     set_setting,
@@ -233,6 +235,12 @@ async def update_settings(settings: dict[str, str]):
                     400,
                     f"article_layout must be one of: {', '.join(ARTICLE_LAYOUTS)}",
                 )
+        elif key == "reset_timezone":
+            if value not in RESET_TIMEZONES:
+                raise HTTPException(
+                    400,
+                    f"reset_timezone must be one of: {', '.join(RESET_TIMEZONES)}",
+                )
         elif key in TOGGLE_SETTINGS:
             if value not in ("0", "1"):
                 raise HTTPException(400, f'{key} must be "1" or "0"')
@@ -323,6 +331,7 @@ async def get_news_ui(
     completed_items = await get_completed_items(current_source)
     rejected_items = await get_rejected_items(current_source)
     layout = await get_article_layout()
+    reset_timezone = await get_reset_timezone()
 
     toggles = await _toggle_context()
     return templates.TemplateResponse(
@@ -339,6 +348,7 @@ async def get_news_ui(
             "count": len(items),
             "completion_interval": interval,
             "article_layout": layout,
+            "reset_timezone": reset_timezone,
             "ai_publish_enabled": toggles["toggles"]["ai_publish"]["enabled"],
             "ai_publish_interval": await get_ai_publish_interval(),
             "ai_publish_last_run": await get_ai_publish_last_run(),

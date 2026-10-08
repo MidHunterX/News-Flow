@@ -12,6 +12,9 @@ DEFAULT_SETTINGS = {
     # How the pending article list renders: "grid" (cards in columns),
     # "rows" (full-width rows with thumbnail), or "compact" (dense rows).
     "article_layout": "grid",
+    # Clock the daily workspace reset uses to decide a "new day": "utc" or
+    # the server's local time zone ("local").
+    "reset_timezone": "utc",
     # AI Publish: how many pending articles Gemini picks per prompt, and how
     # long to wait between prompts (seconds).
     "ai_publish_count": "3",
@@ -23,6 +26,9 @@ DEFAULT_SETTINGS = {
 
 # Layouts the article grid setting accepts (validated in the settings API).
 ARTICLE_LAYOUTS = ("grid", "rows", "compact")
+
+# Clocks the daily workspace reset accepts (validated in the settings API).
+RESET_TIMEZONES = ("utc", "local")
 
 # Feature toggles. Each one can only be switched on when its backing
 # environment credentials are present (checked at runtime via
@@ -59,6 +65,7 @@ def toggle_is_available(key: str) -> bool:
     return all(os.environ.get(name, "").strip() for name in TOGGLE_ENV_KEYS[key])
 
 
+
 # Article status flags. NULL (default) means the article is untouched.
 STATUS_ACCEPTED = "accepted"
 # Transient: claimed by a publisher run (post creation is in flight). Prevents
@@ -67,8 +74,9 @@ STATUS_PUBLISHING = "publishing"
 STATUS_REJECTED = "rejected"
 STATUS_COMPLETED = "completed"
 
-# Setting key storing the UTC date of the last app run. When the app starts on
-# a new day, the articles table is cleared for a fresh workspace.
+# Setting key storing the date of the last app run (UTC or local, per the
+# reset_timezone setting). When the app starts on a new day, the articles
+# table is cleared for a fresh workspace.
 LAST_RUN_DATE_KEY = "last_run_date"
 
 # Setting key storing the UTC timestamp of the last successful WordPress

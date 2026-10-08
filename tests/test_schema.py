@@ -158,6 +158,80 @@ class TestResetDailyWorkspace:
 # ---------------------------------------------------------------------------
 
 
+class TestResetTimezone:
+    """The reset clock honors the reset_timezone setting (utc vs local)."""
+
+    @staticmethod
+    def _seed(session, **settings) -> None:
+        for key, value in settings.items():
+            session.add(Setting(key=key, value=value))
+        session.commit()
+
+    @staticmethod
+    def _fake_clock(monkeypatch, utc_today: str, local_tomorrow: str) -> None:
+        """Stub _reset_now_date: utc date stays fixed, local rolls over."""
+        dates = {"utc": utc_today, "local": local_tomorrow}
+        monkeypatch.setattr(
+            schema, "_reset_now_date", lambda mode: dates.get(mode, utc_today)
+        )
+
+    def test_utc_mode_uses_utc_clock(self, reset_env, monkeypatch):
+        """utc mode (the default): a same-UTC-day last run is not reset even
+        when the local date has already rolled over."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            self._seed(session, reset_timezone="utc")
+            _set_last_run(session, "2026-10-09")
+            _insert_article(session)
+
+        self._fake_clock(monkeypatch, "2026-10-09", "2026-10-10")
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            assert session.query(Article).count() == 1
+            assert session.get(Setting, LAST_RUN_DATE_KEY).value == "2026-10-09"
+
+    def test_local_mode_uses_local_clock(self, reset_env, monkeypatch):
+        """local mode: a last run stamped with the UTC date still resets once
+        the local date has rolled over, and the stamp switches to local."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            self._seed(session, reset_timezone="local")
+            _set_last_run(session, "2026-10-09")
+            _insert_article(session)
+
+        self._fake_clock(monkeypatch, "2026-10-09", "2026-10-10")
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            assert session.query(Article).count() == 0
+            assert session.get(Setting, LAST_RUN_DATE_KEY).value == "2026-10-10"
+
+    def test_unknown_stored_mode_falls_back_to_utc(self, reset_env, monkeypatch):
+        """A bogus stored value behaves like utc, not like local."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            self._seed(session, reset_timezone="bogus")
+            _set_last_run(session, "2026-10-09")
+            _insert_article(session)
+
+        self._fake_clock(monkeypatch, "2026-10-09", "2026-10-10")
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            assert session.query(Article).count() == 1
+            assert session.get(Setting, LAST_RUN_DATE_KEY).value == "2026-10-09"
+
+    def test_helper_unknown_mode_behaves_as_utc(self):
+        """_reset_now_date maps anything unknown to the UTC clock."""
+        assert schema._reset_now_date("bogus") == schema._reset_now_date("utc")
+
+    def test_helper_local_mode_uses_local_now(self):
+        """local mode compares against the server's local calendar date."""
+        local_now = datetime.now().astimezone()  # local tz, per DTZ005's rule
+        assert schema._reset_now_date("local") == local_now.date().isoformat()
+
+
 class TestInitDb:
     def test_new_day_wipes_articles_and_files(self, reset_env):
         session_factory, articles_dir, covers_dir = reset_env

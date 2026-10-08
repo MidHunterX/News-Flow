@@ -8,6 +8,7 @@ from app.db.constants import (
     ARTICLE_LAYOUTS,
     DEFAULT_SETTINGS,
     REFRESH_MIN_INTERVAL,
+    RESET_TIMEZONES,
     TOGGLE_SETTINGS,
 )
 from app.db.engine import SessionLocal, run_in_thread
@@ -65,6 +66,12 @@ async def get_article_layout() -> str:
     """Return the article-list layout, falling back to the default if invalid."""
     raw = await get_setting("article_layout", DEFAULT_SETTINGS["article_layout"])
     return raw if raw in ARTICLE_LAYOUTS else DEFAULT_SETTINGS["article_layout"]
+
+
+async def get_reset_timezone() -> str:
+    """Clock the daily workspace reset uses: "utc" or the server's local zone."""
+    raw = await get_setting("reset_timezone", DEFAULT_SETTINGS["reset_timezone"])
+    return raw if raw in RESET_TIMEZONES else DEFAULT_SETTINGS["reset_timezone"]
 
 
 async def get_ai_publish_count() -> int:

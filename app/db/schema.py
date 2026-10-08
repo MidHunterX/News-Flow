@@ -22,6 +22,12 @@ from app.utils import ARTICLES_DIR, COVERS_DIR
 logger = logging.getLogger(__name__)
 
 
+def _reset_now_date(tz_mode: str) -> str:
+    """Today's date per the configured reset clock ("utc" or "local")."""
+    now = datetime.now(UTC if tz_mode != "local" else None)
+    return now.date().isoformat()
+
+
 def _migrate() -> None:
     """Add columns introduced after the initial schema to existing databases."""
     columns = {col["name"] for col in inspect(engine).get_columns("articles")}
@@ -64,16 +70,22 @@ def _clear_dir(path: Path) -> None:
 
 
 def _reset_daily_workspace() -> None:
-    """Clear the articles table and the whole workspace on a new UTC day.
+    """Clear the articles table and the whole workspace on a new day.
 
     Fresh workspace per day: when the last run was on a previous day, every
     article row is dropped and the workspace directories (scraped-content
-    ``.txt`` files and downloaded covers) are emptied entirely. The wipe
-    happens *after* the row delete is committed — losing a row but keeping
-    its files is the safe failure mode.
+    ``.txt`` files and downloaded covers) are emptied entirely. The "new day"
+    boundary follows the ``reset_timezone`` setting — UTC by default, or the
+    server's local time zone. The wipe happens *after* the row delete is
+    committed — losing a row but keeping its files is the safe failure mode.
     """
     with SessionLocal() as session:
-        today = datetime.now(UTC).date().isoformat()
+        tz_setting = session.get(Setting, "reset_timezone")
+        tz_mode = (
+            tz_setting.value
+            if tz_setting is not None else DEFAULT_SETTINGS["reset_timezone"]
+        )
+        today = _reset_now_date(tz_mode)
         last_run = session.get(Setting, LAST_RUN_DATE_KEY)
         if last_run is not None and last_run.value == today:
             return  # Same day: nothing to reset.

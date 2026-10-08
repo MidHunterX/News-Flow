@@ -19,6 +19,7 @@ import app.db.settings as settings_mod
 import app.routes.scrape as scrape_routes
 from app.db.constants import (
     DEFAULT_SETTINGS,
+    RESET_TIMEZONES,
     TOGGLE_ENV_KEYS,
     TOGGLE_SETTINGS,
     toggle_is_available,
@@ -97,6 +98,32 @@ class TestGetRefreshInterval:
 
         monkeypatch.setattr(settings_mod, "get_setting", fake_get)
         assert await settings_mod.get_refresh_interval() == REFRESH_MIN_INTERVAL
+
+
+class TestGetResetTimezone:
+    """reset_timezone getter: validated against the known clocks."""
+
+    @staticmethod
+    def _seed_tz(session, value: str) -> None:
+        session.add(Setting(key="reset_timezone", value=value))
+        session.commit()
+
+    async def test_defaults_to_utc(self, db):
+        assert await settings_mod.get_reset_timezone() == "utc"
+        assert DEFAULT_SETTINGS["reset_timezone"] == "utc"
+
+    async def test_returns_stored_local(self, db):
+        with db() as session:
+            self._seed_tz(session, "local")
+        assert await settings_mod.get_reset_timezone() == "local"
+
+    async def test_invalid_stored_value_falls_back(self, db):
+        with db() as session:
+            self._seed_tz(session, "IST")
+        assert await settings_mod.get_reset_timezone() == "utc"
+
+    def test_valid_values_are_the_declared_set(self):
+        assert RESET_TIMEZONES == ("utc", "local")
 
 
 # ---------------------------------------------------------------------------
@@ -274,6 +301,23 @@ class TestSettingsApi:
         with pytest.raises(HTTPException) as excinfo:
             await scrape_routes.update_settings({"nope": "1"})
         assert excinfo.value.status_code == 400
+
+    async def test_reset_timezone_accepts_utc_and_local(self, recorded):
+        result = await scrape_routes.update_settings({"reset_timezone": "local"})
+        assert recorded == {"reset_timezone": "local"}
+        assert result["reset_timezone"] == "local"
+
+        result = await scrape_routes.update_settings({"reset_timezone": "utc"})
+        assert recorded == {"reset_timezone": "utc"}
+        assert result["reset_timezone"] == "utc"
+
+    @pytest.mark.parametrize("value", ["IST", "Asia/Kolkata", "", "UTC"])
+    async def test_reset_timezone_rejects_unknown_values(self, recorded, value):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"reset_timezone": value})
+        assert excinfo.value.status_code == 400
+        assert "reset_timezone must be one of" in excinfo.value.detail
+        assert recorded == {}  # nothing was written
 
     async def test_interval_validation_untouched(self, recorded):
         with pytest.raises(HTTPException) as excinfo:
@@ -453,6 +497,36 @@ class TestTemplateLayouts:
     def test_rows_layout_keeps_sidebar_panel(self):
         html = _render("rows", [_item(1)])
         assert "Review &amp; Status" in html
+
+
+class TestResetTimezonePicker:
+    """The settings modal renders a UTC/Local picker for the daily reset."""
+
+    def _render_base(self, toggles: dict) -> str:
+        env = Environment(
+            loader=FileSystemLoader("templates"),
+            autoescape=select_autoescape(["html"]),
+        )
+        template = env.get_template("base.html")
+        return template.render(toggles=toggles)
+
+    def test_picker_renders_both_options(self):
+        html = self._render_base({})
+        assert 'id="reset-timezone-picker"' in html
+        assert "Daily reset clock" in html
+        assert 'data-reset-tz="utc"' in html
+        assert 'data-reset-tz="local"' in html
+        assert "selectResetTimezone('utc')" in html
+        assert "selectResetTimezone('local')" in html
+
+    def test_save_sends_reset_timezone(self):
+        """The save payload includes the selected clock."""
+        html = self._render_base({})
+        assert "reset_timezone: selectedResetTimezone" in html
+
+    def test_open_populates_picker_from_settings(self):
+        html = self._render_base({})
+        assert "selectResetTimezone(settings.reset_timezone" in html
 
 
 class TestArticleView:

@@ -179,6 +179,7 @@ Feature toggles (in the settings modal) can only be switched on when their backi
 | `completion_interval` | `600 s` | Time from accept to completion (and publish) per article |
 | `refresh_interval` | `900 s` | Background re-scrape cadence (floored at 30 s) |
 | `article_layout` | `grid` | Pending-list layout: `grid`, `rows`, or `compact` |
+| `reset_timezone` | `utc` | Clock the daily workspace reset uses: `utc` or the server's local time zone (`local`) |
 | `ai_publish_count` | `3` | Articles Gemini picks per prompt |
 | `ai_publish_interval` | `3600 s` | Rest between AI Publish rounds (floored at 30 s) |
 | `ai_publish_history` | `10` | Accepted headings fed to Gemini as dedupe context |
@@ -276,7 +277,7 @@ Design decisions that keep the autonomous parts trustworthy:
 - **Atomic publish claims.** Due articles are claimed (`status = publishing`) inside a `BEGIN IMMEDIATE` transaction — the background loop and a UI reload racing each other can never double-post. `scripts/race_check.py` proves it.
 - **Grounded model output.** Every ID or category name Gemini returns is matched back against the lists the app actually offered; hallucinations are dropped, never acted on.
 - **Sync where it's simple.** SQLAlchemy runs synchronously in worker threads (`asyncio.to_thread`), SQLite runs in WAL mode — boring, reliable, and correct for a single-node desk.
-- **A clean slate every day.** On the first start of a new UTC day, the article table and the `public/` workspace are wiped, and requeued `publishing` rows are recovered. The desk is built for a daily news rhythm.
+- **A clean slate every day.** On the first start of a new day — UTC by default, or the server's local time zone (toggle `reset_timezone` in the settings modal) — the article table and the `public/` workspace are wiped, and requeued `publishing` rows are recovered. The desk is built for a daily news rhythm.
 
 ### Tech Stack
 
