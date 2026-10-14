@@ -144,7 +144,7 @@ _PICK_SYSTEM_PROMPT = (
     "number of the most newsworthy articles, preferring diverse topics and "
     "sources. Never pick a story that duplicates or merely paraphrases a "
     "recently accepted heading, even when it comes from a different source. "
-    "Respond with JSON only: {{\"ids\": [<article IDs>]}} containing at most "
+    "Respond with JSON only: {\"ids\": [<article IDs>]} containing at most "
     "the requested number of IDs, chosen only from the given list."
 )
 

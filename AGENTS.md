@@ -36,6 +36,10 @@ uv run python scripts/publish_check.py [--publish] [--model]
                               # live WP terms sync + Gemini categorization check
                               # (--publish also POSTs a draft, then deletes it;
                               # --model only pings the configured Gemini model)
+uv run python scripts/prompt_check.py [--categorize] [--pick]
+                              # dump the exact Gemini prompts for visual
+                              # inspection (offline; uses synced terms from
+                              # the DB, or sample terms when it is empty)
 uv sync                       # install/update dependencies
 uv run ruff check .           # lint (auto-fix with --fix); runs offline
 uv run playwright install chromium   # once, for browser-rendered pages
