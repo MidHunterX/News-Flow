@@ -15,7 +15,6 @@ API_URL = (f"{gemini.API_BASE}/models/{gemini.GEMINI_MODEL}:generateContent")
 
 CATEGORIES = [(1, "Agriculture", "agriculture"), (2, "Crime", "crime"),
               (3, "Sports", "sports"), (4, "Sports > Cricket", "sports-cricket")]
-TAGS = [(10, "Kerala", "kerala"), (11, "Monsoon", "monsoon")]
 
 
 class FakeResponse:
@@ -56,24 +55,17 @@ def gemini_env(monkeypatch):
 
 
 @pytest.fixture
-def synced_terms(monkeypatch, CATEGORIES=CATEGORIES, TAGS=TAGS):
-    """Serve the canned category/tag lists from the wp_terms data layer."""
+def synced_terms(monkeypatch, CATEGORIES=CATEGORIES):
+    """Serve the canned category lists from the wp_terms data layer."""
     async def fake_get_categories():
         return [
             type("Term", (), {"wp_id": i, "name": n, "slug": s})()
             for i, n, s in CATEGORIES
         ]
 
-    async def fake_get_tags():
-        return [
-            type("Term", (), {"wp_id": i, "name": n, "slug": s})()
-            for i, n, s in TAGS
-        ]
-
     import app.db.wp_terms as wp_terms_mod
 
     monkeypatch.setattr(wp_terms_mod, "get_categories", fake_get_categories)
-    monkeypatch.setattr(wp_terms_mod, "get_tags", fake_get_tags)
     return monkeypatch
 
 
@@ -108,25 +100,24 @@ class TestBuildPrompt:
     def test_contains_article_and_terms(self):
         prompt = gemini.build_prompt(
             _article(), "Floods in Wayanad", "Heavy rain continues",
-            CATEGORIES, TAGS,
+            CATEGORIES,
         )
         assert "Floods in Wayanad" in prompt
         # Description is now only used by the UI, not sent to Gemini.
         assert "Heavy rain continues" in prompt  # body
         assert "- Agriculture (slug: agriculture)" in prompt
-        assert "- Kerala (slug: kerala)" in prompt
-        assert "context only" in prompt  # tags explicitly non-candidates
+        # Tags are no longer included in the prompt.
 
     def test_body_is_truncated(self):
         prompt = gemini.build_prompt(
             _article(), "H", "x" * (gemini.MAX_BODY_CHARS + 500),
-            CATEGORIES, TAGS,
+            CATEGORIES,
         )
         assert "x" * gemini.MAX_BODY_CHARS in prompt
         assert "x" * (gemini.MAX_BODY_CHARS + 10) not in prompt
 
     def test_empty_term_lists_render_placeholder(self):
-        prompt = gemini.build_prompt(_article(), "H", "B", [], [])
+        prompt = gemini.build_prompt(_article(), "H", "B", [])
         assert "Available categories: (none)" in prompt
 
 
@@ -343,7 +334,7 @@ class TestSuggestCategories:
         assert client.calls[0][1]["headers"]["x-goog-api-key"] == "test-key"
         # The site's terms were fed to the model.
         prompt_text = client.calls[0][1]["json"]["contents"][0]["parts"][0]["text"]
-        assert "Agriculture" in prompt_text and "Kerala" in prompt_text
+        assert "Agriculture" in prompt_text
 
     async def test_no_synced_categories_short_circuits(
         self, gemini_env, monkeypatch
@@ -459,7 +450,7 @@ class TestSuggestCategories:
         async def boom():
             raise RuntimeError("db locked")
 
-        monkeypatch.setattr(wp_terms_mod, "get_tags", boom)
+        monkeypatch.setattr(wp_terms_mod, "get_categories", boom)
 
         with pytest.raises(gemini.GeminiError, match="unexpected categorization"):
             await gemini.suggest_categories(_article(), "H", "B")

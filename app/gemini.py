@@ -115,10 +115,9 @@ TermTriple = tuple[int, str, str]
 _SYSTEM_PROMPT = (
     "You categorize Malayalam news articles for a WordPress news site. "
     "You are given an article (heading, description, body) and the site's "
-    "available categories and tags. Respond with every category related to "
+    "available categories. Respond with every category related to "
     "the article (1 to 4 of them), using the exact category names given. "
-    "The tags are extra context about the site's topic vocabulary; never "
-    "return them as categories. If no category fits, return an empty list. "
+    "If no category fits, return an empty list. "
     "Never invent categories."
 )
 
@@ -175,7 +174,7 @@ def _article_text(article: NewsItem, heading: str, body: str) -> str:
     return "\n\n".join(parts)
 
 
-def _terms_prompt(categories: list[TermTriple], tags: list[TermTriple]) -> str:
+def _terms_prompt(categories: list[TermTriple]) -> str:
     """Render the available-terms portion of the prompt as name: slug lines."""
     def render(label: str, terms: list[TermTriple]) -> list[str]:
         if not terms:
@@ -184,8 +183,6 @@ def _terms_prompt(categories: list[TermTriple], tags: list[TermTriple]) -> str:
 
     return "\n".join(
         render("Available categories:", categories)
-        + [""]
-        + render("Available tags (context only):", tags)
     )
 
 
@@ -194,12 +191,11 @@ def build_prompt(
     heading: str,
     body: str,
     categories: list[TermTriple],
-    tags: list[TermTriple],
 ) -> str:
     """Full user prompt: article text followed by the available terms."""
     return (
         f"{_article_text(article, heading, body)}\n\n"
-        f"{_terms_prompt(categories, tags)}\n\n"
+        f"{_terms_prompt(categories)}\n\n"
         "Respond with all related categories."
     )
 
@@ -344,7 +340,7 @@ async def suggest_categories(
         return []
 
     from app.client import get_client  # lazy: tests patch app.client.get_client
-    from app.db.wp_terms import get_categories, get_tags
+    from app.db.wp_terms import get_categories
 
     try:
         category_triples = [
@@ -353,12 +349,11 @@ async def suggest_categories(
         if not category_triples:
             logger.warning("No synced WordPress categories; skipping Gemini")
             return []
-        tag_triples = [(t.wp_id, t.name, t.slug) for t in await get_tags()]
 
         payload = {
             "systemInstruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
             "contents": [{"parts": [{"text": build_prompt(
-                article, heading, body, category_triples, tag_triples
+                article, heading, body, category_triples
             )}]}],
             "generationConfig": {
                 "responseMimeType": "application/json",
