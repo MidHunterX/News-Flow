@@ -111,7 +111,7 @@ class TestBuildPrompt:
             CATEGORIES, TAGS,
         )
         assert "Floods in Wayanad" in prompt
-        assert "Landslide hits hills" in prompt  # description
+        # Description is now only used by the UI, not sent to Gemini.
         assert "Heavy rain continues" in prompt  # body
         assert "- Agriculture (slug: agriculture)" in prompt
         assert "- Kerala (slug: kerala)" in prompt
