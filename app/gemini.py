@@ -170,8 +170,6 @@ def is_configured() -> bool:
 def _article_text(article: NewsItem, heading: str, body: str) -> str:
     """Build the article portion of the prompt."""
     parts = [f"Heading: {heading or article.title}"]
-    if article.description:
-        parts.append(f"Description: {article.description}")
     if body:
         parts.append(f"Body:\n{body[:MAX_BODY_CHARS]}")
     return "\n\n".join(parts)
