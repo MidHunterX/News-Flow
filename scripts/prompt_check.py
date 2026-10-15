@@ -79,10 +79,7 @@ SAMPLE_CATEGORIES: list[TermTriple] = [
     (103, "National", "national"),
     (104, "Cricket", "cricket"),
 ]
-SAMPLE_TAGS: list[TermTriple] = [
-    (201, "Ranji Trophy", "ranji-trophy"),
-    (202, "Kerala cricket", "kerala-cricket"),
-]
+
 
 SAMPLE_PENDING: list[tuple[int, str]] = [
     (401, "Kerala seal thriller against Karnataka in Ranji Trophy opener"),
@@ -98,31 +95,29 @@ SAMPLE_RECENT: list[str] = [
 PICK_COUNT = 3
 
 
-async def _load_synced_terms() -> tuple[list[TermTriple], list[TermTriple]]:
-    """Return synced (categories, tags) from the DB, falling back to samples.
+async def _load_synced_terms() -> tuple[list[TermTriple], None]:
+    """Return synced categories from the DB, falling back to samples.
 
     Never touches the network: only reads what sync_terms() previously
     stored in the local SQLite database.
     """
     try:
-        from app.db import get_categories, get_tags, init_db
+        from app.db import get_categories, init_db
 
         init_db()
         categories = [
             (c.wp_id, c.name, c.slug) for c in await get_categories()
         ]
-        tags = [(t.wp_id, t.name, t.slug) for t in await get_tags()]
     except Exception as exc:
         print(f"(db read failed: {type(exc).__name__}: {exc}; using sample terms)")
-        return SAMPLE_CATEGORIES, SAMPLE_TAGS
+        return (SAMPLE_CATEGORIES, None)
     if not categories:
         print("(no synced categories in DB; using sample terms)")
-        return SAMPLE_CATEGORIES, SAMPLE_TAGS
+        return (SAMPLE_CATEGORIES, None)
     print(
-        f"(using synced terms from DB: {len(categories)} categories, "
-        f"{len(tags)} tags)"
+        f"(using synced terms from DB: {len(categories)} categories)"
     )
-    return categories, tags
+    return (categories, None)
 
 
 def _print_prompt(title: str, system: str, user: str, schema: dict) -> None:
@@ -140,8 +135,8 @@ def _print_prompt(title: str, system: str, user: str, schema: dict) -> None:
 
 async def show_categorize() -> None:
     """Render the categorization request exactly as the publisher would."""
-    categories, tags = await _load_synced_terms()
-    user = build_prompt(SAMPLE, SAMPLE.title, BODY, categories, tags)
+    categories, _ = await _load_synced_terms()
+    user = build_prompt(SAMPLE, SAMPLE.title, BODY, categories)
     _print_prompt("CATEGORIZATION PROMPT (suggest_categories)",
                   _SYSTEM_PROMPT, user, _RESPONSE_SCHEMA)
     print(f"(note: body is truncated to {MAX_BODY_CHARS} chars in the prompt)")
