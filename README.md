@@ -155,6 +155,80 @@ The desk will be available at **http://localhost:8000**.
 
 ---
 
+## 🐧 Run it as a systemd service
+
+`scripts/generate_service.sh` turns a list of 24-hour times into a systemd service file for a daemon that should only run inside those windows. The generated unit starts at boot, idles outside the schedule, launches your command when a window opens, stops it when the window closes, and is restarted by systemd — with start-rate limiting disabled — after any crash.
+
+Times are given as **start/end pairs**:
+
+| You pass | The command runs |
+|----------|------------------|
+| `07:00 23:00` | 07:00 → 23:00 |
+| `07:00 11:00 14:00 23:00` | 07:00 → 11:00, then again 14:00 → 23:00 |
+| `22:00 02:00` | 22:00 → 02:00 (wraps past midnight) |
+| `09:00 09:00` | around the clock |
+
+### 1. Generate and inspect
+
+Until you pass `--install`, nothing touches systemd: the script writes the unit file and prints it for review.
+
+```bash
+./scripts/generate_service.sh \
+  --name news-flow \
+  --command "/home/you/.local/bin/uv run fastapi run main.py" \
+  --workdir /srv/news-flow \
+  --user newsflow \
+  07:00 11:00 14:00 23:00
+```
+
+Times can also come from a file with `-f` (`#` comments, commas and parentheses are all tolerated):
+
+```bash
+./scripts/generate_service.sh -f schedule.txt --command "/srv/news-flow/run.sh"
+```
+
+### 2. Install or update
+
+```bash
+sudo ./scripts/generate_service.sh --install --name news-flow \
+  --command "/home/you/.local/bin/uv run fastapi run main.py" \
+  --workdir /srv/news-flow --user newsflow 07:00 11:00 14:00 23:00
+```
+
+The script prints the file again, asks `Install/update …? [y/N]` (pass `-y` to skip the prompt), copies it into `/etc/systemd/system/`, runs `systemctl daemon-reload`, enables the unit, and restarts it **only when the content changed** — re-installing an unchanged file never bounces a running daemon.
+
+> ℹ️ Under `sudo` the defaults flip to root (`--user`, `PATH`, workdir), so pass `--user` explicitly and use absolute paths in `--command`: systemd starts units with a minimal `PATH`, and the generated file bakes in the `PATH` of the shell that generated it.
+
+### 3. Operate
+
+```bash
+sudo systemctl status  news-flow    # enabled and running?
+journalctl -u news-flow -f          # gate messages + your command's output
+sudo systemctl stop news-flow       # manual override; back again at next boot
+```
+
+Changing the schedule is just steps 1 and 2 again with new times.
+
+### Flags
+
+| Flag | Purpose |
+|------|---------|
+| `-c, --command` | What the daemon runs (required) |
+| `-n, --name` | Unit name without `.service` (default: `windowed-daemon`) |
+| `-d, --description` | Unit description |
+| `-u, --user` | User the service runs as (default: the user generating it) |
+| `-w, --workdir` | Working directory (default: where you run the script) |
+| `-f, --times-file` | Read the times from a file instead of the arguments |
+| `-o, --output` | Where to write the unit (default: `./NAME.service`) |
+| `--install` | Install/update the file after inspection (needs root) |
+| `-y, --yes` | Skip the `--install` confirmation prompt |
+
+Three environment overrides round it out: `SYSTEMD_UNIT_DIR` (install destination — point it somewhere harmless to stage a file instead of installing), `SYSTEMCTL_CMD` (e.g. `systemctl --user`, or `""` to skip the systemctl steps), and `WINDOW_POLL_SECONDS` (how often the gate re-checks the clock, default `30`).
+
+Because the gate lives inside `ExecStart`, command words are taken literally: quotes, `$`, backticks and backslashes are rejected, and `--workdir` must be free of spaces.
+
+---
+
 ## ⚙️ Configuration
 
 ### Environment (`.env`)
@@ -241,7 +315,7 @@ news-flow/
 ├── static/                     # Banner, logo, footer
 ├── public/                     # Downloaded covers + scraped article text
 ├── tests/                      # Offline suite + HTML fixtures
-├── scripts/                    # Live smoke tests (see below)
+├── scripts/                    # Live smoke tests + systemd unit generator
 └── pyproject.toml              # uv project config
 ```
 
