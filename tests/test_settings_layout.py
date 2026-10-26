@@ -660,6 +660,49 @@ class TestInnerPageDarkStyles:
         assert "text-gray-900" in html
 
 
+class TestCoverImageCopy:
+    """Clicking the cover copies the image itself, not its file path."""
+
+    def _render(self) -> str:
+        env = Environment(
+            loader=FileSystemLoader("templates"),
+            autoescape=select_autoescape(["html"]),
+        )
+        return env.get_template("article.html").render(
+            toggles={},
+            article=_item(1),
+            scraped_heading="Heading",
+            scraped_content="Body",
+            cover_file="/covers/img-1.jpg",
+        )
+
+    def test_cover_zone_calls_copy_image(self):
+        html = self._render()
+        assert 'onclick="copyImage(this.dataset.path)"' in html
+        assert 'copyText(this.dataset.path' not in html
+        assert "Click to copy image" in html
+        assert "Click to copy image path" not in html
+
+    def test_copy_image_writes_a_png_clipboard_item(self):
+        """The image lands on the clipboard as pixels, via write() — never
+        writeText(), and the toast reports success or failure either way."""
+        html = self._render()
+        fn = html.split("async function copyImage(", 1)[1].split("\n    }", 1)[0]
+        assert 'navigator.clipboard.write([new ClipboardItem(' in fn
+        assert '"image/png"' in fn
+        assert "writeText" not in fn
+        assert 'showToast("Image copied!")' in fn
+        assert 'showToast("Couldn\'t copy the image.")' in fn
+
+    def test_non_png_covers_are_reencoded_first(self):
+        """Covers are whatever the source served (jpeg/webp), so anything
+        that is not image/png goes through the canvas converter."""
+        html = self._render()
+        assert 'blob.type === "image/png" ? blob : await toPng(blob)' in html
+        assert "function toPng(blob)" in html
+        assert 'canvas.toBlob(' in html
+
+
 class TestArticleView:
     """The article view route must not reference missing imports."""
 

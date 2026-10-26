@@ -22,13 +22,13 @@
     {% if cover_file %}
       <div
         class="copy-zone relative rounded-xl overflow-hidden border border-gray-200 shadow-sm cursor-pointer group dark:border-gray-700"
-        onclick="copyText(this.dataset.path, 'Image path copied!')"
+        onclick="copyImage(this.dataset.path)"
         data-path="{{ cover_file }}"
       >
         <img src="{{ cover_file }}" alt="Cover" class="w-full max-h-96 object-cover">
         <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition flex items-center justify-center">
           <span class="opacity-0 group-hover:opacity-100 bg-black/60 text-white text-xs font-medium px-3 py-1.5 rounded-lg backdrop-blur-sm transition">
-            Click to copy image path
+            Click to copy image
           </span>
         </div>
       </div>
@@ -79,17 +79,57 @@
 {% block scripts %}
   <script>
     let toastTimer;
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.remove("opacity-0");
+      toast.classList.add("opacity-100");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove("opacity-100");
+        toast.classList.add("opacity-0");
+      }, 1500);
+    }
+
     function copyText(text, message) {
-      navigator.clipboard.writeText(text).then(() => {
-        const toast = document.getElementById("toast");
-        toast.textContent = message;
-        toast.classList.remove("opacity-0");
-        toast.classList.add("opacity-100");
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => {
-          toast.classList.remove("opacity-100");
-          toast.classList.add("opacity-0");
-        }, 1500);
+      navigator.clipboard.writeText(text).then(() => showToast(message));
+    }
+
+    // Copies the cover itself, not its path. The cover is a local /covers/…
+    // URL, so fetching it stays same-origin; the Clipboard API only accepts
+    // image/png, so any jpeg/webp cover is re-encoded through a canvas first.
+    async function copyImage(url) {
+      try {
+        const blob = await (await fetch(url)).blob();
+        const png = blob.type === "image/png" ? blob : await toPng(blob);
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+        showToast("Image copied!");
+      } catch (err) {
+        // Unsupported browser/permission, a missing file, or a decode error.
+        showToast("Couldn't copy the image.");
+      }
+    }
+
+    function toPng(blob) {
+      return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.getContext("2d").drawImage(img, 0, 0);
+          URL.revokeObjectURL(objectUrl);
+          canvas.toBlob(
+            (out) => (out ? resolve(out) : reject(new Error("PNG encode failed"))),
+            "image/png"
+          );
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("image decode failed"));
+        };
+        img.src = objectUrl;
       });
     }
   </script>

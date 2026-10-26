@@ -19,7 +19,7 @@
 **News Flow** is a self-hosted newsroom desk for Malayalam news. It scrapes your configured sources into a cached feed, and then hands the feed to whoever — or whatever — you want running the desk:
 
 - 🤖 **The agent.** With a Gemini API key, an *AI Publish* curator periodically reads the pending queue, picks the most newsworthy stories, avoids duplicating anything recently accepted, and feeds them through the same pipeline as a human click. At publish time a second Gemini call files each article under the site's own WordPress categories. Completed articles are pushed to WordPress — featured image, formatted body, categories and all — automatically.
-- 🖱️ **The human.** Without any AI credentials, News Flow is still a complete curation tool: a review workspace with a countdown queue, plus an article desk where the cover, heading and full body are one click away from your clipboard — copy the heading, copy the article, copy the image path, and paste it into whatever you publish with.
+- 🖱️ **The human.** Without any AI credentials, News Flow is still a complete curation tool: a review workspace with a countdown queue, plus an article desk where the cover, heading and full body are one click away from your clipboard — copy the heading, copy the article, copy the image, and paste it into whatever you publish with.
 
 Both modes run side by side. A human operator can pair-publish with the agent all day: you accept what it missed, it accepts while you're away, and every article — picked by hand or by model — takes the exact same path to the queue, the timer, and (if publishing is on) WordPress.
 
@@ -81,7 +81,7 @@ Every article has a dedicated page at `/article/{id}` — reach it via the **Pre
 
 | Zone | Click to copy |
 |------|---------------|
-| 🖼️ Cover image | The web path of the downloaded cover (e.g. `/covers/img-123.jpg`) |
+| 🖼️ Cover image | The cover image itself, ready to paste |
 | 📰 Heading | The scraped headline, clean and newline-free |
 | 📄 Article body | The full scraped text, ready for your editor |
 
@@ -92,7 +92,7 @@ Each click shows a toast confirmation; the **Read original article** link keeps 
 ```mermaid
 flowchart LR
     A["Browse the pending queue"] --> B["Preview on the article desk"]
-    B --> C["Copy heading · body · cover path"]
+    B --> C["Copy heading · body · cover"]
     C --> D["Paste into your publishing tool"]
     D --> E{"Keep it?"}
     E -->|yes| F["Accept — tracked with a countdown"]
