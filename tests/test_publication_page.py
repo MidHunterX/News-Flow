@@ -1,18 +1,24 @@
 """Offline tests for the print-publication page (``GET /publication``).
 
 Covers the card data assembly (local-scrape flag + word count), the route
-that reads both workspaces, and the template branches. No network: the
-route only reads the local database and files.
+that reads both workspaces, and the template branches — day tabs, the
+``article_layout`` layouts, and the scrape badges. No network: the route
+only reads the local database and files.
 """
 
 from __future__ import annotations
 
+import re
+
+import pytest
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import app.db as db_pkg
 import app.routes.scrape as scrape_routes
-from app.db.models import Article, PublicationArticle
+from app.db.models import Article, PublicationArticle, Setting
 from app.models import NewsItem
+
+LAYOUTS = ("grid", "rows", "compact")
 
 
 def _item(idx: int, **overrides) -> NewsItem:
@@ -40,30 +46,44 @@ def _card(idx: int, word_count: int | None = None, **overrides) -> dict:
     }
 
 
-def _render(sections) -> str:
+def _render(cards, *, article_layout="grid", selected_day="previous",
+            empty="Nothing here yet.") -> str:
     """Render publication.html directly, bypassing FastAPI entirely.
 
-    *sections* is a list of ``(label, cards)`` pairs; the other header
-    fields get filler values since the assertions don't depend on them.
+    Mirrors the context publication_view passes (one selected day tab).
     """
     env = Environment(
         loader=FileSystemLoader("templates"),
         autoescape=select_autoescape(["html"]),
     )
     template = env.get_template("publication.html")
-    context = {
-        "toggles": {},
-        "sections": [
-            {
-                "label": label,
-                "note": "note",
-                "cards": cards,
-                "empty": "Nothing here yet.",
-            }
-            for label, cards in sections
-        ],
-    }
-    return template.render(**context)
+    label = "Today" if selected_day == "today" else "Previous day"
+    return template.render(
+        toggles={},
+        article_layout=article_layout,
+        selected_day=selected_day,
+        count=len(cards),
+        section={
+            "label": label,
+            "note": "note",
+            "cards": cards,
+            "empty": empty,
+        },
+    )
+
+
+def _tab_class(html: str, href: str) -> str:
+    """Class list of the day tab (px-4 pill) linking to *href*.
+
+    Skips the header's px-3 nav pill, which points at the same URL.
+    """
+    match = re.search(
+        rf'<a href="{re.escape(href)}"\s+class="(px-4[^"]*)"', html, flags=re.DOTALL
+    )
+    return match.group(1) if match else ""
+
+
+ACTIVE = "bg-indigo-600 text-white shadow-sm"
 
 
 # ---------------------------------------------------------------------------
@@ -133,54 +153,92 @@ def _bind_workspaces(monkeypatch, tmp_path):
     return curation_dir, publication_dir
 
 
+def _seed_both_workspaces(curation_dir, publication_dir) -> tuple[int, int]:
+    """One article in each workspace, with a saved body for each."""
+    with db_pkg.SessionLocal() as session:
+        today = Article(
+            title="Today Story",
+            url="https://example.com/today",
+            image_url=None,
+            description="today desc",
+            published_at="2026-10-26",
+            source="mangalam",
+        )
+        previous = PublicationArticle(
+            title="Yesterday Story",
+            url="https://example.com/yesterday",
+            image_url=None,
+            description="yesterday desc",
+            published_at="2026-10-25",
+            source="madhyamam",
+            cover_file="/covers/old.png",
+        )
+        session.add_all([today, previous])
+        session.commit()
+        today_id, previous_id = today.id, previous.id
+
+    (curation_dir / f"{today_id}.txt").write_text(
+        "Head one two three", encoding="utf-8"
+    )
+    (publication_dir / f"{previous_id}.txt").write_text(
+        "Head four five six seven", encoding="utf-8"
+    )
+    return today_id, previous_id
+
+
 class TestPublicationRoute:
-    async def test_shows_today_and_previous_day_with_word_counts(
+    async def test_default_tab_is_the_previous_day(
         self, monkeypatch, tmp_path
     ):
         curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
-
-        with db_pkg.SessionLocal() as session:
-            today = Article(
-                title="Today Story",
-                url="https://example.com/today",
-                image_url=None,
-                description="today desc",
-                published_at="2026-10-26",
-                source="mangalam",
-            )
-            previous = PublicationArticle(
-                title="Yesterday Story",
-                url="https://example.com/yesterday",
-                image_url=None,
-                description="yesterday desc",
-                published_at="2026-10-25",
-                source="madhyamam",
-                cover_file="/covers/old.png",
-            )
-            session.add_all([today, previous])
-            session.commit()
-            today_id, previous_id = today.id, previous.id
-
-        (curation_dir / f"{today_id}.txt").write_text(
-            "Head one two three", encoding="utf-8"
-        )
-        (publication_dir / f"{previous_id}.txt").write_text(
-            "Head four five six seven", encoding="utf-8"
-        )
+        _seed_both_workspaces(curation_dir, publication_dir)
 
         response = await scrape_routes.publication_view(request=object())
         body = response.body.decode()
 
         assert response.status_code == 200
-        # Both sections render, each with its own article.
-        assert "Today" in body and "Previous day" in body
-        assert "Today Story" in body and "Yesterday Story" in body
-        # Local-scrape flag with a per-card word count.
-        assert "Locally scraped" in body
-        assert "4 words" in body
-        assert "5 words" in body
+        # Previous day is the default: its archive shows, today's does not.
+        assert "Previous day" in body and "Yesterday Story" in body
+        assert "Today Story" not in body
+        # Both tabs are present, previous one first.
+        previous_at = body.find('href="/publication"\n', body.find("<main"))
+        today_at = body.find('href="/publication?day=today"', body.find("<main"))
+        assert 0 < previous_at < today_at
+        assert ACTIVE in _tab_class(body, "/publication")
+        assert ACTIVE not in _tab_class(body, "/publication?day=today")
+
+    async def test_today_tab_shows_the_ongoing_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        _seed_both_workspaces(curation_dir, publication_dir)
+
+        response = await scrape_routes.publication_view(
+            request=object(), day="today"
+        )
+        body = response.body.decode()
+
+        assert response.status_code == 200
+        assert "Today Story" in body
+        assert "Yesterday Story" not in body
+        # The Today pill is now the active one.
+        assert ACTIVE in _tab_class(body, "/publication?day=today")
+        assert ACTIVE not in _tab_class(body, "/publication")
+
+    async def test_scraped_word_counts_render_per_card(
+        self, monkeypatch, tmp_path
+    ):
+        curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        _seed_both_workspaces(curation_dir, publication_dir)
+
+        previous = await scrape_routes.publication_view(request=object())
+        today = await scrape_routes.publication_view(request=object(), day="today")
+
+        previous_body, today_body = previous.body.decode(), today.body.decode()
+        assert "Locally scraped" in previous_body and "5 words" in previous_body
+        assert "Locally scraped" in today_body and "4 words" in today_body
         # The archived card's cover is served from the publication workspace.
-        assert "/publication/covers/old.png" in body
+        assert "/publication/covers/old.png" in previous_body
 
     async def test_article_without_content_is_marked_not_scraped(
         self, monkeypatch, tmp_path
@@ -200,14 +258,16 @@ class TestPublicationRoute:
             )
             session.commit()
 
-        response = await scrape_routes.publication_view(request=object())
+        response = await scrape_routes.publication_view(
+            request=object(), day="today"
+        )
         body = response.body.decode()
 
         assert response.status_code == 200
         assert "Not scraped locally" in body
         assert "Locally scraped" not in body
 
-    async def test_empty_workspaces_render_the_empty_states(
+    async def test_empty_tabs_render_their_empty_states(
         self, monkeypatch, tmp_path
     ):
         # Directories left missing on purpose: nothing exists yet.
@@ -220,12 +280,41 @@ class TestPublicationRoute:
             tmp_path / "absent" / "publication",
         )
 
+        previous = await scrape_routes.publication_view(request=object())
+        today = await scrape_routes.publication_view(request=object(), day="today")
+
+        assert "Nothing archived yet" in previous.body.decode()
+        assert "No articles in today&#39;s workspace yet." in today.body.decode()
+
+    async def test_respects_the_article_layout_setting(
+        self, monkeypatch, tmp_path
+    ):
+        """The publication page renders the same layout the curation UI uses."""
+        curation_dir, _publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        _seed_both_workspaces(curation_dir, tmp_path / "publication" / "articles")
+        with db_pkg.SessionLocal() as session:
+            session.add(Setting(key="article_layout", value="rows"))
+            session.commit()
+
         response = await scrape_routes.publication_view(request=object())
         body = response.body.decode()
 
         assert response.status_code == 200
-        assert "No articles in today&#39;s workspace yet." in body
-        assert "Nothing archived yet" in body
+        assert "ROWS layout" in body
+
+    async def test_unknown_day_falls_back_to_the_previous_day(
+        self, monkeypatch, tmp_path
+    ):
+        curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        _seed_both_workspaces(curation_dir, publication_dir)
+
+        response = await scrape_routes.publication_view(
+            request=object(), day="yesterday-please"
+        )
+        body = response.body.decode()
+
+        assert response.status_code == 200
+        assert "Yesterday Story" in body
 
 
 # ---------------------------------------------------------------------------
@@ -234,32 +323,68 @@ class TestPublicationRoute:
 
 
 class TestPublicationTemplate:
-    def test_scraped_card_shows_the_word_count(self):
-        html = _render([("Today", [_card(1, word_count=123)])])
+    @pytest.mark.parametrize("layout", LAYOUTS)
+    def test_each_layout_renders_its_branch(self, layout):
+        html = _render([_card(1), _card(2)], article_layout=layout)
+
+        assert f"{layout.upper()} layout" in html
+
+    def test_unknown_layout_renders_grid_branch(self):
+        html = _render([_card(1)], article_layout="bogus")
+
+        assert "GRID layout" in html
+
+    @pytest.mark.parametrize("layout", LAYOUTS)
+    def test_every_layout_carries_the_scrape_badge(self, layout):
+        """The local-scrape status shows up whatever the layout is."""
+        html = _render(
+            [_card(1, word_count=123), _card(2)], article_layout=layout
+        )
 
         assert "Locally scraped" in html
         assert "123 words" in html
-
-    def test_card_without_content_renders_not_scraped(self):
-        html = _render([("Previous day", [_card(2)])])
-
         assert "Not scraped locally" in html
-        assert "Locally scraped" not in html
+
+    @pytest.mark.parametrize("href", ["/publication", "/publication?day=today"])
+    def test_both_day_tabs_render(self, href):
+        assert _tab_class(_render([]), href)
+
+    def test_previous_day_tab_is_active_by_default(self):
+        html = _render([])
+
+        assert ACTIVE in _tab_class(html, "/publication")
+        assert ACTIVE not in _tab_class(html, "/publication?day=today")
+
+    def test_today_tab_is_active_when_selected(self):
+        html = _render([], selected_day="today")
+
+        assert ACTIVE in _tab_class(html, "/publication?day=today")
+        assert ACTIVE not in _tab_class(html, "/publication")
+
+    def test_previous_day_tab_is_listed_before_today(self):
+        html = _render([])
+
+        previous_at = html.find('href="/publication"\n')
+        today_at = html.find('href="/publication?day=today"')
+        assert 0 < previous_at < today_at
+
+    def test_results_header_shows_the_item_count(self):
+        html = _render([_card(1), _card(2), _card(3)])
+
+        assert "(3 items found)" in html
 
     def test_empty_section_renders_its_message(self):
-        html = _render([("Today", [])])
+        html = _render([], empty="Nothing here yet.")
 
         assert "Nothing here yet." in html
 
     def test_card_links_to_the_original_article(self):
-        html = _render([("Today", [_card(3)])])
+        html = _render([_card(3)])
 
         assert 'href="https://example.com/3"' in html
         assert "Article 3" in html
 
     def test_archived_cover_is_used_when_present(self):
-        html = _render(
-            [("Previous day", [_card(4, cover_file="/publication/covers/x.png")])]
-        )
+        html = _render([_card(4, cover_file="/publication/covers/x.png")])
 
         assert 'src="/publication/covers/x.png"' in html

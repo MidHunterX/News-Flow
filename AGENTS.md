@@ -103,8 +103,11 @@ Two workspaces exist side by side:
 - **Publication workspace** — `publication_articles` table +
   `public/publication/{articles,covers}/`; a verbatim mirror of the
   previous day's curation workspace, filled by the daily reset and read by
-  `GET /publication` (cards for today + the archive, each flagged with its
-  local-scrape status and word count).
+  `GET /publication`. The page follows the curation UI: **Previous day**
+  and **Today** pill tabs (previous day first and the default, `?day=today`
+  selects the second), the same results header, and the same
+  `article_layout` grid/rows/compact branches — cards are read-only and
+  carry each article's local-scrape status and word count.
 
 ## Runtime behavior worth knowing
 

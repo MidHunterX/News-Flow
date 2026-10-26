@@ -357,41 +357,50 @@ def _build_cards(
 
 
 @router.get("/publication", response_class=HTMLResponse)
-async def publication_view(request: Request):
+async def publication_view(
+    request: Request,
+    day: str | None = Query(
+        None, description="Tab to show: 'today' for the ongoing workspace"
+    ),
+):
     """Read-only view of the print-publication workspace.
 
-    Shows today's curation workspace next to the previous day's archive (the
-    ``publication_articles`` rows and the mirrored ``public/publication/``
-    files), so yesterday's data can be inspected for print publication while
-    curation starts from a clean slate. Each card flags whether the article
-    body was scraped locally and, when it was, its word count. Nothing is
-    scraped or mutated from here — inspection only.
+    Structured like the curation UI: a "Previous day" / "Today" pill
+    switch (previous day first and the default), a results header, and the
+    same ``article_layout`` branches (grid / rows / compact). The data comes
+    from today's curation workspace or the previous day's archive
+    (``publication_articles`` + ``public/publication/`` files). Each card
+    flags whether the article body was scraped locally and, when it was, its
+    word count. Nothing is scraped or mutated from here — inspection only.
     """
-    today_cards = _build_cards(await get_items(), ARTICLES_DIR, archived=False)
-    previous_cards = _build_cards(
-        await get_publication_items(), PUBLICATION_ARTICLES_DIR, archived=True
-    )
+    show_today = day == "today"
+    if show_today:
+        cards = _build_cards(await get_items(), ARTICLES_DIR, archived=False)
+        section = {
+            "label": "Today",
+            "note": "ongoing — curation workspace",
+            "empty": "No articles in today's workspace yet.",
+        }
+    else:
+        cards = _build_cards(
+            await get_publication_items(), PUBLICATION_ARTICLES_DIR, archived=True
+        )
+        section = {
+            "label": "Previous day",
+            "note": "archived by the daily reset — print-publication pipeline",
+            "empty": "Nothing archived yet — the first daily reset fills this tab.",
+        }
+
     return templates.TemplateResponse(
         request=request,
         name="publication.html",
         context={
             "request": request,
             "active_nav": "publication",
-            "sections": [
-                {
-                    "label": "Today",
-                    "note": "ongoing — curation workspace",
-                    "cards": today_cards,
-                    "empty": "No articles in today's workspace yet.",
-                },
-                {
-                    "label": "Previous day",
-                    "note": "archived — publication workspace",
-                    "cards": previous_cards,
-                    "empty": "Nothing archived yet — the first daily reset "
-                             "fills this section.",
-                },
-            ],
+            "selected_day": "today" if show_today else "previous",
+            "section": {**section, "cards": cards},
+            "count": len(cards),
+            "article_layout": await get_article_layout(),
             **await _toggle_context(),
         },
     )
