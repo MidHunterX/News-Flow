@@ -29,6 +29,7 @@ from app.db import (
     get_items,
     get_notifications,
     get_pending_items,
+    get_publication_article_by_id,
     get_publication_items,
     get_rejected_items,
     get_reset_timezone,
@@ -284,17 +285,46 @@ async def delete_notifications():
 
 
 @router.get("/article/{article_id}", response_class=HTMLResponse)
-async def article_view(request: Request, article_id: int):
-    """Display the scraped cover, heading, and content for an accepted article."""
-    article = await get_article_by_id(article_id)
+async def article_view(
+    request: Request,
+    article_id: int,
+    day: str | None = Query(
+        None,
+        description="'previous' for an archived publication article, "
+        "'today' when previewing from the publication page's Today tab",
+    ),
+):
+    """Display the scraped cover, heading, and content for an accepted article.
+
+    ``day`` picks the workspace to read from and where the back link
+    returns to: ``previous`` reads the archived row and the
+    ``public/publication/`` files (back to ``/publication``), ``today``
+    reads the curation workspace but keeps the publication nav active (back
+    to its Today tab), and no ``day`` is the curation feed itself.
+    """
+    archived = day == "previous"
+    # A preview opened from the publication page keeps that workspace's nav
+    # active and links back to it; otherwise it is a plain curation preview.
+    from_publication = day in {"previous", "today"}
+    if archived:
+        article = await get_publication_article_by_id(article_id)
+        content_file = PUBLICATION_ARTICLES_DIR / f"{article_id}.txt"
+        back_href, back_label = "/publication", "Back to publication"
+    else:
+        article = await get_article_by_id(article_id)
+        content_file = ARTICLES_DIR / f"{article_id}.txt"
+        if from_publication:  # day == "today"
+            back_href, back_label = "/publication?day=today", "Back to publication"
+        else:
+            back_href, back_label = "/", "Back to feed"
     if article is None:
         raise HTTPException(404, "Article not found")
 
     # Read saved scraped content if available.
     scraped_heading = article.title
     scraped_content = ""
-    cover_file = article.cover_file  # Stored by accept endpoint.
-    content_file = ARTICLES_DIR / f"{article_id}.txt"
+    # Stored by the accept endpoint (or the publication mirror's own scrape).
+    cover_file = _archived_cover(article.cover_file) if archived else article.cover_file
     if content_file.exists():
         raw = content_file.read_text(encoding="utf-8")
         parts = raw.split("\n\n", 1)
@@ -306,14 +336,43 @@ async def article_view(request: Request, article_id: int):
         name="article.html",
         context={
             "request": request,
-            "active_nav": "curation",
+            "active_nav": "publication" if from_publication else "curation",
             "article": article,
             "scraped_heading": scraped_heading,
             "scraped_content": scraped_content,
             "cover_file": cover_file,
+            "back_href": back_href,
+            "back_label": back_label,
             **await _toggle_context(),
         },
     )
+
+
+@router.post("/api/articles/{article_id}/scrape")
+async def scrape_article_content(
+    article_id: int,
+    day: str | None = Query(
+        None, description="'previous' to scrape an archived publication article"
+    ),
+):
+    """Scrape an article's page into its workspace without accepting it.
+
+    The publication page's Scrape button: downloads the cover and saves the
+    scraped heading + body exactly like the accept flow, but leaves the
+    article's status alone — nothing enters the publishing pipeline, the
+    card just gains its content and word count. ``day=previous`` targets the
+    archived row and writes into the publication workspace instead of the
+    curation one. Returns ``{"ok": false}`` when the page could not be
+    scraped (the workspace is then left untouched).
+    """
+    archived = day == "previous"
+    if archived:
+        article = await get_publication_article_by_id(article_id)
+    else:
+        article = await get_article_by_id(article_id)
+    if article is None:
+        raise HTTPException(404, "Article not found")
+    return {"ok": await enrich_accepted_article(article, archived=archived)}
 
 
 def _word_count(path: Path) -> int | None:
@@ -326,22 +385,34 @@ def _word_count(path: Path) -> int | None:
         return None  # Unreadable counts as not scraped; the card just says so.
 
 
+def _archived_cover(cover: str | None) -> str | None:
+    """Point an archived row's cover at the publication workspace.
+
+    Rows are copied verbatim by the daily reset, so their ``cover_file``
+    still says ``/covers/...`` — but the curation copy of that directory is
+    wiped and the same bytes now live under ``/publication/covers/``. Covers
+    written by the publication workspace's own Scrape button already carry
+    the ``/publication/covers/`` path and pass through unchanged.
+    """
+    if cover and cover.startswith("/covers/"):
+        return "/publication/covers/" + cover.removeprefix("/covers/")
+    return cover
+
+
 def _build_cards(
     items: list[NewsItem], content_dir: Path, *, archived: bool
 ) -> list[dict]:
     """Assemble the publication page's card data.
 
-    Each card carries the scraped-content word count (None when the accept
-    flow never saved a body for that article) and the cover URL to render.
+    Each card carries the scraped-content word count (None when nothing has
+    saved a body for that article yet) and the cover URL to render.
     Archived cards read their files from the publication workspace and get
     their cover URL pointed at ``/publication/covers/``, since the curation
     copy of both is wiped at the daily reset.
     """
     cards = []
     for item in items:
-        cover = item.cover_file
-        if archived and cover and cover.startswith("/covers/"):
-            cover = "/publication/covers/" + cover.removeprefix("/covers/")
+        cover = _archived_cover(item.cover_file) if archived else item.cover_file
         cards.append(
             {
                 "item": item,

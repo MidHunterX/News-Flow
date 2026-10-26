@@ -50,29 +50,53 @@ from app.models import NewsItem
 logger = logging.getLogger(__name__)
 
 
-async def enrich_accepted_article(article: NewsItem) -> bool:
-    """Scrape an accepted article's page for cover + content.
+async def enrich_accepted_article(
+    article: NewsItem, *, archived: bool = False
+) -> bool:
+    """Scrape an article's page for cover + content.
 
-    Shared by the UI's accept endpoint and the AI Publish curator so both
-    paths produce identical workspaces: the cover is downloaded to
-    ``public/covers/`` (falling back to the listing thumbnail) and the
-    scraped heading + body are saved to ``public/articles/<id>.txt`` for the
-    article view and the WordPress publisher.
+    Shared by the UI's accept endpoint, the AI Publish curator, and the
+    publication page's Scrape button so all paths produce identical
+    workspaces: the cover is downloaded to ``public/covers/`` (falling back
+    to the listing thumbnail) and the scraped heading + body are saved to
+    ``public/articles/<id>.txt`` for the article view and the WordPress
+    publisher.
+
+    With ``archived=True`` the target is the publication workspace instead —
+    cover to ``public/publication/covers/``, body to
+    ``public/publication/articles/<id>.txt``, and the archived row's
+    ``cover_file`` records the ``/publication/covers/...`` path. The
+    caller owns the article's status: nothing here accepts, rejects, or
+    clears an article.
 
     Returns False when the article page could not be used: the fetch raised,
-    the page didn't parse, or the parsed body came back empty. The caller is
-    expected to clear the article's status (an article without its full
-    content must not flow on to publishing). Failures in the *cover*
-    download or file writes still count as success — those have their own
-    fallbacks and are not essential to the article being publishable.
+    the page didn't parse, or the parsed body came back empty. A caller that
+    just accepted the article is expected to clear its status (an article
+    without its full content must not flow on to publishing). Failures in
+    the *cover* download or file writes still count as success — those have
+    their own fallbacks and are not essential to the article being
+    publishable.
     """
     from app.browser import fetch_rendered_html
+    from app.db import update_article_cover_file, update_publication_cover_file
     from app.scrapers.init import SCRAPERS
-    from app.utils import ARTICLES_DIR, download_image, fetch_html
+    from app.utils import (
+        ARTICLES_DIR,
+        COVERS_DIR,
+        PUBLICATION_ARTICLES_DIR,
+        PUBLICATION_COVERS_DIR,
+        download_image,
+        fetch_html,
+    )
 
     article_id = article.id
     if not article_id or not article.url or article.source not in SCRAPERS:
         return False
+    # Same layout in both workspaces; only the directories (and the cover
+    # column to update) differ.
+    content_dir = PUBLICATION_ARTICLES_DIR if archived else ARTICLES_DIR
+    cover_dir = PUBLICATION_COVERS_DIR if archived else COVERS_DIR
+    cover_prefix = "/publication/covers" if archived else "/covers"
     scraper = SCRAPERS[article.source]
     try:
         if scraper.needs_browser:
@@ -92,21 +116,22 @@ async def enrich_accepted_article(article: NewsItem) -> bool:
 
     local_path = None
     if scraped.cover_path:
-        local_path = await download_image(scraped.cover_path)
+        local_path = await download_image(scraped.cover_path, dest_dir=cover_dir)
         if local_path is None and article.image_url:
             # Cover download failed; fall back to the thumbnail
             # image from the listing page.
-            local_path = await download_image(article.image_url)
+            local_path = await download_image(article.image_url, dest_dir=cover_dir)
     if local_path:
-        # Store the web-accessible path relative to covers dir.
+        # Store the web-accessible path relative to the covers dir.
         cover_name = Path(local_path).name
-        cover_web = f"/covers/{cover_name}"
-        from app.db import update_article_cover_file
-
-        await update_article_cover_file(article_id, cover_web)
+        cover_web = f"{cover_prefix}/{cover_name}"
+        if archived:
+            await update_publication_cover_file(article_id, cover_web)
+        else:
+            await update_article_cover_file(article_id, cover_web)
     # Persist scraped content for the article view page.
-    ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
-    content_file = ARTICLES_DIR / f"{article_id}.txt"
+    content_dir.mkdir(parents=True, exist_ok=True)
+    content_file = content_dir / f"{article_id}.txt"
     content_file.write_text(
         f"{scraped.heading}\n\n{scraped.content}", encoding="utf-8"
     )

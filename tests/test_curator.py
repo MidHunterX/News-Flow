@@ -6,11 +6,19 @@ The Gemini call and DB layer are faked/monkeypatched — no network.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
+import app.db as db_pkg
 from app import curator
-from app.models import NewsItem
+from app.db.models import Article, PublicationArticle
+from app.models import NewsItem, ScrapedArticleContent
+
+# Captured at import time: the module's autouse `_patch_pick` fixture pulls in
+# `env`, which swaps enrich_accepted_article for a fake in every test. The
+# workspace-targeting tests below need the real function.
+_REAL_ENRICH = curator.enrich_accepted_article
 
 
 def _item(idx: int, **overrides) -> NewsItem:
@@ -257,6 +265,124 @@ async def test_invalid_last_run_treated_as_due(env):
 
 async def test_interval_elapsed_helper():
     assert curator._interval_elapsed(None, 60) is True
+
+
+# ---------------------------------------------------------------------------
+# enrich_accepted_article: which workspace it scrapes into (the publication
+# page's Scrape button uses archived=True and never accepts anything).
+# ---------------------------------------------------------------------------
+
+
+class _FakeScraper:
+    """Scraper stand-in: ignores the HTML, always returns a parsed article."""
+
+    needs_browser = False
+
+    async def scrape_article_page(self, html):
+        return ScrapedArticleContent(
+            heading="Scraped heading",
+            content="one two three four",
+            cover_path="https://cdn.example.com/cover.jpg",
+        )
+
+
+async def _fake_fetch_html(url: str) -> str:
+    return "<html><body>ignored by _FakeScraper</body></html>"
+
+
+class _RecordingDownload:
+    """download_image stand-in: records the target dir, fakes the download."""
+
+    def __init__(self) -> None:
+        self.dest_dirs: list[Path] = []
+
+    async def __call__(self, url, filename=None, dest_dir=None):
+        self.dest_dirs.append(dest_dir)
+        return str(dest_dir / Path(url).name)
+
+
+def _fake_scrape_env(monkeypatch, tmp_path):
+    """Redirect the scrape pipeline's I/O: workspace dirs → tmp, no network."""
+    import app.utils as utils_mod
+    from app.scrapers.init import SCRAPERS
+
+    dirs = {
+        "cur_articles": tmp_path / "articles",
+        "cur_covers": tmp_path / "covers",
+        "pub_articles": tmp_path / "publication" / "articles",
+        "pub_covers": tmp_path / "publication" / "covers",
+    }
+    monkeypatch.setattr(utils_mod, "ARTICLES_DIR", dirs["cur_articles"])
+    monkeypatch.setattr(utils_mod, "COVERS_DIR", dirs["cur_covers"])
+    monkeypatch.setattr(utils_mod, "PUBLICATION_ARTICLES_DIR", dirs["pub_articles"])
+    monkeypatch.setattr(utils_mod, "PUBLICATION_COVERS_DIR", dirs["pub_covers"])
+    monkeypatch.setitem(SCRAPERS, "kaumudi", _FakeScraper())
+    monkeypatch.setattr(utils_mod, "fetch_html", _fake_fetch_html)
+    download = _RecordingDownload()
+    monkeypatch.setattr(utils_mod, "download_image", download)
+    # Undo `env`'s fake so the real function runs (see _REAL_ENRICH).
+    monkeypatch.setattr(curator, "enrich_accepted_article", _REAL_ENRICH)
+    return dirs, download
+
+
+def _row(model, **overrides):
+    """An article row for the table under test (its columns are shared)."""
+    fields = {
+        "title": "Story",
+        "url": "https://example.com/1",
+        "image_url": None,
+        "description": "desc",
+        "published_at": "2026-10-26",
+        "source": "kaumudi",
+    }
+    fields.update(overrides)
+    return model(**fields)
+
+
+async def test_default_enrich_scrapes_into_the_curation_workspace(
+    tmp_path, monkeypatch
+):
+    """The accept flow (and the publication page's Today tab) uses curation."""
+    dirs, download = _fake_scrape_env(monkeypatch, tmp_path)
+    with db_pkg.SessionLocal() as session:
+        session.add(_row(Article))
+        session.commit()
+        article_id = session.query(Article).one().id
+
+    assert await curator.enrich_accepted_article(_item(article_id)) is True
+
+    body_file = dirs["cur_articles"] / f"{article_id}.txt"
+    assert "Scraped heading" in body_file.read_text(encoding="utf-8")
+    assert not (dirs["pub_articles"] / f"{article_id}.txt").exists()
+    assert download.dest_dirs == [dirs["cur_covers"]]
+    with db_pkg.SessionLocal() as session:
+        stored = session.get(Article, article_id)
+        assert stored.cover_file == "/covers/cover.jpg"
+        assert stored.status is None  # scraping never accepts an article
+
+
+async def test_archived_enrich_scrapes_into_the_publication_workspace(
+    tmp_path, monkeypatch
+):
+    """archived=True (the publication page's Scrape button) uses the mirror."""
+    dirs, download = _fake_scrape_env(monkeypatch, tmp_path)
+    with db_pkg.SessionLocal() as session:
+        session.add(_row(PublicationArticle, status="completed"))
+        session.commit()
+        article_id = session.query(PublicationArticle).one().id
+
+    assert (
+        await curator.enrich_accepted_article(_item(article_id), archived=True)
+    ) is True
+
+    body_file = dirs["pub_articles"] / f"{article_id}.txt"
+    assert "one two three four" in body_file.read_text(encoding="utf-8")
+    assert not (dirs["cur_articles"] / f"{article_id}.txt").exists()
+    assert download.dest_dirs == [dirs["pub_covers"]]
+    with db_pkg.SessionLocal() as session:
+        stored = session.get(PublicationArticle, article_id)
+        assert stored.cover_file == "/publication/covers/cover.jpg"
+        assert stored.status == "completed"  # scraping never clears status
     future = _iso(datetime.now(UTC) + timedelta(seconds=120))
     assert curator._interval_elapsed(future, 60) is False
     past = _iso(datetime.now(UTC) - timedelta(seconds=61))

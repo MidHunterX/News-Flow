@@ -3,9 +3,9 @@
 {% block content %}
   <!-- Print-publication inspection, shaped like the curation workspace:
        day pills, a results header, and the same grid/rows/compact layout
-       branches (the article_layout setting drives which one renders).
-       Cards are read-only — there is nothing to accept or reject here, so
-       the action row of a curation card carries the local-scrape status. -->
+       branches (the article_layout setting drives which one renders), plus
+       the curation card's action row: Preview opens the article page and
+       Scrape saves the article's page/content without accepting it. -->
 
   {% macro scrape_badge(card) %}
     {% if card.word_count is not none %}
@@ -22,6 +22,56 @@
         </svg>
         Not scraped locally
       </span>
+    {% endif %}
+  {% endmacro %}
+
+  {% macro eye_icon() %}
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+    </svg>
+  {% endmacro %}
+
+  {% macro refresh_icon() %}
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+    </svg>
+  {% endmacro %}
+
+  <!-- Preview (GET /article/<id>, workspace-aware via ?day=) and Scrape
+       (POST /api/articles/<id>/scrape — saves the page but never accepts).
+       compact=True renders the icon-only pair of the compact layout. -->
+  {% macro preview_button(card, compact=False) %}
+    {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
+    {% if compact %}
+      <a href="{{ preview_href }}" title="Preview the scraped article"
+         class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition shrink-0">
+        {{ eye_icon() }}
+      </a>
+    {% else %}
+      <a href="{{ preview_href }}" title="Preview the scraped article"
+         class="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white hover:bg-indigo-700 font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm">
+        {{ eye_icon() }}
+        <span>Preview</span>
+      </a>
+    {% endif %}
+  {% endmacro %}
+
+  {% macro scrape_button(card, compact=False) %}
+    {% set scrape_href = "/api/articles/" ~ card.item.id ~ "/scrape?day=" ~ selected_day %}
+    {% if compact %}
+      <button type="button" title="Scrape the article page (does not accept it)"
+              onclick="postAction('{{ scrape_href }}', event)"
+              class="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-indigo-600 hover:text-white transition shrink-0">
+        {{ refresh_icon() }}
+      </button>
+    {% else %}
+      <button type="button" title="Scrape the article page (does not accept it)"
+              onclick="postAction('{{ scrape_href }}', event)"
+              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 hover:bg-indigo-600 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm">
+        {{ refresh_icon() }}
+        <span>Scrape</span>
+      </button>
     {% endif %}
   {% endmacro %}
 
@@ -74,9 +124,13 @@
                 </h3>
                 <p class="text-gray-600 text-sm mb-4 line-clamp-2 flex-grow">{{ card.item.description }}</p>
 
-                <!-- Local scrape status where the curation card puts its actions. -->
-                <div class="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-gray-200">
+                <!-- Action row: scrape status plus Preview / Scrape. -->
+                <div class="flex items-center justify-between gap-3 mt-auto pt-3 border-t border-gray-200">
                   {{ scrape_badge(card) }}
+                  <div class="flex items-center gap-2 shrink-0">
+                    {{ preview_button(card) }}
+                    {{ scrape_button(card) }}
+                  </div>
                 </div>
               </div>
             </article>
@@ -101,7 +155,11 @@
                   <span>{{ card.item.published_at }}</span>
                 </div>
               </div>
-              <div class="shrink-0">{{ scrape_badge(card) }}</div>
+              <div class="shrink-0 flex items-center gap-2">
+                {{ scrape_badge(card) }}
+                {{ preview_button(card, compact=True) }}
+                {{ scrape_button(card, compact=True) }}
+              </div>
             </div>
           {% endfor %}
         </div>
@@ -131,9 +189,13 @@
                 </h3>
                 <p class="text-gray-600 text-sm mb-4 flex-grow line-clamp-3">{{ card.item.description }}</p>
 
-                <!-- Local scrape status where the curation card puts its actions. -->
-                <div class="pt-4 border-t border-gray-200 mt-auto">
+                <!-- Action row: scrape status plus Preview / Scrape. -->
+                <div class="pt-4 border-t border-gray-200 mt-auto space-y-3">
                   {{ scrape_badge(card) }}
+                  <div class="grid grid-cols-2 gap-3">
+                    {{ preview_button(card) }}
+                    {{ scrape_button(card) }}
+                  </div>
                 </div>
               </div>
             </article>
@@ -146,4 +208,45 @@
       </div>
     {% endif %}
   </div>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    // Scrape button: POST the article's scrape endpoint, then reload so the
+    // card's badge and word count pick up the new files. Unlike the curation
+    // UI's silent postAction, a failed scrape says so — nothing was written,
+    // so the reload would otherwise look like the button did nothing.
+    const spinnerSVG = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+
+    async function postAction(url, event) {
+      const btn = event ? event.currentTarget : null;
+      let originalHTML = "";
+      if (btn) {
+        originalHTML = btn.innerHTML;
+        btn.innerHTML = `${spinnerSVG} Scraping`;
+        btn.disabled = true;
+        btn.classList.add("opacity-50", "cursor-wait");
+      }
+      let message = null;
+      try {
+        const res = await fetch(url, {
+          method: "POST"
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          message = data.detail || "Scraping the article failed — nothing was saved.";
+        }
+      } catch (err) {
+        message = "The request failed — nothing was saved.";
+      } finally {
+        if (btn) {
+          btn.innerHTML = originalHTML;
+          btn.disabled = false;
+          btn.classList.remove("opacity-50", "cursor-wait");
+        }
+        if (message) alert(message);
+        window.location.reload();
+      }
+    }
+  </script>
 {% endblock %}

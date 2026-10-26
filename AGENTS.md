@@ -106,8 +106,12 @@ Two workspaces exist side by side:
   `GET /publication`. The page follows the curation UI: **Previous day**
   and **Today** pill tabs (previous day first and the default, `?day=today`
   selects the second), the same results header, and the same
-  `article_layout` grid/rows/compact branches — cards are read-only and
-  carry each article's local-scrape status and word count.
+  `article_layout` grid/rows/compact branches. Each card carries its
+  local-scrape status and word count plus two actions: **Preview** opens
+  `GET /article/<id>?day=<previous|today>` (the same `article.html`, with
+  its back link pointing at the tab it came from) and **Scrape** POSTs
+  `/api/articles/<id>/scrape?day=...`, which saves the page into the
+  selected workspace *without* changing the article's status.
 
 ## Runtime behavior worth knowing
 
@@ -128,7 +132,11 @@ Two workspaces exist side by side:
   its page (via Playwright when `needs_browser`) → downloads the cover to
   `public/covers/` → saves heading+content to `public/articles/<id>.txt` and
   the web path `/covers/<name>` into `article.cover_file`. Scraping failures
-  are swallowed — accept never fails because of them.
+  are swallowed — accept never fails because of them. The publication
+  page's **Scrape** button runs the very same `enrich_accepted_article()`
+  with `archived=True` for the previous-day tab (cover → `public/publication/covers/`,
+  content → `public/publication/articles/<id>.txt`, cover path → the
+  `publication_articles` row) but never touches the article's status.
 - **Scheduled refresh** (`app/refresher.py`): `refresh_sources()` is shared by
   the manual `POST /api/refresh` and the background loop — scrape →
   `save_items` → `trim_articles` → stamp `refresh_last_run`. `run_due_refresh()`

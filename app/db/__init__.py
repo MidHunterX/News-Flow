@@ -21,6 +21,7 @@ from app.db.articles import (
                              get_due_articles,
                              get_items,
                              get_pending_items,
+                             get_publication_article_by_id,
                              get_publication_items,
                              get_recent_accepted_titles,
                              get_rejected_items,
@@ -29,6 +30,7 @@ from app.db.articles import (
                              set_article_status,
                              trim_articles,
                              update_article_cover_file,
+                             update_publication_cover_file,
 )
 from app.db.constants import (
                              AI_PUBLISH_LAST_RUN_KEY,
@@ -113,10 +115,12 @@ __all__ = [  # noqa: RUF022
     "get_rejected_items",
     "set_article_status",
     "get_article_by_id",
+    "get_publication_article_by_id",
     "get_due_articles",
     "mark_articles_completed",
     "get_cached_sources",
     "update_article_cover_file",
+    "update_publication_cover_file",
     "get_recent_accepted_titles",
     # Settings.
     "get_setting",

@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from fastapi import HTTPException
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 import app.db as db_pkg
@@ -178,10 +179,10 @@ def _seed_both_workspaces(curation_dir, publication_dir) -> tuple[int, int]:
         today_id, previous_id = today.id, previous.id
 
     (curation_dir / f"{today_id}.txt").write_text(
-        "Head one two three", encoding="utf-8"
+        "Head\n\none two three", encoding="utf-8"
     )
     (publication_dir / f"{previous_id}.txt").write_text(
-        "Head four five six seven", encoding="utf-8"
+        "Head\n\nfour five six seven", encoding="utf-8"
     )
     return today_id, previous_id
 
@@ -388,3 +389,234 @@ class TestPublicationTemplate:
         html = _render([_card(4, cover_file="/publication/covers/x.png")])
 
         assert 'src="/publication/covers/x.png"' in html
+
+
+# ---------------------------------------------------------------------------
+# Card actions: Preview (GET /article/<id>) and Scrape (POST, never accepts)
+# ---------------------------------------------------------------------------
+
+# article.html's back link class (the "Read original article" link is
+# skipped because it carries a target attribute before its class list).
+_BACK_LINK_CLASS = "inline-flex items-center gap-1 text-sm text-indigo-600"
+
+
+def _back_href(html: str) -> str | None:
+    """Destination of article.html's back link, or None if it's missing."""
+    match = re.search(rf'<a href="([^"]+)"\s+class="[^"]*{_BACK_LINK_CLASS}', html)
+    return match.group(1) if match else None
+
+
+def _no_status_change(*args, **kwargs):
+    """Spy for the Scrape endpoint: it must never touch an article's status."""
+    pytest.fail("the Scrape endpoint changed an article's status")
+
+
+class TestArticlePreview:
+    """GET /article/<id>?day=... — what the Preview button opens."""
+
+    async def test_previous_day_preview_reads_the_publication_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        _today_id, previous_id = _seed_both_workspaces(curation_dir, publication_dir)
+
+        response = await scrape_routes.article_view(
+            request=object(), article_id=previous_id, day="previous"
+        )
+        body = response.body.decode()
+
+        assert response.status_code == 200
+        # The archived body and cover come from the publication workspace...
+        assert "four five six seven" in body
+        assert "/publication/covers/old.png" in body
+        # ...and the back link returns to the archive, not the curation feed.
+        assert _back_href(body) == "/publication"
+        assert "Back to publication" in body
+
+    async def test_today_preview_reads_the_curation_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        today_id, _previous_id = _seed_both_workspaces(curation_dir, publication_dir)
+
+        response = await scrape_routes.article_view(
+            request=object(), article_id=today_id, day="today"
+        )
+        body = response.body.decode()
+
+        assert response.status_code == 200
+        assert "one two three" in body
+        # Opened from the publication page, it goes back to its Today tab.
+        assert _back_href(body) == "/publication?day=today"
+        assert "Back to publication" in body
+
+    async def test_preview_without_day_is_the_curation_feed(
+        self, monkeypatch, tmp_path
+    ):
+        curation_dir, publication_dir = _bind_workspaces(monkeypatch, tmp_path)
+        today_id, _previous_id = _seed_both_workspaces(curation_dir, publication_dir)
+
+        response = await scrape_routes.article_view(
+            request=object(), article_id=today_id
+        )
+        body = response.body.decode()
+
+        assert response.status_code == 200
+        assert _back_href(body) == "/"
+        assert "Back to feed" in body
+
+    async def test_preview_of_an_unknown_archived_article_404s(
+        self, monkeypatch, tmp_path
+    ):
+        _bind_workspaces(monkeypatch, tmp_path)
+
+        with pytest.raises(HTTPException) as exc:
+            await scrape_routes.article_view(
+                request=object(), article_id=999, day="previous"
+            )
+
+        assert exc.value.status_code == 404
+
+
+class TestScrapeEndpoint:
+    """POST /api/articles/<id>/scrape — what the Scrape button calls."""
+
+    async def test_scrapes_the_curation_article_without_accepting(
+        self, monkeypatch, tmp_path
+    ):
+        _bind_workspaces(monkeypatch, tmp_path)
+        with db_pkg.SessionLocal() as session:
+            row = Article(
+                title="Pending Story",
+                url="https://example.com/pending",
+                image_url=None,
+                description="desc",
+                published_at="2026-10-26",
+                source="kaumudi",
+            )
+            session.add(row)
+            session.commit()
+            article_id = row.id
+
+        calls = []
+
+        async def fake_enrich(article, *, archived=False):
+            calls.append((article.id, archived))
+            return True
+
+        monkeypatch.setattr(scrape_routes, "enrich_accepted_article", fake_enrich)
+        monkeypatch.setattr(scrape_routes, "set_article_status", _no_status_change)
+
+        response = await scrape_routes.scrape_article_content(article_id, day=None)
+
+        assert response == {"ok": True}
+        assert calls == [(article_id, False)]  # curation workspace
+        with db_pkg.SessionLocal() as session:
+            assert session.get(Article, article_id).status is None  # not accepted
+
+    async def test_scrapes_the_archived_article_into_the_publication_workspace(
+        self, monkeypatch, tmp_path
+    ):
+        _bind_workspaces(monkeypatch, tmp_path)
+        with db_pkg.SessionLocal() as session:
+            row = PublicationArticle(
+                title="Archived Story",
+                url="https://example.com/archived",
+                image_url=None,
+                description="desc",
+                published_at="2026-10-25",
+                source="madhyamam",
+                status="completed",
+            )
+            session.add(row)
+            session.commit()
+            article_id = row.id
+
+        calls = []
+
+        async def fake_enrich(article, *, archived=False):
+            calls.append((article.id, archived))
+            return True
+
+        monkeypatch.setattr(scrape_routes, "enrich_accepted_article", fake_enrich)
+        monkeypatch.setattr(scrape_routes, "set_article_status", _no_status_change)
+
+        response = await scrape_routes.scrape_article_content(
+            article_id, day="previous"
+        )
+
+        assert response == {"ok": True}
+        assert calls == [(article_id, True)]  # publication workspace
+        with db_pkg.SessionLocal() as session:
+            stored = session.get(PublicationArticle, article_id)
+            assert stored.status == "completed"  # scraping changes nothing else
+
+    async def test_a_failed_scrape_reports_ok_false(
+        self, monkeypatch, tmp_path
+    ):
+        _bind_workspaces(monkeypatch, tmp_path)
+        with db_pkg.SessionLocal() as session:
+            row = Article(
+                title="Unscrapable Story",
+                url="https://example.com/broken",
+                image_url=None,
+                description="desc",
+                published_at="2026-10-26",
+                source="kaumudi",
+            )
+            session.add(row)
+            session.commit()
+            article_id = row.id
+
+        async def failing_enrich(article, *, archived=False):
+            return False  # the page could not be fetched or parsed
+
+        monkeypatch.setattr(scrape_routes, "enrich_accepted_article", failing_enrich)
+
+        response = await scrape_routes.scrape_article_content(article_id, day=None)
+
+        assert response == {"ok": False}
+
+    async def test_scraping_an_unknown_article_404s(
+        self, monkeypatch, tmp_path
+    ):
+        _bind_workspaces(monkeypatch, tmp_path)
+
+        for day in (None, "previous"):
+            with pytest.raises(HTTPException) as exc:
+                await scrape_routes.scrape_article_content(999, day=day)
+            assert exc.value.status_code == 404
+
+
+class TestPublicationButtons:
+    """Preview/Scrape buttons rendered on every card, in every layout."""
+
+    @pytest.mark.parametrize("layout", LAYOUTS)
+    def test_every_layout_carries_both_buttons(self, layout):
+        html = _render([_card(1), _card(2)], article_layout=layout)
+
+        assert 'href="/article/1?day=previous"' in html
+        assert 'href="/article/2?day=previous"' in html
+        assert "postAction('/api/articles/1/scrape?day=previous', event)" in html
+        assert "postAction('/api/articles/2/scrape?day=previous', event)" in html
+
+    def test_buttons_follow_the_selected_day_tab(self):
+        html = _render([_card(5)], selected_day="today")
+
+        assert 'href="/article/5?day=today"' in html
+        assert "postAction('/api/articles/5/scrape?day=today', event)" in html
+
+    @pytest.mark.parametrize(
+        "layout, labeled",
+        [("grid", True), ("rows", True), ("compact", False)],
+    )
+    def test_button_shape_matches_the_layout(self, layout, labeled):
+        """The roomy layouts label the buttons; compact shows icons only."""
+        html = _render([_card(1)], article_layout=layout)
+
+        assert ("<span>Preview</span>" in html) is labeled
+        assert ("<span>Scrape</span>" in html) is labeled
+
+    def test_the_page_ships_the_scrape_handler(self):
+        """postAction reports a failed scrape instead of reloading silently."""
+        assert "async function postAction(" in _render([])

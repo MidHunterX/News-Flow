@@ -216,6 +216,19 @@ async def get_article_by_id(article_id: int) -> NewsItem | None:
     return await run_in_thread(_get_article_by_id_sync, article_id)
 
 
+def _get_publication_article_by_id_sync(article_id: int) -> NewsItem | None:
+    with SessionLocal() as session:
+        article = session.get(PublicationArticle, article_id)
+        if article is None:
+            return None
+        return _article_to_item(article)
+
+
+async def get_publication_article_by_id(article_id: int) -> NewsItem | None:
+    """Return a single archived (publication) article by its ID."""
+    return await run_in_thread(_get_publication_article_by_id_sync, article_id)
+
+
 def _update_article_cover_file_sync(article_id: int, cover_file: str | None) -> bool:
     with SessionLocal() as session:
         article = session.get(Article, article_id)
@@ -229,6 +242,27 @@ def _update_article_cover_file_sync(article_id: int, cover_file: str | None) -> 
 async def update_article_cover_file(article_id: int, cover_file: str | None) -> bool:
     """Store the local cover file path for an article."""
     return await run_in_thread(_update_article_cover_file_sync, article_id, cover_file)
+
+
+def _update_publication_cover_file_sync(
+    article_id: int, cover_file: str | None
+) -> bool:
+    with SessionLocal() as session:
+        article = session.get(PublicationArticle, article_id)
+        if article is None:
+            return False
+        article.cover_file = cover_file
+        session.commit()
+    return True
+
+
+async def update_publication_cover_file(
+    article_id: int, cover_file: str | None
+) -> bool:
+    """Store the local cover file path on an archived (publication) article."""
+    return await run_in_thread(
+        _update_publication_cover_file_sync, article_id, cover_file
+    )
 
 
 def _get_due_articles_sync(interval_seconds: int) -> list[NewsItem]:
