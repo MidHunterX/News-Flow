@@ -266,10 +266,31 @@ class TestWordPressIntegration:
         article = self._article()
         article.cover_file = f"/covers/{cover.name}"
         monkeypatch.setattr(publisher_mod, "COVERS_DIR", tmp_path)
-        assert await publisher_mod.publish_article(article)
+        # The failed upload requeues the article: no post goes out without
+        # its cover.
+        assert await publisher_mod.publish_article(article) is None
 
         levels = {r.level for r in await _get()}
-        assert levels == {NOTIF_WARNING}  # upload failed; post still went out
+        assert levels == {NOTIF_WARNING}  # upload failed; nothing else recorded
+
+    async def test_missing_cover_file_records_warning(
+        self, db, wp_env, monkeypatch, tmp_path
+    ):
+        async def fail_post(url, kwargs):
+            raise AssertionError("no WordPress request without the cover file")
+
+        await self._publish_with_client(monkeypatch, fail_post)
+        article = self._article()
+        article.cover_file = "/covers/ghost.png"  # nothing on disk
+        monkeypatch.setattr(publisher_mod, "COVERS_DIR", tmp_path)
+        # The article goes back to pending: no post without its cover.
+        assert await publisher_mod.publish_article(article) is None
+
+        rows = await _get()
+        assert len(rows) == 1
+        assert rows[0].level == NOTIF_WARNING
+        assert rows[0].source == "wordpress"
+        assert "Cover file missing (ghost.png)" in rows[0].message
 
     async def test_terms_sync_failure_records_warning(self, db, monkeypatch):
         async def boom():

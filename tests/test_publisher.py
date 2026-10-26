@@ -272,16 +272,91 @@ class TestPublishArticle:
         monkeypatch.setattr("app.client.get_client", fake_get_client)
         assert await publish_article(make_article()) is None
 
-    async def test_cover_upload_failure_still_publishes_post(self, wp_env,
-                                                             article_dirs,
-                                                             monkeypatch):
-        articles_dir, _ = article_dirs
-        (articles_dir / "1.txt").write_text("H\n\nB", encoding="utf-8")
+    async def test_missing_cover_file_requeues_article_without_post(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        """cover_file set but gone from disk: the article waits as pending.
+
+        Nothing failed over the wire, but the article is meant to have a
+        cover, so it must not go out without one. Pending is the
+        un-accepted pool: re-accepting it (by hand or via the AI Publish
+        curator) re-runs the scrape + cover download, which restores the
+        file before the next publish attempt.
+        """
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from app.db import articles as articles_mod
+
+        engine = create_engine(f"sqlite:///{article_dirs[0].parent / 'pubmiss.db'}")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        monkeypatch.setattr(articles_mod, "SessionLocal", session_factory)
+
+        with session_factory() as session:
+            session.add(Article(
+                id=1, title="First Article", url="https://example.com/a",
+                image_url=None, description="Short description",
+                published_at="2026-09-19", source="kaumudi",
+                status=STATUS_PUBLISHING, accepted_order=1,
+            ))
+            session.commit()
+
+        def fail_post(url, kwargs):
+            raise AssertionError("no WordPress request without the cover file")
+
+        client = FakeClient(fail_post)
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        article = make_article(cover_file="/covers/cover.png")  # file missing
+        assert await publish_article(article) is None
+        assert client.calls == []  # no upload attempted, no post created
+
+        with session_factory() as session:
+            row = session.get(Article, 1)
+            # Back to the un-accepted pool, queue slot released.
+            assert row.status is None
+            assert row.accepted_order is None
+
+    async def test_cover_upload_failure_requeues_article_without_post(
+        self, wp_env, article_dirs, monkeypatch
+    ):
+        """A failed media upload requeues: no WP post without its cover.
+
+        The cover is part of the story — a post published without its
+        featured image is worse than a delayed one (the psc.gif incident),
+        so the status is cleared back to pending — the un-accepted pool —
+        and the article is published once it is accepted again.
+        """
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from app.db import articles as articles_mod
+
+        engine = create_engine(f"sqlite:///{article_dirs[0].parent / 'pubcov.db'}")
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        monkeypatch.setattr(articles_mod, "SessionLocal", session_factory)
+
+        with session_factory() as session:
+            session.add(Article(
+                id=1, title="First Article", url="https://example.com/a",
+                image_url=None, description="Short description",
+                published_at="2026-09-19", source="kaumudi",
+                status=STATUS_PUBLISHING, accepted_order=1,
+            ))
+            session.commit()
+
+        _, covers_dir = article_dirs
+        (covers_dir / "psc.gif").write_bytes(b"GIF89a fake")
 
         def handler(url, kwargs):
             if url == MEDIA_URL:
                 return FakeResponse(status_code=500)
-            return FakeResponse({"id": 7, "link": f"{WP_BASE}/?p=7"})
+            raise AssertionError("no WordPress post after a media upload failure")
 
         client = FakeClient(handler)
 
@@ -289,13 +364,16 @@ class TestPublishArticle:
             return client
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
-        article = make_article(cover_file="/covers/cover.png")  # file missing
-        assert await publish_article(article) == f"{WP_BASE}/?p=7"
-        # No media call was attempted for a non-existent cover file.
-        assert all(url != MEDIA_URL for url, _ in client.calls)
-        post_json = next(json for url, call in client.calls
-                         for json in [call["json"]] if url == POSTS_URL)
-        assert "featured_media" not in post_json
+        assert await publish_article(make_article(cover_file="/covers/psc.gif")) is None
+        assert [url for url, _ in client.calls] == [MEDIA_URL]
+
+        with session_factory() as session:
+            row = session.get(Article, 1)
+            # The claim was released: the article is pending again and its
+            # queue slot (accepted_order) was reset, so the curator can
+            # re-accept and republish it later.
+            assert row.status is None
+            assert row.accepted_order is None
 
     async def test_missing_content_falls_back_to_description(self, wp_env,
                                                              article_dirs,

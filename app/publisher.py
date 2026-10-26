@@ -11,11 +11,15 @@ Authentication uses a WordPress application password over HTTP Basic auth
 
     Publishing is fail-soft: a failed request is logged and skipped, and the
 article is still marked completed (mirroring how the accept endpoint never
-fails because of scraping errors). One exception: when Gemini categorization
-fails after every retry — timeout, HTTP error (e.g. 503), transport failure,
-or an unusable response — the article's status is cleared back to pending
-instead: a post without its categories is worse than a delayed one, so the
-whole publish (cover, categories, post) is retried once Gemini responds.
+fails because of scraping errors). Three problems are not fail-soft — they
+clear the article's status back to pending instead (the un-accepted pool,
+retried when the article is accepted again, by hand or via the AI Publish
+curator, which re-runs the scrape + cover download): a cover upload that
+failed (any HTTP or response error while posting the image to ``/media``),
+a cover file missing from disk, and a Gemini categorization failure after
+every retry (timeout, HTTP error e.g. 503, transport failure, or unusable
+response). A post missing its cover or its categories is worse than a
+delayed one.
 """
 
 from __future__ import annotations
@@ -120,7 +124,12 @@ def _post_fields(
 async def _upload_media(
     client: httpx.AsyncClient, local_path: Path, article_id: int | None = None
 ) -> int | None:
-    """Upload a local image as a WordPress media attachment; return its ID."""
+    """Upload a local image as a WordPress media attachment; return its ID.
+
+    Returns None on any failure (logged + notified). The caller treats that
+    as fatal for this publish round: the article is requeued as pending
+    instead of going out without its cover.
+    """
     mime = mimetypes.guess_type(local_path.name)[0] or "application/octet-stream"
     try:
         resp = await client.post(
@@ -132,7 +141,6 @@ async def _upload_media(
         return int(resp.json()["id"])
     except (httpx.HTTPError, OSError, KeyError, TypeError, ValueError) as exc:
         logger.warning("WordPress media upload failed (%s): %s", local_path.name, exc)
-        # The post can still go out without a featured image.
         await record_notification(
             NOTIF_WARNING,
             "wordpress",
@@ -183,11 +191,13 @@ async def publish_article(article: NewsItem) -> str | None:
 
     Publishing can be disabled (no credentials configured, or the
     ``auto_publish`` setting is off) or fail (HTTP error); both return None
-    without raising. A Gemini categorization failure (timeout, HTTP error,
-    transport failure, or an unusable response) additionally clears the
-    article's status back to pending — the caller then skips completion (the
-    mark_articles_completed status guard ignores the requeued row) and the
-    article is published on a later run.
+    without raising. Three failures additionally clear the article's status
+    back to pending — not a queue slot but the un-accepted pool: the
+    caller skips completion (the mark_articles_completed status guard
+    ignores the requeued row) and the article is published once it is
+    accepted again. A failed cover upload, a cover file missing from disk,
+    and a Gemini categorization failure (timeout, HTTP error, transport
+    failure, or an unusable response) all work this way.
     """
     if not is_configured() or not await get_toggle("auto_publish"):
         return None
@@ -195,10 +205,44 @@ async def publish_article(article: NewsItem) -> str | None:
     from app.client import get_client  # lazy: tests patch app.client.get_client
 
     client = await get_client()
-    cover_path = _cover_local_path(article.cover_file)
-    featured_media = (
-        await _upload_media(client, cover_path, article.id) if cover_path else None
-    )
+    featured_media = None
+    if article.cover_file:
+        # The article is meant to have a cover, so it never goes out without
+        # one: either the upload yields a media ID, or the article is sent
+        # back to pending. Pending is the un-accepted pool — re-accepting it
+        # (by hand or via the AI Publish curator) re-runs
+        # enrich_accepted_article, which re-scrapes the page and downloads
+        # the cover again — so both an upload failure and a file missing
+        # from disk heal on the retry.
+        cover_path = _cover_local_path(article.cover_file)
+        if cover_path is None:
+            # cover_file points at an image that is no longer on disk.
+            name = Path(article.cover_file).name
+            logger.warning(
+                "Cover file missing for article %s (%s)", article.id, name
+            )
+            await record_notification(
+                NOTIF_WARNING,
+                "wordpress",
+                f"Cover file missing ({name}); requeueing as pending",
+                article_id=article.id,
+            )
+        else:
+            # On failure _upload_media already logged + notified.
+            featured_media = await _upload_media(client, cover_path, article.id)
+        if featured_media is None:
+            # Clear the status so the article waits as pending and the whole
+            # publish (cover, categories, post) is retried on a later run.
+            # The post was never created, so nothing is orphaned on
+            # WordPress (a stray attachment is possible after a
+            # half-successful upload, but a duplicated image beats a
+            # coverless post).
+            logger.warning(
+                "Cover unavailable for article %s; requeueing as pending",
+                article.id,
+            )
+            await set_article_status(article.id, None)
+            return None
 
     heading, body = read_article_content(article.id)
     if not await _mark_categories(article, heading, body):
