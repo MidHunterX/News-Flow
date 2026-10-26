@@ -15,13 +15,13 @@
 
     <!-- Source badge -->
     <div>
-      <span class="text-xs uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{{ article.source }}</span>
+      <span class="text-xs uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded dark:bg-indigo-950 dark:text-indigo-300">{{ article.source }}</span>
     </div>
 
     <!-- Cover image -->
     {% if cover_file %}
       <div
-        class="copy-zone relative rounded-xl overflow-hidden border border-gray-200 shadow-sm cursor-pointer group"
+        class="copy-zone relative rounded-xl overflow-hidden border border-gray-200 shadow-sm cursor-pointer group dark:border-gray-700"
         onclick="copyText(this.dataset.path, 'Image path copied!')"
         data-path="{{ cover_file }}"
       >
@@ -36,26 +36,26 @@
 
     <!-- Heading -->
     <div
-      class="copy-zone bg-white rounded-xl border border-gray-200 p-6 cursor-pointer group hover:border-indigo-300 transition"
+      class="copy-zone bg-white rounded-xl border border-gray-200 p-6 cursor-pointer group hover:border-indigo-300 transition dark:bg-gray-800 dark:border-gray-700 dark:hover:border-indigo-700"
       onclick="copyText(this.dataset.heading, 'Heading copied!')"
       data-heading="{{ scraped_heading }}"
     >
-      <h1 class="text-2xl font-bold text-gray-900 leading-snug">{{ scraped_heading }}</h1>
-      <p class="mt-2 text-xs text-gray-400 group-hover:text-indigo-500 transition">Click to copy heading</p>
+      <h1 class="text-2xl font-bold text-gray-900 leading-snug dark:text-gray-100">{{ scraped_heading }}</h1>
+      <p class="mt-2 text-xs text-gray-400 group-hover:text-indigo-500 transition dark:group-hover:text-indigo-400">Click to copy heading</p>
     </div>
 
     <!-- Article content -->
     {% if scraped_content %}
       <div
-        class="copy-zone bg-white rounded-xl border border-gray-200 p-6 cursor-pointer group hover:border-indigo-300 transition whitespace-pre-line"
+        class="copy-zone bg-white rounded-xl border border-gray-200 p-6 cursor-pointer group hover:border-indigo-300 transition dark:bg-gray-800 dark:border-gray-700 dark:hover:border-indigo-700 whitespace-pre-line"
         onclick="copyText(this.dataset.content, 'Article copied!')"
         data-content="{{ scraped_content }}"
       >
-        <div class="text-gray-700 text-base leading-relaxed">{{ scraped_content }}</div>
-        <p class="mt-4 text-xs text-gray-400 group-hover:text-indigo-500 transition">Click to copy article</p>
+        <div class="text-gray-700 text-base leading-relaxed dark:text-gray-300">{{ scraped_content }}</div>
+        <p class="mt-4 text-xs text-gray-400 group-hover:text-indigo-500 transition dark:group-hover:text-indigo-400">Click to copy article</p>
       </div>
     {% else %}
-      <div class="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm">
+      <div class="bg-white rounded-xl border border-gray-200 p-6 text-center text-gray-400 text-sm dark:bg-gray-800 dark:border-gray-700">
         No article content was scraped for this article.
       </div>
     {% endif %}

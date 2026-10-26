@@ -603,6 +603,63 @@ class TestThemePicker:
         assert 'class="bg-white rounded-xl shadow-xl w-full max-w-md' in html
 
 
+class TestInnerPageDarkStyles:
+    """Dark mode reaches every page, not just the shell.
+
+    Each assertion pairs a dark variant with the light class it answers,
+    so a half-styled card (dark surface, dark text) gets caught.
+    """
+
+    def _env(self) -> Environment:
+        return Environment(
+            loader=FileSystemLoader("templates"),
+            autoescape=select_autoescape(["html"]),
+        )
+
+    def test_curation_cards_go_dark(self):
+        html = _render("grid", [_item(1)])
+        assert "dark:bg-gray-800" in html       # cards + side panel
+        assert "dark:text-gray-100" in html      # titles
+        assert "dark:text-gray-300" in html      # descriptions
+        assert "dark:border-gray-700" in html
+        assert "dark:bg-indigo-950" in html      # panel header / source chips
+
+    def test_publication_cards_go_dark(self):
+        html = self._env().get_template("publication.html").render(
+            toggles={},
+            article_layout="grid",
+            selected_day="previous",
+            count=1,
+            section={
+                "label": "Previous day",
+                "note": "n",
+                "cards": [{"item": _item(1), "cover": None, "word_count": 7}],
+                "empty": "e",
+            },
+        )
+        assert "dark:bg-gray-800" in html
+        assert "dark:text-gray-100" in html
+        assert "dark:border-green-800" in html   # scrape badge
+
+    def test_article_page_goes_dark(self):
+        html = self._env().get_template("article.html").render(
+            toggles={},
+            article=_item(1),
+            scraped_heading="Heading",
+            scraped_content="Body",
+            cover_file=None,
+        )
+        assert "dark:bg-gray-800" in html        # copy zones
+        assert "dark:text-gray-100" in html       # heading
+        assert "dark:text-gray-300" in html       # body copy
+
+    def test_light_classes_are_left_alone(self):
+        """Every addition is a dark: variant — light mode is untouched."""
+        html = _render("grid", [_item(1)])
+        assert "bg-white rounded-xl border border-gray-200" in html
+        assert "text-gray-900" in html
+
+
 class TestArticleView:
     """The article view route must not reference missing imports."""
 

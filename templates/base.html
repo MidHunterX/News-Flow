@@ -24,9 +24,9 @@
       })();
     </script>
   </head>
-  <!-- body keeps text-gray-900 in both modes: the article cards inherit it,
-       and they stay light on purpose. -->
-  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 min-h-screen flex flex-col">
+  <!-- Every surface goes dark in dark mode (cards included), so the
+       inherited default flips with it; light mode is unchanged. -->
+  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col">
     <header class="bg-white shadow-sm border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
       <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
         <div class="flex items-center space-x-3">
@@ -53,7 +53,7 @@
         <div class="flex items-center space-x-4">
           <button
             onclick="openNotifications()"
-            class="relative p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition"
+            class="relative p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-600"
             title="Notifications"
           >
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
