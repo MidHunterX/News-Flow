@@ -18,7 +18,7 @@ from app.db.constants import (
     now_iso,
 )
 from app.db.engine import SessionLocal, run_in_thread
-from app.db.models import Article
+from app.db.models import Article, PublicationArticle
 from app.models import NewsItem
 
 
@@ -34,7 +34,7 @@ def _dedupe(items: list[NewsItem]) -> list[NewsItem]:
     return result
 
 
-def _article_to_item(article: Article) -> NewsItem:
+def _article_to_item(article: Article | PublicationArticle) -> NewsItem:
     return NewsItem(
         id=article.id,
         title=article.title,
@@ -363,3 +363,17 @@ def _get_cached_sources_sync() -> set[str]:
 async def get_cached_sources() -> set[str]:
     """Return the set of sources that currently have cached articles."""
     return await run_in_thread(_get_cached_sources_sync)
+
+
+def _get_publication_items_sync() -> list[NewsItem]:
+    """All archived articles from the previous day's workspace, newest first."""
+    with SessionLocal() as session:
+        articles = session.scalars(
+            select(PublicationArticle).order_by(PublicationArticle.id.desc())
+        ).all()
+    return [_article_to_item(article) for article in articles]
+
+
+async def get_publication_items() -> list[NewsItem]:
+    """Return the articles archived by the daily reset (publication page)."""
+    return await run_in_thread(_get_publication_items_sync)

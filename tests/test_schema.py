@@ -2,6 +2,8 @@
 
 Binds app.db.schema to a throwaway SQLite database and temp workspace dirs,
 so the real newsflow.db / public/ files are never touched (no network).
+Covers both halves of the rollover: the publication workspace that receives
+the archive, and the curation workspace that is wiped clean.
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import schema
 from app.db.constants import LAST_RUN_DATE_KEY, STATUS_ACCEPTED, STATUS_PUBLISHING
-from app.db.models import Article, Base, Setting
+from app.db.models import Article, Base, PublicationArticle, Setting
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -36,7 +38,26 @@ def reset_env(tmp_path, monkeypatch):
     covers_dir.mkdir()
     monkeypatch.setattr(schema, "ARTICLES_DIR", articles_dir)
     monkeypatch.setattr(schema, "COVERS_DIR", covers_dir)
+
+    # Publication workspace: deliberately left absent so the reset's
+    # create-if-missing behaviour is exercised.
+    monkeypatch.setattr(
+        schema, "PUBLICATION_ARTICLES_DIR", tmp_path / "publication" / "articles"
+    )
+    monkeypatch.setattr(
+        schema, "PUBLICATION_COVERS_DIR", tmp_path / "publication" / "covers"
+    )
     return session_factory, articles_dir, covers_dir
+
+
+@pytest.fixture
+def pub_dirs(reset_env):
+    """Temp publication-workspace dirs, read after ``reset_env`` patched them.
+
+    Declared as a dependent so the patches are in place; tests that don't
+    inspect the archive never request it.
+    """
+    return schema.PUBLICATION_ARTICLES_DIR, schema.PUBLICATION_COVERS_DIR
 
 
 def _set_last_run(session, value: str) -> None:
@@ -59,6 +80,22 @@ def _insert_article(session, **overrides) -> Article:
     }
     defaults.update(overrides)
     article = Article(**defaults)
+    session.add(article)
+    session.commit()
+    return article
+
+
+def _insert_publication_article(session, **overrides) -> PublicationArticle:
+    defaults = {
+        "title": "Archived Article",
+        "url": "https://example.com/archived",
+        "image_url": None,
+        "description": "desc",
+        "published_at": "2026-09-18",
+        "source": "kaumudi",
+    }
+    defaults.update(overrides)
+    article = PublicationArticle(**defaults)
     session.add(article)
     session.commit()
     return article
@@ -151,6 +188,108 @@ class TestResetDailyWorkspace:
         assert not (covers_dir / "unrelated.png").exists()
         assert covers_dir.is_dir()  # recreated empty, not removed
         assert articles_dir.is_dir()
+
+
+# ---------------------------------------------------------------------------
+# Publication workspace (the archive the reset mirrors into)
+# ---------------------------------------------------------------------------
+
+
+class TestPublicationArchive:
+    """A new day moves the curation workspace over instead of losing it."""
+
+    def test_new_day_moves_rows_to_publication_table(self, reset_env):
+        """Rows land in publication_articles verbatim — ids included — while
+        the curation table goes back to empty."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            _set_last_run(session, "2000-01-01")
+            first = _insert_article(session)
+            second = _insert_article(session, title="Second")
+            expected_ids = {first.id, second.id}
+
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            archived = session.query(PublicationArticle).all()
+            assert {row.id for row in archived} == expected_ids
+            assert {row.title for row in archived} == {"First Article", "Second"}
+            assert session.query(Article).count() == 0
+
+    def test_new_day_copies_files_to_publication_workspace(
+        self, reset_env, pub_dirs
+    ):
+        """Content and cover files are mirrored across, then wiped locally;
+        a stale file from an older archive does not survive."""
+        session_factory, articles_dir, covers_dir = reset_env
+        pub_articles_dir, pub_covers_dir = pub_dirs
+        with session_factory() as session:
+            _set_last_run(session, "2000-01-01")
+            article = _insert_article(session, cover_file="/covers/one.png")
+        (articles_dir / f"{article.id}.txt").write_text("H\n\nbody words here",
+                                                        encoding="utf-8")
+        (covers_dir / "one.png").write_bytes(b"png")
+        pub_covers_dir.mkdir(parents=True)
+        (pub_covers_dir / "stale.png").write_bytes(b"old")
+
+        schema._reset_daily_workspace()
+
+        assert (
+            (pub_articles_dir / f"{article.id}.txt").read_text(encoding="utf-8")
+            == "H\n\nbody words here"
+        )
+        assert (pub_covers_dir / "one.png").read_bytes() == b"png"
+        # The archive starts fresh each day: last time's leftovers go.
+        assert not (pub_covers_dir / "stale.png").exists()
+        # The curation side is still wiped clean, exactly as before.
+        assert not (articles_dir / f"{article.id}.txt").exists()
+        assert not (covers_dir / "one.png").exists()
+
+    def test_same_day_leaves_publication_workspace_alone(self, reset_env, pub_dirs):
+        """A same-day restart must not replace (or empty) the archive."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        pub_articles_dir, pub_covers_dir = pub_dirs
+        with session_factory() as session:
+            _set_last_run(session, _today())
+            _insert_publication_article(session)
+        pub_articles_dir.mkdir(parents=True)
+        (pub_articles_dir / "7.txt").write_text("H\n\nB", encoding="utf-8")
+        pub_covers_dir.mkdir(parents=True)
+        (pub_covers_dir / "keep.png").write_bytes(b"png")
+
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            assert session.query(PublicationArticle).count() == 1
+        assert (pub_articles_dir / "7.txt").exists()
+        assert (pub_covers_dir / "keep.png").exists()
+
+    def test_new_day_replaces_a_stale_archive(self, reset_env):
+        """Yesterday's archive is swapped out, never appended to."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            _set_last_run(session, "2000-01-01")
+            _insert_publication_article(session, title="Oldest day")
+            _insert_article(session, title="Today's article")
+
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            archived = session.query(PublicationArticle).all()
+            assert [row.title for row in archived] == ["Today's article"]
+
+    def test_missing_curation_dirs_are_created(self, reset_env, monkeypatch, tmp_path):
+        """A pristine checkout (no workspace dirs at all) still resets cleanly."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        monkeypatch.setattr(schema, "ARTICLES_DIR", tmp_path / "absent" / "articles")
+        monkeypatch.setattr(schema, "COVERS_DIR", tmp_path / "absent" / "covers")
+        with session_factory() as session:
+            _set_last_run(session, "2000-01-01")
+
+        schema._reset_daily_workspace()  # must not raise
+
+        assert (tmp_path / "absent" / "articles").is_dir()
+        assert (tmp_path / "absent" / "covers").is_dir()
 
 
 # ---------------------------------------------------------------------------

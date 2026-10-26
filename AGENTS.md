@@ -61,43 +61,64 @@ app/
   models.py          # NewsItem, ScrapedArticleContent, ScrapeResponse (pydantic)
   client.py          # HttpClient singleton (httpx.AsyncClient)
   utils.py           # fetch_html, download_image, clean_text, resolve_image_url,
-                     # PUBLIC_DIR / ARTICLES_DIR / COVERS_DIR paths
+                     # PUBLIC_DIR / ARTICLES_DIR / COVERS_DIR paths and the
+                     # PUBLICATION_* mirror paths
   browser.py         # fetch_rendered_html (Playwright, for JS-rendered pages)
   scrapers/
     base.py          # BaseScraper ABC: scrape(), scrape_article_page(), needs_browser
     init.py          # SCRAPERS registry + scrape_source() pipeline
                      # (the file is literally named init.py, not __init__.py)
     kaumudi.py / mangalam.py / madhyamam.py
-  routes/scrape.py   # API + UI routes, article accept/reject/clear, settings
+  routes/scrape.py   # API + UI routes, article accept/reject/clear, settings,
+                     # GET /publication (print-publication inspection page)
   db/                # persistence layer (SQLAlchemy 2.0 + SQLite, WAL mode)
     engine.py        # engine, SessionLocal, Base, run_in_thread, DB_PATH
                      # (override the DB location with NEWSFLOW_DB_PATH)
-    models.py        # Article, WpCategory, Setting ORM models
+    models.py        # Article, PublicationArticle, WpCategory, Setting ORM models
+                     # (Article + PublicationArticle share the _ArticleFields
+                     # mixin — the publication table mirrors the curation one)
     constants.py     # STATUS_* flags, DEFAULT_SETTINGS, LAST_RUN_DATE_KEY,
                      # WP_TERMS_SYNCED_KEY, WP_CATEGORIES_TTL
     schema.py        # create_all + column migrations + init_db (seeds settings,
-                     # resets articles on a new day, requeues stale claims)
-    articles.py      # article queries/mutations
+                     # archives + resets articles on a new day, requeues stale
+                     # claims)
+    articles.py      # article queries/mutations (curation + publication)
     wp_terms.py      # WordPress terms (categories/tags) queries/mutations
     settings.py      # settings queries/mutations
   wordpress.py       # WordPress terms sync (categories + tags → wp_terms)
   refresher.py       # backend source refresh (refresh_sources, run_due_refresh)
   gemini.py          # Gemini categorization (article + terms → category IDs)
-templates/           # Jinja2 UI (base/index/article.html), Tailwind via CDN
+templates/           # Jinja2 UI (base/index/publication/article.html),
+                     # Tailwind via CDN
 static/              # logo.svg
 tests/
   fixtures/          # offline HTML fixtures, one per source page
 scripts/health_check.py
 ```
 
+Two workspaces exist side by side:
+
+- **Curation workspace** — `articles` table + `public/articles/` +
+  `public/covers/`; the clean-slate queue the review UI works from.
+- **Publication workspace** — `publication_articles` table +
+  `public/publication/{articles,covers}/`; a verbatim mirror of the
+  previous day's curation workspace, filled by the daily reset and read by
+  `GET /publication` (cards for today + the archive, each flagged with its
+  local-scrape status and word count).
+
 ## Runtime behavior worth knowing
 
-- **Startup (`main.py`):** `init_db()` runs, `/covers` is mounted as static
-  files, and a background task marks accepted articles `completed` once
-  their interval elapses (checked every 2 s).
-- **Daily reset:** `init_db()` clears the entire articles table whenever the
-  app starts on a new UTC day (`LAST_RUN_DATE_KEY` setting). Don't be
-  surprised by an empty DB the next morning.
+- **Startup (`main.py`):** `init_db()` runs, `/covers` and
+  `/publication/covers` are mounted as static files, and a background task
+  marks accepted articles `completed` once their interval elapses (checked
+  every 2 s).
+- **Daily reset:** on a new day (per the `reset_timezone` setting,
+  `LAST_RUN_DATE_KEY`) `init_db()` first clears the publication workspace,
+  mirrors the curation workspace into it (rows → `publication_articles`,
+  files → `public/publication/`), and only then wipes the curation
+  workspace. Curation still starts empty each day; the previous day lives
+  on for `/publication`. The archive holds exactly one day — each reset
+  replaces it.
 - **Refresh trimming:** `/api/refresh` and the scheduled background refresh
   both keep at most `MAX_ARTICLES_PER_SOURCE` (10) articles per source.
 - **Accept flow** (`routes/scrape.py`): marks the article accepted → scrapes

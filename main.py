@@ -11,7 +11,7 @@ from app.publisher import publish_due_articles
 from app.refresher import run_due_refresh
 from app.routes import scrape
 from app.scrapers.init import SCRAPERS
-from app.utils import COVERS_DIR
+from app.utils import COVERS_DIR, PUBLICATION_COVERS_DIR
 from app.wordpress import ensure_terms, sync_terms_if_stale
 
 app = FastAPI(title="News Flow")
@@ -24,6 +24,14 @@ app.include_router(scrape.router)
 # Serve downloaded cover images.
 COVERS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/covers", StaticFiles(directory=str(COVERS_DIR)), name="covers")
+
+# Serve the archived covers of the publication workspace (previous day) too.
+PUBLICATION_COVERS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/publication/covers",
+    StaticFiles(directory=str(PUBLICATION_COVERS_DIR)),
+    name="publication_covers",
+)
 
 _completion_task: asyncio.Task | None = None
 

@@ -8,6 +8,12 @@ from fastapi import HTTPException
 PUBLIC_DIR = Path("public")
 ARTICLES_DIR = PUBLIC_DIR / "articles"
 COVERS_DIR = PUBLIC_DIR / "covers"
+# Publication workspace: the daily reset mirrors the curation workspace here
+# (previous day's scraped-content .txt files + cover images) instead of just
+# deleting it, so /publication can show yesterday's data.
+PUBLICATION_DIR = PUBLIC_DIR / "publication"
+PUBLICATION_ARTICLES_DIR = PUBLICATION_DIR / "articles"
+PUBLICATION_COVERS_DIR = PUBLICATION_DIR / "covers"
 
 
 def clean_text(value: str | None) -> str:

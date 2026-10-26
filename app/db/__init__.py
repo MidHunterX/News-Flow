@@ -5,7 +5,7 @@ thread via :func:`app.db.engine.run_in_thread` so the event loop never blocks.
 
 Modules:
     engine      — engine, session factory, declarative base
-    models      — SQLAlchemy ORM models (Article, Setting)
+    models      — SQLAlchemy ORM models (Article, PublicationArticle, Setting)
     constants   — shared defaults and status constants
     schema      — table creation / migrations / init_db
     articles    — data access for cached articles
@@ -21,6 +21,7 @@ from app.db.articles import (
                              get_due_articles,
                              get_items,
                              get_pending_items,
+                             get_publication_items,
                              get_recent_accepted_titles,
                              get_rejected_items,
                              mark_articles_completed,
@@ -45,7 +46,7 @@ from app.db.constants import (
                              toggle_is_available,
 )
 from app.db.engine import DB_PATH, Base, SessionLocal, engine
-from app.db.models import Article, Notification, Setting
+from app.db.models import Article, Notification, PublicationArticle, Setting
 from app.db.notifications import (
                              clear_notifications,
                              get_notifications,
@@ -96,6 +97,7 @@ __all__ = [  # noqa: RUF022
     "SessionLocal",
     "engine",
     "Article",
+    "PublicationArticle",
     "Setting",
     "Notification",
     # Schema.
@@ -105,6 +107,7 @@ __all__ = [  # noqa: RUF022
     "trim_articles",
     "get_items",
     "get_pending_items",
+    "get_publication_items",
     "get_accepted_items",
     "get_completed_items",
     "get_rejected_items",

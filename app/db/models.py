@@ -7,12 +7,15 @@ from sqlalchemy.types import JSON
 from app.db.engine import Base
 
 
-class Article(Base):
-    __tablename__ = "articles"
-    __table_args__ = (
-        Index("idx_articles_source", "source"),
-        Index("idx_articles_status", "status"),
-    )
+class _ArticleFields:
+    """Columns shared by the curation and publication article tables.
+
+    The publication workspace mirrors the curation one column for column —
+    including ``id``, which is copied verbatim by the daily reset so the
+    ``<id>.txt`` content file names keep matching after the move. Defining
+    the columns once guarantees the two tables stay in step (``_migrate``
+    upgrades both).
+    """
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
@@ -32,6 +35,25 @@ class Article(Base):
     # JSON list of WordPress category IDs chosen by Gemini before publishing;
     # NULL until the publisher marks them.
     wp_category_ids: Mapped[list[int] | None] = mapped_column(JSON)
+
+
+class Article(_ArticleFields, Base):
+    __tablename__ = "articles"
+    __table_args__ = (
+        Index("idx_articles_source", "source"),
+        Index("idx_articles_status", "status"),
+    )
+
+
+class PublicationArticle(_ArticleFields, Base):
+    """The previous day's articles, archived by the daily workspace reset.
+
+    Written by ``_reset_daily_workspace`` (which replaces the whole archive
+    on every new day) and read by the ``/publication`` page. It is an exact
+    mirror of :class:`Article`, ids included.
+    """
+
+    __tablename__ = "publication_articles"
 
 
 class WpCategory(Base):

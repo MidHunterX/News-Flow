@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -28,6 +29,7 @@ from app.db import (
     get_items,
     get_notifications,
     get_pending_items,
+    get_publication_items,
     get_rejected_items,
     get_reset_timezone,
     save_items,
@@ -39,7 +41,7 @@ from app.models import NewsItem, ScrapeResponse
 from app.publisher import publish_due_articles
 from app.refresher import refresh_sources
 from app.scrapers.init import scrape_source
-from app.utils import ARTICLES_DIR
+from app.utils import ARTICLES_DIR, PUBLICATION_ARTICLES_DIR
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -304,10 +306,92 @@ async def article_view(request: Request, article_id: int):
         name="article.html",
         context={
             "request": request,
+            "active_nav": "curation",
             "article": article,
             "scraped_heading": scraped_heading,
             "scraped_content": scraped_content,
             "cover_file": cover_file,
+            **await _toggle_context(),
+        },
+    )
+
+
+def _word_count(path: Path) -> int | None:
+    """Word count of a locally scraped article body, or None when it's absent."""
+    if not path.exists():
+        return None
+    try:
+        return len(path.read_text(encoding="utf-8").split())
+    except (OSError, UnicodeError):
+        return None  # Unreadable counts as not scraped; the card just says so.
+
+
+def _build_cards(
+    items: list[NewsItem], content_dir: Path, *, archived: bool
+) -> list[dict]:
+    """Assemble the publication page's card data.
+
+    Each card carries the scraped-content word count (None when the accept
+    flow never saved a body for that article) and the cover URL to render.
+    Archived cards read their files from the publication workspace and get
+    their cover URL pointed at ``/publication/covers/``, since the curation
+    copy of both is wiped at the daily reset.
+    """
+    cards = []
+    for item in items:
+        cover = item.cover_file
+        if archived and cover and cover.startswith("/covers/"):
+            cover = "/publication/covers/" + cover.removeprefix("/covers/")
+        cards.append(
+            {
+                "item": item,
+                "cover": cover,
+                "word_count": (
+                    _word_count(content_dir / f"{item.id}.txt")
+                    if item.id is not None
+                    else None
+                ),
+            }
+        )
+    return cards
+
+
+@router.get("/publication", response_class=HTMLResponse)
+async def publication_view(request: Request):
+    """Read-only view of the print-publication workspace.
+
+    Shows today's curation workspace next to the previous day's archive (the
+    ``publication_articles`` rows and the mirrored ``public/publication/``
+    files), so yesterday's data can be inspected for print publication while
+    curation starts from a clean slate. Each card flags whether the article
+    body was scraped locally and, when it was, its word count. Nothing is
+    scraped or mutated from here — inspection only.
+    """
+    today_cards = _build_cards(await get_items(), ARTICLES_DIR, archived=False)
+    previous_cards = _build_cards(
+        await get_publication_items(), PUBLICATION_ARTICLES_DIR, archived=True
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="publication.html",
+        context={
+            "request": request,
+            "active_nav": "publication",
+            "sections": [
+                {
+                    "label": "Today",
+                    "note": "ongoing — curation workspace",
+                    "cards": today_cards,
+                    "empty": "No articles in today's workspace yet.",
+                },
+                {
+                    "label": "Previous day",
+                    "note": "archived — publication workspace",
+                    "cards": previous_cards,
+                    "empty": "Nothing archived yet — the first daily reset "
+                             "fills this section.",
+                },
+            ],
             **await _toggle_context(),
         },
     )
@@ -339,6 +423,7 @@ async def get_news_ui(
         name="index.html",
         context={
             "request": request,
+            "active_nav": "curation",
             "items": items,
             "accepted_items": accepted_items,
             "completed_items": completed_items,

@@ -5,7 +5,7 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import delete, inspect, text
+from sqlalchemy import delete, insert, inspect, select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.db.constants import (
@@ -16,8 +16,13 @@ from app.db.constants import (
     STATUS_PUBLISHING,
 )
 from app.db.engine import Base, SessionLocal, engine
-from app.db.models import Article, Notification, Setting
-from app.utils import ARTICLES_DIR, COVERS_DIR
+from app.db.models import Article, Notification, PublicationArticle, Setting
+from app.utils import (
+    ARTICLES_DIR,
+    COVERS_DIR,
+    PUBLICATION_ARTICLES_DIR,
+    PUBLICATION_COVERS_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +34,36 @@ def _reset_now_date(tz_mode: str) -> str:
 
 
 def _migrate() -> None:
-    """Add columns introduced after the initial schema to existing databases."""
-    columns = {col["name"] for col in inspect(engine).get_columns("articles")}
-    with engine.begin() as conn:
-        if "status" not in columns:
-            conn.execute(text("ALTER TABLE articles ADD COLUMN status TEXT"))
-        if "accepted_at" not in columns:
-            conn.execute(text("ALTER TABLE articles ADD COLUMN accepted_at TEXT"))
-        if "accepted_order" not in columns:
-            conn.execute(text("ALTER TABLE articles ADD COLUMN accepted_order INTEGER"))
-        if "cover_file" not in columns:
-            conn.execute(text("ALTER TABLE articles ADD COLUMN cover_file TEXT"))
-        if "wp_category_ids" not in columns:
-            conn.execute(
-                text("ALTER TABLE articles ADD COLUMN wp_category_ids JSON")
-            )
+    """Add columns introduced after the initial schema to existing databases.
+
+    Runs against both article tables: the publication one is a mirror of the
+    curation one, and ``create_all`` never alters an existing table.
+    """
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    for table in ("articles", "publication_articles"):
+        if table not in existing_tables:
+            continue
+        columns = {col["name"] for col in inspector.get_columns(table)}
+        with engine.begin() as conn:
+            if "status" not in columns:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN status TEXT"))
+            if "accepted_at" not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN accepted_at TEXT")
+                )
+            if "accepted_order" not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN accepted_order INTEGER")
+                )
+            if "cover_file" not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN cover_file TEXT")
+                )
+            if "wp_category_ids" not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN wp_category_ids JSON")
+                )
 
 
 def _clear_dir(path: Path) -> None:
@@ -69,15 +89,49 @@ def _clear_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def _reset_daily_workspace() -> None:
-    """Clear the articles table and the whole workspace on a new day.
+def _copy_dir(src: Path, dst: Path) -> None:
+    """Copy every entry under *src* into *dst* (created when missing).
 
-    Fresh workspace per day: when the last run was on a previous day, every
-    article row is dropped and the workspace directories (scraped-content
-    ``.txt`` files and downloaded covers) are emptied entirely. The "new day"
-    boundary follows the ``reset_timezone`` setting — UTC by default, or the
-    server's local time zone. The wipe happens *after* the row delete is
-    committed — losing a row but keeping its files is the safe failure mode.
+    Mirrors the curation workspace into the publication workspace at the
+    daily reset: content ``.txt`` files and cover images are duplicated, not
+    moved, so the curation workspace can be wiped right afterwards. A
+    missing *src* is a no-op; per-entry failures are logged and skipped so
+    one bad file can't abort the reset.
+    """
+    dst.mkdir(parents=True, exist_ok=True)
+    if not src.exists():
+        return
+    for child in src.iterdir():
+        target = dst / child.name
+        try:
+            if child.is_dir() and not child.is_symlink():
+                shutil.copytree(child, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(child, target)
+        except OSError:
+            logger.warning("Could not copy workspace file %s to %s", child,
+                           target, exc_info=True)
+
+
+def _reset_daily_workspace() -> None:
+    """Archive the curation workspace to publication, then start a fresh one.
+
+    The daily rollover runs in three steps: the publication workspace (the
+    ``publication_articles`` rows plus the files under
+    ``public/publication/``) is cleared, everything currently in the
+    curation workspace is copied over there, and only then is the curation
+    workspace cleared. Curation keeps its clean-slate philosophy — nothing
+    from the previous day leaks into today's queue — while the previous
+    day's data stays available to the print-publication pipeline behind
+    ``/publication``.
+
+    Order matters for crash safety: the files are copied before any row is
+    touched (worst case is duplicated files, never an archived row without
+    its content), the row move shares a transaction with the
+    ``last_run_date`` stamp, and the curation wipe happens after that
+    commit — losing a row but keeping its files is the safe failure mode.
+    The "new day" boundary follows the ``reset_timezone`` setting — UTC by
+    default, or the server's local time zone.
     """
     with SessionLocal() as session:
         tz_setting = session.get(Setting, "reset_timezone")
@@ -90,6 +144,24 @@ def _reset_daily_workspace() -> None:
         if last_run is not None and last_run.value == today:
             return  # Same day: nothing to reset.
 
+        # 1. Fresh publication workspace: the last day's archive is replaced.
+        _clear_dir(PUBLICATION_ARTICLES_DIR)
+        _clear_dir(PUBLICATION_COVERS_DIR)
+
+        # 2. Mirror the curation workspace across before deleting anything.
+        _copy_dir(ARTICLES_DIR, PUBLICATION_ARTICLES_DIR)
+        _copy_dir(COVERS_DIR, PUBLICATION_COVERS_DIR)
+
+        # 3. Move the rows across (verbatim ids) and open the new day in one
+        #    transaction, so the archive can never hold half the workspace.
+        session.execute(delete(PublicationArticle))
+        columns = [column.name for column in Article.__table__.columns]
+        session.execute(
+            insert(PublicationArticle).from_select(
+                columns,
+                select(*(Article.__table__.c[name] for name in columns)),
+            )
+        )
         session.execute(delete(Article))
         if last_run is None:
             session.add(Setting(key=LAST_RUN_DATE_KEY, value=today))
@@ -97,6 +169,7 @@ def _reset_daily_workspace() -> None:
             last_run.value = today
         session.commit()
 
+    # 4. The curation workspace gets its clean slate.
     for workspace_dir in (ARTICLES_DIR, COVERS_DIR):
         _clear_dir(workspace_dir)
 
@@ -107,7 +180,10 @@ def _reset_daily_workspace() -> None:
                 Notification(
                     level=NOTIF_INFO,
                     source="system",
-                    message="Daily workspace reset: articles and files cleared.",
+                    message=(
+                        "Daily workspace reset: previous day archived to the "
+                        "publication workspace, curation workspace cleared."
+                    ),
                 )
             )
             session.commit()

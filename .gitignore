@@ -1,5 +1,7 @@
 public/articles/
 public/covers/
+# Publication workspace: generated daily copy of the curation workspace.
+public/publication/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
