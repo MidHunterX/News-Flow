@@ -532,6 +532,77 @@ class TestResetTimezonePicker:
         assert "selectResetTimezone(settings.reset_timezone" in html
 
 
+class TestThemePicker:
+    """The theme mode is a local-only setting: picker + localStorage."""
+
+    def _render_base(self, toggles: dict | None = None) -> str:
+        env = Environment(
+            loader=FileSystemLoader("templates"),
+            autoescape=select_autoescape(["html"]),
+        )
+        template = env.get_template("base.html")
+        return template.render(toggles=toggles or {})
+
+    def test_picker_renders_all_three_modes(self):
+        html = self._render_base()
+        assert 'id="theme-picker"' in html
+        for mode in ("light", "dark", "system"):
+            assert f'data-theme="{mode}"' in html
+            assert f"selectTheme('{mode}')" in html
+
+    def test_default_is_system(self):
+        """Missing/unreadable storage falls back to following the OS."""
+        html = self._render_base()
+        # The pre-paint snippet: anything but light/dark means "system".
+        assert 'mode !== "light" && mode !== "dark"' in html
+        assert 'return THEME_MODES.includes(stored) ? stored : "system";' in html
+
+    def test_theme_never_reaches_the_server(self):
+        """Purely local: not in the save payload, not seeded from the API."""
+        html = self._render_base()
+        payload = html.split("const payload = {", 1)[1].split("};", 1)[0]
+        assert "theme" not in payload.lower()
+        # The picker is seeded from localStorage, before the settings fetch.
+        open_body = html.split("async function openSettings() {", 1)[1]
+        assert open_body.index("renderThemePicker(readTheme());") < open_body.index(
+            'fetch("/api/settings")'
+        )
+
+    def test_changing_it_applies_immediately(self):
+        """No Save, no reload: the choice applies and persists on the spot."""
+        html = self._render_base()
+        theme_fn = html.split("function selectTheme(", 1)[1].split(
+            "\n      }", 1
+        )[0]
+        assert "localStorage.setItem(THEME_KEY, mode)" in theme_fn
+        assert "applyTheme(mode);" in theme_fn
+        assert "renderThemePicker(mode);" in theme_fn
+        assert "reload" not in theme_fn
+        assert "fetch(" not in theme_fn
+
+    def test_applies_the_class_before_first_paint(self):
+        html = self._render_base()
+        assert 'tailwind.config = { darkMode: "class" }' in html
+        # The head snippet runs before <body>, so there is no flash.
+        head = html.split("</head>", 1)[0]
+        assert 'localStorage.getItem("newsflow-theme")' in head
+        assert 'classList.toggle("dark", dark)' in head
+        assert "prefers-color-scheme: dark" in head
+
+    def test_system_mode_tracks_os_changes_live(self):
+        html = self._render_base()
+        assert 'systemThemeQuery.addEventListener("change"' in html
+        assert 'if (readTheme() === "system") applyTheme("system");' in html
+
+    def test_shell_carries_dark_styles(self):
+        """Header, modals and footer are restyled for dark; cards stay light."""
+        html = self._render_base()
+        assert "dark:bg-gray-900" in html  # page background
+        assert "dark:bg-gray-800" in html  # header / modals / footer
+        # Cards keep their light surfaces and dark text.
+        assert 'class="bg-white rounded-xl shadow-xl w-full max-w-md' in html
+
+
 class TestArticleView:
     """The article view route must not reference missing imports."""
 

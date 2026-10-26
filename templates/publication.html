@@ -84,7 +84,7 @@
 
     <!-- Day tabs: same pill row as the curation source filter, with
          Previous day first and active by default. -->
-    <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-4">
+    <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-4 dark:border-gray-700">
       <a href="/publication"
          class="px-4 py-2 rounded-lg text-sm font-semibold transition {% if selected_day == 'previous' %}bg-indigo-600 text-white shadow-sm{% else %}bg-white text-gray-700 hover:bg-gray-100 border border-gray-200{% endif %}">
         Previous day
@@ -100,11 +100,11 @@
 
     <!-- Results Header info -->
     <div class="flex flex-wrap justify-between items-baseline gap-2">
-      <h2 class="text-xl font-bold text-gray-800 capitalize">
+      <h2 class="text-xl font-bold text-gray-800 capitalize dark:text-gray-100">
         {{ section.label }}
-        <span class="ml-2 text-sm font-normal text-gray-500">({{ count }} items found)</span>
+        <span class="ml-2 text-sm font-normal text-gray-500 dark:text-gray-400">({{ count }} items found)</span>
       </h2>
-      <p class="text-sm text-gray-500">{{ section.note }}</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400">{{ section.note }}</p>
     </div>
 
     {% if section.cards %}

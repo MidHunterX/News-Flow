@@ -6,7 +6,7 @@
          default, the publication tabs when previewed from /publication). -->
     {% set back_href = back_href|default("/") %}
     {% set back_label = back_label|default("Back to feed") %}
-    <a href="{{ back_href }}" class="inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline font-medium">
+    <a href="{{ back_href }}" class="inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline font-medium dark:text-indigo-400">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
       </svg>
@@ -63,7 +63,7 @@
     <!-- Original link -->
     {% if article.url %}
       <a href="{{ article.url }}" target="_blank"
-         class="inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline font-medium">
+         class="inline-flex items-center gap-1 text-sm text-indigo-600 hover:underline font-medium dark:text-indigo-400">
         Read original article
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
