@@ -109,9 +109,10 @@ Two workspaces exist side by side:
   `article_layout` grid/rows/compact branches. Each card carries its
   local-scrape status and word count plus two actions: **Preview** opens
   `GET /article/<id>?day=<previous|today>` (the same `article.html`, with
-  its back link pointing at the tab it came from) and **Scrape** POSTs
-  `/api/articles/<id>/scrape?day=...`, which saves the page into the
-  selected workspace *without* changing the article's status.
+  its back link pointing at the tab it came from) — only for articles that
+  have a local copy, since there is nothing to open otherwise — and
+  **Scrape** POSTs `/api/articles/<id>/scrape?day=...`, which saves the
+  page into the selected workspace *without* changing the article's status.
 
 ## Runtime behavior worth knowing
 

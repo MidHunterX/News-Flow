@@ -247,17 +247,17 @@ class TestPublicationRoute:
         _bind_workspaces(monkeypatch, tmp_path)
 
         with db_pkg.SessionLocal() as session:
-            session.add(
-                Article(
-                    title="Never Accepted",
-                    url="https://example.com/none",
-                    image_url=None,
-                    description="desc",
-                    published_at="2026-10-26",
-                    source="kaumudi",
-                )
+            row = Article(
+                title="Never Accepted",
+                url="https://example.com/none",
+                image_url=None,
+                description="desc",
+                published_at="2026-10-26",
+                source="kaumudi",
             )
+            session.add(row)
             session.commit()
+            article_id = row.id
 
         response = await scrape_routes.publication_view(
             request=object(), day="today"
@@ -267,6 +267,13 @@ class TestPublicationRoute:
         assert response.status_code == 200
         assert "Not scraped locally" in body
         assert "Locally scraped" not in body
+        # No local copy to open, so the card offers no Preview button —
+        # but the Scrape button (how it gets one) is still there.
+        assert f'href="/article/{article_id}?day=today"' not in body
+        assert (
+            f"postAction('/api/articles/{article_id}/scrape?day=today', event)"
+            in body
+        )
 
     async def test_empty_tabs_render_their_empty_states(
         self, monkeypatch, tmp_path
@@ -589,19 +596,42 @@ class TestScrapeEndpoint:
 
 
 class TestPublicationButtons:
-    """Preview/Scrape buttons rendered on every card, in every layout."""
+    """Preview/Scrape buttons rendered on every scraped card, in every layout."""
 
     @pytest.mark.parametrize("layout", LAYOUTS)
     def test_every_layout_carries_both_buttons(self, layout):
-        html = _render([_card(1), _card(2)], article_layout=layout)
+        html = _render(
+            [_card(1, word_count=7), _card(2, word_count=7)],
+            article_layout=layout,
+        )
 
         assert 'href="/article/1?day=previous"' in html
         assert 'href="/article/2?day=previous"' in html
         assert "postAction('/api/articles/1/scrape?day=previous', event)" in html
         assert "postAction('/api/articles/2/scrape?day=previous', event)" in html
 
+    @pytest.mark.parametrize("layout", LAYOUTS)
+    def test_preview_is_hidden_until_the_article_is_scraped(self, layout):
+        """Nothing to open without a local copy — Scrape is the only action."""
+        html = _render(
+            [_card(1), _card(2, word_count=7)], article_layout=layout
+        )
+
+        assert 'href="/article/1?day=previous"' not in html
+        assert "postAction('/api/articles/1/scrape?day=previous', event)" in html
+        # The scraped neighbour still gets its Preview.
+        assert 'href="/article/2?day=previous"' in html
+
+    def test_unscraped_scrape_button_takes_the_grid_row(self):
+        """With Preview gone in the grid layout, Scrape spans the action row."""
+        unscraped = _render([_card(1)])
+        scraped = _render([_card(1, word_count=7)])
+
+        assert 'class="grid gap-3"' in unscraped
+        assert 'class="grid gap-3 grid-cols-2"' in scraped
+
     def test_buttons_follow_the_selected_day_tab(self):
-        html = _render([_card(5)], selected_day="today")
+        html = _render([_card(5, word_count=7)], selected_day="today")
 
         assert 'href="/article/5?day=today"' in html
         assert "postAction('/api/articles/5/scrape?day=today', event)" in html
@@ -612,7 +642,7 @@ class TestPublicationButtons:
     )
     def test_button_shape_matches_the_layout(self, layout, labeled):
         """The roomy layouts label the buttons; compact shows icons only."""
-        html = _render([_card(1)], article_layout=layout)
+        html = _render([_card(1, word_count=7)], article_layout=layout)
 
         assert ("<span>Preview</span>" in html) is labeled
         assert ("<span>Scrape</span>" in html) is labeled
