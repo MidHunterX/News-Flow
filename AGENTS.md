@@ -143,6 +143,20 @@ Two workspaces exist side by side:
   `save_items` → `trim_articles` → stamp `refresh_last_run`. `run_due_refresh()`
   mirrors the AI Publish curator: stamp-before-scrape so a crashed run can't
   hot-retry, fail-soft (logged + notification, never kills the caller's loop).
+- **Curation auto-refresh** (`GET /api/state`): the open curation page polls
+  a fingerprint of what the Review & Status panel shows (accepted /
+  completed / rejected IDs + the AI Publish stamp) and reloads itself when
+  it changes, so server-side rounds — AI Publish accepting + scraping, the
+  completion loop, the daily reset — appear without a manual reload.
+  Pending articles are deliberately excluded, so the background refresher
+  adding stories never interrupts. While a round is in flight
+  `curator.is_selecting()` is true, the meter renders "Curating…", and the
+  reload waits until the round lands (one round → one refresh).
+  Polling is **lazy**: the 3 s timer is created only when the AI Publish
+  meter reaches "Due" (or when the page loads mid-round, seeded from
+  `ai_publish_running`), and polls are skipped while the tab is hidden —
+  nothing runs while the countdown is still ticking, so with AI Publish off
+  the page never polls at all.
 
 ## Testing philosophy (important)
 

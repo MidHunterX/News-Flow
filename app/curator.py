@@ -49,6 +49,18 @@ from app.models import NewsItem
 
 logger = logging.getLogger(__name__)
 
+# True while the round proper — the Gemini call plus accepting/scraping
+# whatever it picked — is in flight. GET /api/state exposes it as
+# "running" so the curation page can show "Curating…" instead of a
+# countdown that has already run out. Cleared in run_due_selection's
+# finally, so a crashed round can't leave it stuck.
+_SELECTING = False
+
+
+def is_selecting() -> bool:
+    """Whether an AI Publish round is running right now."""
+    return _SELECTING
+
 
 async def enrich_accepted_article(
     article: NewsItem, *, archived: bool = False
@@ -144,7 +156,12 @@ async def run_due_selection() -> int:
     Returns the number of articles accepted this round (0 most ticks). Never
     raises: an unexpected error is logged, recorded in the notification log,
     and the round is skipped.
+
+    From the Gemini call onwards :func:`is_selecting` reports True, which
+    the curation page renders as a "Curating…" state in its meter.
     """
+    global _SELECTING
+
     from app.gemini import is_configured, pick_article_ids  # lazy: tests patch
 
     try:
@@ -170,6 +187,9 @@ async def run_due_selection() -> int:
         history_limit = await get_ai_publish_history()
         recent = await get_recent_accepted_titles(history_limit)
 
+        # Round proper: everything from here (the Gemini call) to the last
+        # accept/scrape runs with the working flag set.
+        _SELECTING = True
         picked = await pick_article_ids(
             [(item.id, item.title) for item in pending if item.id is not None],
             [title for _, title in recent],
@@ -201,6 +221,8 @@ async def run_due_selection() -> int:
             f"{exc or 'no details'}",
         )
         return 0
+    finally:
+        _SELECTING = False  # including on the early-return paths: harmless
 
 
 async def get_toggle_safe() -> bool:

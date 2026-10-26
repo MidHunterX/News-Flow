@@ -317,6 +317,54 @@
     // Completion interval in seconds (from server settings).
     const completionInterval = {{ completion_interval }};
 
+    // True while a server-side AI Publish round is in flight; the meter
+    // shows this instead of its countdown. Seeded by the server so a page
+    // opened mid-round starts out accurate (and starts polling) rather
+    // than showing a countdown the round just reset.
+    let aiRoundRunning = {{ "true" if ai_publish_running else "false" }};
+
+    // Auto-refresh: AI Publish, the completion loop, and the daily reset
+    // all change this workspace from the server, so the open page would
+    // otherwise stay stale until someone reloads it. The poll is lazy —
+    // there is nothing to wait for until the meter reaches "Due", so the
+    // timer is created there (and only there) rather than at load. It
+    // also skips hidden tabs: this poll exists for someone watching the
+    // panel, and visibilitychange re-syncs the moment they come back.
+    // A round is never interrupted mid-flight: the reload waits until
+    // `running` clears, so one round produces one refresh instead of one
+    // per article it accepts.
+    let lastFingerprint = "{{ review_fingerprint }}";
+    const reviewSource = "{{ selected_source or '' }}";
+    let pollTimer = null;
+
+    function startPolling() {
+      if (pollTimer) return; // Due ticks every second; start once.
+      pollCurationState();   // catch up on whatever happened while idle
+      pollTimer = setInterval(pollCurationState, 3000);
+    }
+
+    async function pollCurationState() {
+      if (document.hidden) return; // nobody watching: no request
+      let state;
+      try {
+        const qs = reviewSource ? `?source=${encodeURIComponent(reviewSource)}` : "";
+        const res = await fetch(`/api/state${qs}`);
+        if (!res.ok) return;
+        state = await res.json();
+      } catch (err) {
+        return; // Transient failure: keep the last known state.
+      }
+      aiRoundRunning = state.running;
+      if (!state.running && state.fingerprint !== lastFingerprint) {
+        lastFingerprint = state.fingerprint;
+        window.location.reload();
+      }
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && pollTimer) pollCurationState();
+    });
+
     // POST an action (accept/reject/clear) and reload to reflect the change.
     const spinnerSVG = '<svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
 
@@ -400,6 +448,15 @@
       const deadline = (lastRun ? lastRun : Date.now()) + intervalMs;
 
       function tick() {
+        if (aiRoundRunning) {
+          // Gemini is picking (and the picks are being scraped): the
+          // countdown becomes the working state until the round lands.
+          label.textContent = "Curating…";
+          fill.style.width = "100%";
+          fill.classList.add("animate-pulse");
+          return;
+        }
+        fill.classList.remove("animate-pulse");
         const remaining = deadline - Date.now();
         const pct = Math.min(100, Math.max(0, (1 - remaining / intervalMs) * 100));
         fill.style.width = `${pct}%`;
@@ -407,6 +464,9 @@
           label.textContent = "Due";
           fill.classList.remove("bg-violet-500");
           fill.classList.add("bg-green-500");
+          // Only now is there anything server-side worth watching for:
+          // this is the one place the state poll is ever started.
+          startPolling();
         } else {
           // Hours may be needed for long intervals; hide the hours part at 0.
           const totalSeconds = Math.ceil(remaining / 1000);
@@ -418,6 +478,9 @@
         }
       }
 
+      // A round in flight means the countdown was just reset, so "Due"
+      // won't come around until it lands — start watching right away.
+      if (aiRoundRunning) startPolling();
       tick();
       setInterval(tick, 1000);
     }

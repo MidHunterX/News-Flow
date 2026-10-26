@@ -235,6 +235,34 @@ async def test_scrape_failure_clears_status_and_counts_nothing(env, monkeypatch)
     assert "warning" in levels
 
 
+async def test_is_selecting_tracks_a_live_round(env, monkeypatch):
+    """GET /api/state's "running" flag is true only while the round works."""
+    seen: list[bool] = []
+
+    async def spy_pick(pending, recent, count):
+        seen.append(curator.is_selecting())
+        return [2, 3]
+
+    monkeypatch.setattr("app.gemini.pick_article_ids", spy_pick)
+
+    assert curator.is_selecting() is False
+    assert await curator.run_due_selection() == 2
+    assert seen == [True]  # Gemini was called with the flag up
+    assert curator.is_selecting() is False
+
+
+async def test_is_selecting_clears_when_the_round_fails(env, monkeypatch):
+    """A crashed round must not leave the UI stuck on "Curating…"."""
+
+    async def boom(pending, recent, count):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr("app.gemini.pick_article_ids", boom)
+
+    assert await curator.run_due_selection() == 0
+    assert curator.is_selecting() is False
+
+
 async def test_unconfigured_gemini_skips_round(env, monkeypatch):
     monkeypatch.setattr("app.gemini.is_configured", lambda: False)
     assert await curator.run_due_selection() == 0

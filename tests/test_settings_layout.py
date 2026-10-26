@@ -15,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import app.db as db_pkg
 import app.db.settings as settings_mod
 import app.routes.scrape as scrape_routes
 from app.db.constants import (
@@ -24,7 +25,7 @@ from app.db.constants import (
     TOGGLE_SETTINGS,
     toggle_is_available,
 )
-from app.db.models import Base, Setting
+from app.db.models import Article, Base, Setting
 
 LAYOUTS = ("grid", "rows", "compact")
 
@@ -418,6 +419,8 @@ def _render(layout: str, items: list, **extra) -> str:
         "ai_publish_enabled": False,
         "ai_publish_interval": 3600,
         "ai_publish_last_run": None,
+        "ai_publish_running": False,
+        "review_fingerprint": "",
     }
     context.update(extra)
     return template.render(**context)
@@ -608,3 +611,185 @@ class TestAiPublishMeter:
         html = _render("grid", [], ai_publish_enabled=True,
                        ai_publish_last_run=None)
         assert 'data-last-run=""' in html
+
+
+# ---------------------------------------------------------------------------
+# Curation auto-refresh: GET /api/state + the page's poll
+# ---------------------------------------------------------------------------
+
+
+def _seed_article(session, *, source: str = "kaumudi", status: str | None = None):
+    """One row in the curation workspace; returns its ID."""
+    article = Article(
+        title="Story",
+        url="https://example.com/story",
+        image_url=None,
+        description="desc",
+        published_at="2026-10-26",
+        source=source,
+        status=status,
+    )
+    session.add(article)
+    session.commit()
+    return article.id
+
+
+class TestReviewFingerprint:
+    """The fingerprint identifies the rows the panel renders, not its count."""
+
+    def test_empty_panel_is_a_stable_string(self):
+        assert scrape_routes._review_fingerprint([], [], [], None) == ";;;"
+
+    def test_ids_make_swapping_articles_visible(self):
+        """Same count, different article → the panel really did change."""
+        one = scrape_routes._review_fingerprint([_item(1)], [], [], None)
+        two = scrape_routes._review_fingerprint([_item(2)], [], [], None)
+
+        assert one == "1;;;"
+        assert one != two
+
+    def test_carries_the_ai_publish_stamp(self):
+        """A round that accepted nothing still restarts the meter."""
+        never = scrape_routes._review_fingerprint([], [], [], None)
+        stamped = scrape_routes._review_fingerprint(
+            [], [], [], "2026-10-26T10:00:00+00:00"
+        )
+
+        assert never != stamped
+
+
+class TestCurationState:
+    """GET /api/state drives the page's reload-when-something-changed poll."""
+
+    async def test_reports_an_empty_workspace(self):
+        state = await scrape_routes.get_curation_state(source=None)
+
+        assert state["running"] is False
+        assert state["counts"] == {"accepted": 0, "completed": 0, "rejected": 0}
+        assert state["fingerprint"] == scrape_routes._review_fingerprint(
+            [], [], [], None
+        )
+
+    async def test_accepting_an_article_changes_the_fingerprint(self):
+        with db_pkg.SessionLocal() as session:
+            article_id = _seed_article(session)
+
+        before = await scrape_routes.get_curation_state(source=None)
+
+        with db_pkg.SessionLocal() as session:
+            session.get(Article, article_id).status = "accepted"
+            session.commit()
+        after = await scrape_routes.get_curation_state(source=None)
+
+        assert before["fingerprint"] != after["fingerprint"]
+        assert after["counts"]["accepted"] == 1
+
+    async def test_new_pending_stories_never_trigger_a_reload(self):
+        """The background refresher adding articles must not interrupt."""
+        empty = await scrape_routes.get_curation_state(source=None)
+
+        with db_pkg.SessionLocal() as session:
+            _seed_article(session)
+
+        still = await scrape_routes.get_curation_state(source=None)
+
+        assert still["fingerprint"] == empty["fingerprint"]
+
+    async def test_source_filter_narrows_the_panel(self):
+        with db_pkg.SessionLocal() as session:
+            _seed_article(session, source="kaumudi", status="accepted")
+            _seed_article(session, source="mangalam", status="accepted")
+
+        every_source = await scrape_routes.get_curation_state(source=None)
+        one_source = await scrape_routes.get_curation_state(source="kaumudi")
+
+        assert every_source["counts"]["accepted"] == 2
+        assert one_source["counts"]["accepted"] == 1
+        assert one_source["fingerprint"] != every_source["fingerprint"]
+
+
+class TestAutoRefreshScript:
+    """The curation page ships a lazy poll and the meter's working state."""
+
+    def test_page_embeds_the_fingerprint_seed(self):
+        html = _render("grid", [], review_fingerprint="1,2;;;")
+
+        assert 'let lastFingerprint = "1,2;;;";' in html
+
+    def test_polling_starts_only_when_it_is_needed(self):
+        """No timer at load: startPolling() is what creates it, and only the
+        meter reaching "Due" (or opening the page mid-round) calls it."""
+        html = _render("grid", [], review_fingerprint="")
+
+        assert html.count("setInterval(pollCurationState, 3000)") == 1
+        assert html.index("function startPolling()") < html.index(
+            "pollTimer = setInterval(pollCurationState, 3000)"
+        )
+        due = html.index('label.textContent = "Due";')
+        assert html.index("startPolling();", due) < html.index("} else {", due)
+
+    def test_page_polls_the_state_endpoint(self):
+        html = _render("grid", [], review_fingerprint="")
+
+        assert "`/api/state${qs}`" in html
+
+    def test_polling_pauses_while_the_tab_is_hidden(self):
+        html = _render("grid", [], review_fingerprint="")
+
+        assert "if (document.hidden) return;" in html
+        assert '"visibilitychange"' in html
+
+    def test_page_scopes_the_poll_to_the_selected_source(self):
+        html = _render("grid", [], selected_source="mangalam")
+
+        assert 'const reviewSource = "mangalam";' in html
+
+    def test_meter_shows_curating_while_a_round_runs(self):
+        html = _render("grid", [], review_fingerprint="")
+
+        assert 'label.textContent = "Curating…";' in html
+        # The poll defers its reload so one round means one refresh.
+        assert "if (!state.running && state.fingerprint !== lastFingerprint)" in html
+
+    def test_page_seeds_a_round_already_in_flight(self):
+        """A page opened mid-round sees "Curating…", not the countdown the
+        round just reset — and starts watching so it knows when to land."""
+        running = _render("grid", [], ai_publish_running=True)
+        idle = _render("grid", [], ai_publish_running=False)
+
+        assert "let aiRoundRunning = true;" in running
+        assert "if (aiRoundRunning) startPolling();" in running
+        assert "let aiRoundRunning = false;" in idle
+
+
+class TestIndexRefreshSeed:
+    """The route feeds the page's poll from the same source as /api/state."""
+
+    async def test_page_is_seeded_from_the_server(self, monkeypatch):
+        import app.curator as curator_mod
+
+        async def fake_scrape(name):
+            return []
+
+        async def fake_publish(interval):
+            return None
+
+        captured = {}
+
+        def capture_context(**kwargs):
+            captured.update(kwargs.get("context") or {})
+
+        monkeypatch.setattr(scrape_routes, "scrape_source", fake_scrape)
+        monkeypatch.setattr(scrape_routes, "publish_due_articles", fake_publish)
+        monkeypatch.setattr(scrape_routes.templates, "TemplateResponse",
+                            capture_context)
+        monkeypatch.setattr(curator_mod, "_SELECTING", True)
+
+        await scrape_routes.get_news_ui(request=object(), source=None)
+
+        assert captured["ai_publish_running"] is True
+        # The seed must match what the first /api/state poll would return,
+        # or the page would reload itself the instant it starts watching.
+        assert captured["review_fingerprint"] == scrape_routes._review_fingerprint(
+            [], [], [], captured["ai_publish_last_run"]
+        )

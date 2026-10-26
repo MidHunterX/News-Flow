@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import SOURCES
-from app.curator import enrich_accepted_article
+from app.curator import enrich_accepted_article, is_selecting
 from app.db import (
     ARTICLE_LAYOUTS,
     DEFAULT_SETTINGS,
@@ -284,6 +284,61 @@ async def delete_notifications():
     return {"ok": True, "deleted": deleted}
 
 
+def _review_fingerprint(
+    accepted: list[NewsItem],
+    completed: list[NewsItem],
+    rejected: list[NewsItem],
+    ai_publish_last_run: str | None,
+) -> str:
+    """Identify exactly what the curation page's Review & Status panel shows.
+
+    Article IDs rather than plain counts, so swapping one article for
+    another (accept here, cancel there) still counts as a change, plus the
+    AI Publish stamp so a round that accepted nothing still restarts the
+    meter's countdown. Pending articles are deliberately left out: the
+    background refresher adding stories must not interrupt with a surprise
+    reload — only changes to the review panel do.
+    """
+    ids = ";".join(
+        ",".join(str(item.id) for item in items)
+        for items in (accepted, completed, rejected)
+    )
+    return f"{ids};{ai_publish_last_run or ''}"
+
+
+@router.get("/api/state")
+async def get_curation_state(
+    source: str | None = Query(None, description="Source filter, as on the page"),
+):
+    """State fingerprint for the curation page's auto-refresh.
+
+    AI Publish (accept + scrape), the completion loop, and the daily reset
+    all mutate the workspace from the server side, so an open page would
+    otherwise stay stale until someone reloads it. The page polls this
+    every few seconds and reloads itself when the fingerprint moves — the
+    same fetch-then-reload update the accept buttons use.
+
+    ``running`` is true while an AI Publish round is in flight; the meter
+    renders that as "Curating…" and defers its reload until the round
+    lands, so one round produces one refresh rather than one per article.
+    """
+    current_source = source if source in SOURCES else None
+    accepted = await get_accepted_items(current_source)
+    completed = await get_completed_items(current_source)
+    rejected = await get_rejected_items(current_source)
+    return {
+        "fingerprint": _review_fingerprint(
+            accepted, completed, rejected, await get_ai_publish_last_run()
+        ),
+        "running": is_selecting(),
+        "counts": {
+            "accepted": len(accepted),
+            "completed": len(completed),
+            "rejected": len(rejected),
+        },
+    }
+
+
 @router.get("/article/{article_id}", response_class=HTMLResponse)
 async def article_view(
     request: Request,
@@ -498,6 +553,8 @@ async def get_news_ui(
     reset_timezone = await get_reset_timezone()
 
     toggles = await _toggle_context()
+    ai_publish_interval = await get_ai_publish_interval()
+    ai_publish_last_run = await get_ai_publish_last_run()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -515,8 +572,18 @@ async def get_news_ui(
             "article_layout": layout,
             "reset_timezone": reset_timezone,
             "ai_publish_enabled": toggles["toggles"]["ai_publish"]["enabled"],
-            "ai_publish_interval": await get_ai_publish_interval(),
-            "ai_publish_last_run": await get_ai_publish_last_run(),
+            "ai_publish_interval": ai_publish_interval,
+            "ai_publish_last_run": ai_publish_last_run,
+            # A page opened mid-round must show "Curating…" (and start
+            # polling) immediately, not wait for a countdown it just reset.
+            "ai_publish_running": is_selecting(),
+            # Seed for the page's auto-refresh poll (see /api/state).
+            "review_fingerprint": _review_fingerprint(
+                accepted_items,
+                completed_items,
+                rejected_items,
+                ai_publish_last_run,
+            ),
             **toggles,
         },
     )
