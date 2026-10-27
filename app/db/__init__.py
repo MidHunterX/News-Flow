@@ -28,7 +28,6 @@ from app.db.articles import (
                              mark_articles_completed,
                              save_items,
                              set_article_status,
-                             trim_articles,
                              update_article_cover_file,
                              update_publication_cover_file,
 )
@@ -106,7 +105,6 @@ __all__ = [  # noqa: RUF022
     "init_db",
     # Articles.
     "save_items",
-    "trim_articles",
     "get_items",
     "get_pending_items",
     "get_publication_items",

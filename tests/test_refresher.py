@@ -28,7 +28,6 @@ def env(monkeypatch):
     settings = {"refresh_interval": 900, "refresh_last_run": None}
     calls: list[str | None] = []
     saved: list[list[NewsItem]] = []
-    trimmed: list[int] = []
     notifications: list[tuple[str, str, str]] = []
     stamp_writes: list[tuple[str, str]] = []
     state = {"fail_scrape": False}
@@ -53,9 +52,6 @@ def env(monkeypatch):
     async def fake_save_items(items: list[NewsItem]) -> None:
         saved.append(list(items))
 
-    async def fake_trim_articles(limit: int) -> None:
-        trimmed.append(limit)
-
     async def fake_get_interval() -> int:
         return settings["refresh_interval"]
 
@@ -72,7 +68,6 @@ def env(monkeypatch):
 
     monkeypatch.setattr("app.scrapers.init.scrape_source", fake_scrape_source)
     monkeypatch.setattr(refresher, "save_items", fake_save_items)
-    monkeypatch.setattr(refresher, "trim_articles", fake_trim_articles)
     monkeypatch.setattr(refresher, "get_refresh_interval", fake_get_interval)
     monkeypatch.setattr(refresher, "get_last_refresh", fake_get_last_refresh)
     monkeypatch.setattr(refresher, "set_setting", fake_set_setting)
@@ -80,7 +75,6 @@ def env(monkeypatch):
 
     settings["calls"] = calls
     settings["saved"] = saved
-    settings["trimmed"] = trimmed
     settings["notifications"] = notifications
     settings["stamps"] = stamp_writes
     settings["state"] = state
@@ -96,9 +90,7 @@ async def test_refresh_sources_scrapes_all_sources_by_default(env):
     items = await refresher.refresh_sources()
     assert [i.id for i in items] == list(range(1, len(_all_source_names()) + 1))
     assert env["calls"] == _all_source_names()
-    # Cached rows are replaced and trimmed, like the old route did.
     assert env["saved"] == [items]
-    assert env["trimmed"] == [10]
 
 
 async def test_refresh_sources_scrapes_only_requested_source(env):
@@ -137,9 +129,7 @@ async def test_runs_when_never_run(env):
 
 
 async def test_runs_when_interval_elapsed(env):
-    env["refresh_last_run"] = _iso(
-        datetime.now(UTC) - timedelta(seconds=901)
-    )
+    env["refresh_last_run"] = _iso(datetime.now(UTC) - timedelta(seconds=901))
     assert await refresher.run_due_refresh() == len(_all_source_names())
     assert env["calls"] == _all_source_names()
 

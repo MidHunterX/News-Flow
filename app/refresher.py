@@ -19,14 +19,13 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from app.config import MAX_ARTICLES_PER_SOURCE, SOURCES
+from app.config import SOURCES
 from app.db import (
     get_refresh_interval,
     get_setting,
     record_notification,
     save_items,
     set_setting,
-    trim_articles,
 )
 from app.db.constants import NOTIF_ERROR, REFRESH_LAST_RUN_KEY
 from app.models import NewsItem
@@ -46,7 +45,6 @@ async def refresh_sources(sources: list[str] | None = None) -> list[NewsItem]:
     results = [await scrape_source(name) for name in names]
     items = [item for sublist in results for item in sublist]
     await save_items(items)
-    await trim_articles(MAX_ARTICLES_PER_SOURCE)
     await set_setting(REFRESH_LAST_RUN_KEY, now_iso())
     return items
 
