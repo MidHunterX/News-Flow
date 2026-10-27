@@ -230,7 +230,7 @@
                     <span class="timer-label font-bold text-indigo-600 tabular-nums dark:text-indigo-400">--:--</span>
                   </div>
                   <div class="h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
-                    <div class="timer-fill h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: 100%"></div>
+                    <div class="timer-fill h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: 0%"></div>
                   </div>
                 </div>
 
@@ -276,9 +276,14 @@
             </summary>
             <ul class="divide-y divide-gray-100 dark:divide-gray-700">
               {% for item in completed_items %}
-                <li class="px-4 py-3 flex items-center justify-between gap-3">
+                <li class="px-4 py-3 flex items-center justify-between gap-2">
+                  <div>
+                    <svg class="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                  </div>
                   <a href="{{ item.url }}" target="_blank" class="text-sm text-gray-600 hover:text-indigo-600 truncate dark:text-gray-300 dark:hover:text-indigo-400">{{ item.title }}</a>
-                  <div class="shrink-0 text-xs text-green-500 bg-green-100 px-2 py-1 rounded font-medium transition dark:bg-green-900 dark:text-green-400">Done</div>
+                  <a href="/article/{{ item.id }}" class="shrink-0 text-xs  bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-300 px-2 py-1 rounded font-medium transition">Preview</a>
                 </li>
               {% endfor %}
             </ul>
@@ -397,10 +402,7 @@
         if (!acceptedAtRaw) {
           // Queued behind another accepted article; its timer starts only
           // when it becomes the active one.
-          label.textContent = "Waiting";
-          fill.style.width = "100%";
-          fill.classList.remove("bg-indigo-500");
-          fill.classList.add("bg-gray-300");
+          meter.remove();
           return;
         }
 
@@ -409,7 +411,8 @@
 
         function tick() {
           const remaining = Math.max(0, deadline - Date.now());
-          const pct = (remaining / Math.max(1, intervalMs)) * 100;
+          // Fill grows from 0% -> 100% as time elapses
+          const pct = (1 - remaining / Math.max(1, intervalMs)) * 100;
           fill.style.width = `${pct}%`;
           if (remaining <= 0) {
             label.textContent = "Done";
