@@ -140,6 +140,21 @@
               </div>
             </div>
             <div>
+              <label for="pending-display-limit-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                Pending articles shown
+              </label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                How many of the newest pending articles the list shows. 0 shows all of them.
+              </p>
+              <input
+                id="pending-display-limit-input"
+                type="number"
+                min="0"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Theme</label>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 Dark, light, or follow your system setting. This one is local to this browser:
@@ -262,6 +277,21 @@
                 </p>
                 <input
                   id="ai-publish-history-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label for="ai-publish-pending-limit-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                  Recency context
+                </label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  How many of the newest pending articles Gemini gets to pick from each prompt. 0 offers all of them.
+                </p>
+                <input
+                  id="ai-publish-pending-limit-input"
                   type="number"
                   min="0"
                   step="1"
@@ -484,9 +514,15 @@
           document.getElementById("refresh-interval-input").value = Math.max(1, Math.round(refreshSeconds / 60));
           selectArticleLayout(settings.article_layout || "grid");
           selectResetTimezone(settings.reset_timezone === "local" ? "local" : "utc");
+          const pendingLimitInput = document.getElementById("pending-display-limit-input");
+          if (pendingLimitInput) {
+            const pendingLimit = parseInt(settings.pending_display_limit, 10);
+            pendingLimitInput.value = Number.isNaN(pendingLimit) ? 20 : Math.max(0, pendingLimit);
+          }
           const countInput = document.getElementById("ai-publish-count-input");
           const intervalInput = document.getElementById("ai-publish-interval-input");
           const historyInput = document.getElementById("ai-publish-history-input");
+          const pendingLimitAiInput = document.getElementById("ai-publish-pending-limit-input");
           // The AI Publish fields only exist when the feature is available.
           if (countInput) countInput.value = Math.max(1, parseInt(settings.ai_publish_count, 10) || 3);
           if (intervalInput) {
@@ -494,6 +530,10 @@
             intervalInput.value = Math.max(1, Math.round(intervalSeconds / 60));
           }
           if (historyInput) historyInput.value = Math.max(0, parseInt(settings.ai_publish_history, 10) || 10);
+          if (pendingLimitAiInput) {
+            const recencyLimit = parseInt(settings.ai_publish_pending_limit, 10);
+            pendingLimitAiInput.value = Number.isNaN(recencyLimit) ? 20 : Math.max(0, recencyLimit);
+          }
           for (const [key, toggle] of Object.entries(settings.toggles || {})) {
             // Unavailable toggles have no switch; never send them on save so
             // a stale "1" in the DB can't fail the whole settings write.
@@ -535,6 +575,16 @@
         const countInput = document.getElementById("ai-publish-count-input");
         const intervalInput = document.getElementById("ai-publish-interval-input");
         const historyInput = document.getElementById("ai-publish-history-input");
+        const pendingLimitAiInput = document.getElementById("ai-publish-pending-limit-input");
+        const pendingLimitInput = document.getElementById("pending-display-limit-input");
+        if (pendingLimitInput) {
+          const displayLimit = parseInt(pendingLimitInput.value, 10);
+          if (isNaN(displayLimit) || displayLimit < 0) {
+            alert("Pending articles shown must be 0 or more.");
+            return;
+          }
+          payload.pending_display_limit = String(displayLimit);
+        }
         if (countInput) {
           const count = parseInt(countInput.value, 10);
           if (!count || count < 1) {
@@ -558,6 +608,14 @@
             return;
           }
           payload.ai_publish_history = String(history);
+        }
+        if (pendingLimitAiInput) {
+          const recencyLimit = parseInt(pendingLimitAiInput.value, 10);
+          if (isNaN(recencyLimit) || recencyLimit < 0) {
+            alert("Recency context must be 0 or more.");
+            return;
+          }
+          payload.ai_publish_pending_limit = String(recencyLimit);
         }
         try {
           await fetch("/api/settings", {

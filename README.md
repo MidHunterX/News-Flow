@@ -253,10 +253,12 @@ Feature toggles (in the settings modal) can only be switched on when their backi
 | `completion_interval` | `600 s` | Time from accept to completion (and publish) per article |
 | `refresh_interval` | `900 s` | Background re-scrape cadence (floored at 30 s) |
 | `article_layout` | `grid` | Pending-list layout: `grid`, `rows`, or `compact` |
+| `pending_display_limit` | `20` | Newest pending articles the review page lists (0 = all) |
 | `reset_timezone` | `utc` | Clock the daily workspace reset uses: `utc` or the server's local time zone (`local`) |
 | `ai_publish_count` | `3` | Articles Gemini picks per prompt |
 | `ai_publish_interval` | `3600 s` | Rest between AI Publish rounds (floored at 30 s) |
 | `ai_publish_history` | `10` | Accepted headings fed to Gemini as dedupe context |
+| `ai_publish_pending_limit` | `20` | Newest pending articles Gemini picks from (0 = all) |
 
 ---
 

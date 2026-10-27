@@ -28,6 +28,7 @@ from app.db import (
     get_completion_interval,
     get_items,
     get_notifications,
+    get_pending_display_limit,
     get_pending_items,
     get_publication_article_by_id,
     get_publication_items,
@@ -231,6 +232,23 @@ async def update_settings(settings: dict[str, str]):
             except ValueError:
                 raise HTTPException(
                     400, "ai_publish_history must be a non-negative number"
+                )
+        elif key == "ai_publish_pending_limit":
+            try:
+                if int(value) < 0:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400,
+                    "ai_publish_pending_limit must be a non-negative number",
+                )
+        elif key == "pending_display_limit":
+            try:
+                if int(value) < 0:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "pending_display_limit must be a non-negative number"
                 )
         elif key == "article_layout":
             if value not in ARTICLE_LAYOUTS:
@@ -546,6 +564,12 @@ async def get_news_ui(
     await publish_due_articles(interval)
 
     items = await get_pending_items(current_source)
+    pending_total = len(items)
+    # Recency cap on the queue: show only the newest pending articles
+    # (get_pending_items returns newest-first). 0 keeps them all.
+    display_limit = await get_pending_display_limit()
+    if display_limit > 0:
+        items = items[:display_limit]
     accepted_items = await get_accepted_items(current_source)
     completed_items = await get_completed_items(current_source)
     rejected_items = await get_rejected_items(current_source)
@@ -567,7 +591,8 @@ async def get_news_ui(
             "rejected_items": rejected_items,
             "sources": SOURCES.keys(),
             "selected_source": current_source,
-            "count": len(items),
+            "count": pending_total,
+            "items_shown": len(items),
             "completion_interval": interval,
             "article_layout": layout,
             "reset_timezone": reset_timezone,

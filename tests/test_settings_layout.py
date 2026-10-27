@@ -127,6 +127,51 @@ class TestGetResetTimezone:
         assert RESET_TIMEZONES == ("utc", "local")
 
 
+class TestPendingLimits:
+    """Recency limits: 0 means 'no cap', anything invalid falls back."""
+
+    async def test_defaults_when_unseeded(self, db):
+        assert await settings_mod.get_ai_publish_pending_limit() == 20
+        assert await settings_mod.get_pending_display_limit() == 20
+        assert DEFAULT_SETTINGS["ai_publish_pending_limit"] == "20"
+        assert DEFAULT_SETTINGS["pending_display_limit"] == "20"
+
+    async def test_stored_values_win(self, db):
+        with db() as session:
+            session.add(Setting(key="ai_publish_pending_limit", value="5"))
+            session.add(Setting(key="pending_display_limit", value="7"))
+            session.commit()
+        assert await settings_mod.get_ai_publish_pending_limit() == 5
+        assert await settings_mod.get_pending_display_limit() == 7
+
+    async def test_zero_means_no_cap(self, db):
+        with db() as session:
+            session.add(Setting(key="ai_publish_pending_limit", value="0"))
+            session.add(Setting(key="pending_display_limit", value="0"))
+            session.commit()
+        assert await settings_mod.get_ai_publish_pending_limit() == 0
+        assert await settings_mod.get_pending_display_limit() == 0
+
+    @pytest.mark.parametrize("value", ["bogus", ""])
+    async def test_unusable_values_fall_back_to_the_default(
+        self, db, monkeypatch, value
+    ):
+        async def fake_get(key, default):
+            return value
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_ai_publish_pending_limit() == 20
+        assert await settings_mod.get_pending_display_limit() == 20
+
+    async def test_negative_clamps_to_no_cap(self, db, monkeypatch):
+        async def fake_get(key, default):
+            return "-3"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_ai_publish_pending_limit() == 0
+        assert await settings_mod.get_pending_display_limit() == 0
+
+
 # ---------------------------------------------------------------------------
 # Feature toggles (ai_auto_categorization / auto_publish)
 # ---------------------------------------------------------------------------
@@ -375,6 +420,36 @@ class TestSettingsApi:
         await scrape_routes.update_settings({"ai_publish_history": "0"})
         assert recorded == {"ai_publish_history": "0"}
 
+    @pytest.mark.parametrize("value", ["-1", "ten"])
+    async def test_ai_publish_pending_limit_rejects_negative(
+        self, recorded, value
+    ):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings(
+                {"ai_publish_pending_limit": value}
+            )
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_ai_publish_pending_limit_accepts_zero(self, recorded):
+        result = await scrape_routes.update_settings(
+            {"ai_publish_pending_limit": "0"}
+        )
+        assert recorded == {"ai_publish_pending_limit": "0"}
+        assert result["ai_publish_pending_limit"] == "0"
+
+    @pytest.mark.parametrize("value", ["-1", "ten"])
+    async def test_pending_display_limit_rejects_negative(self, recorded, value):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"pending_display_limit": value})
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_pending_display_limit_accepts_zero(self, recorded):
+        result = await scrape_routes.update_settings({"pending_display_limit": "0"})
+        assert recorded == {"pending_display_limit": "0"}
+        assert result["pending_display_limit"] == "0"
+
 
 # ---------------------------------------------------------------------------
 # Template layout branches
@@ -413,6 +488,7 @@ def _render(layout: str, items: list, **extra) -> str:
         "sources": ["kaumudi"],
         "selected_source": None,
         "count": len(items),
+        "items_shown": len(items),
         "completion_interval": 600,
         "article_layout": layout,
         "toggles": {},
@@ -424,6 +500,43 @@ def _render(layout: str, items: list, **extra) -> str:
     }
     context.update(extra)
     return template.render(**context)
+
+
+class TestPendingLimitRendering:
+    """The queue header admits when it is showing a truncated list."""
+
+    def test_header_flags_the_truncated_queue(self):
+        html = _render("grid", [_item(1), _item(2)], count=9, items_shown=2)
+        assert "9 items found" in html
+        assert "showing latest 2" in html
+
+    def test_untruncated_header_stays_quiet(self):
+        html = _render("grid", [_item(1)], count=1, items_shown=1)
+        assert "1 items found" in html
+        assert "showing latest" not in html
+
+
+class TestSettingsModalPendingInputs:
+    """Both recency fields are present in the settings modal."""
+
+    def test_inputs_render(self):
+        env = Environment(
+            loader=FileSystemLoader("templates"),
+            autoescape=select_autoescape(["html"]),
+        )
+        html = env.get_template("base.html").render(
+            toggles={
+                "ai_publish": {
+                    "label": "AI Publish",
+                    "description": "",
+                    "enabled": True,
+                    "available": True,
+                    "required_env": [],
+                }
+            }
+        )
+        assert 'id="pending-display-limit-input"' in html
+        assert 'id="ai-publish-pending-limit-input"' in html
 
 
 class TestSettingsModalToggles:
@@ -964,3 +1077,57 @@ class TestIndexRefreshSeed:
         assert captured["review_fingerprint"] == scrape_routes._review_fingerprint(
             [], [], [], captured["ai_publish_last_run"]
         )
+
+
+class TestPendingDisplayLimit:
+    """The pending queue shows only the newest N articles (0 = all)."""
+
+    @staticmethod
+    def _fake_route(monkeypatch, captured, pending, limit):
+        async def fake_scrape(name):
+            return []
+
+        async def fake_publish(interval):
+            return None
+
+        async def fake_pending(source=None):
+            return list(pending)
+
+        async def fake_limit():
+            return limit
+
+        def capture_context(**kwargs):
+            captured.update(kwargs.get("context") or {})
+
+        monkeypatch.setattr(scrape_routes, "scrape_source", fake_scrape)
+        monkeypatch.setattr(scrape_routes, "publish_due_articles", fake_publish)
+        monkeypatch.setattr(scrape_routes, "get_pending_items", fake_pending)
+        monkeypatch.setattr(
+            scrape_routes, "get_pending_display_limit", fake_limit
+        )
+        monkeypatch.setattr(scrape_routes.templates, "TemplateResponse",
+                            capture_context)
+
+    async def test_limit_shows_only_the_newest(self, monkeypatch):
+        captured = {}
+        pending = [_item(i) for i in range(1, 8)]  # newest first
+        self._fake_route(monkeypatch, captured, pending, limit=3)
+
+        await scrape_routes.get_news_ui(request=object(), source=None)
+
+        assert [item.id for item in captured["items"]] == [1, 2, 3]
+        # The header still reports the real backlog, so the truncation is
+        # visible instead of silently hiding articles.
+        assert captured["count"] == 7
+        assert captured["items_shown"] == 3
+
+    async def test_zero_shows_every_pending_article(self, monkeypatch):
+        captured = {}
+        pending = [_item(i) for i in range(1, 8)]
+        self._fake_route(monkeypatch, captured, pending, limit=0)
+
+        await scrape_routes.get_news_ui(request=object(), source=None)
+
+        assert len(captured["items"]) == 7
+        assert captured["count"] == 7
+        assert captured["items_shown"] == 7

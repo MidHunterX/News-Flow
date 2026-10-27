@@ -226,9 +226,10 @@ async def _load_pick_inputs() -> tuple[
 ]:
     """Return (pending, recent_accepted, count) for the AI Publish prompt.
 
-    Reads exactly what the curator passes to ``pick_article_ids``; each
-    field falls back to its sample independently when the DB is unreadable
-    or that table/setting is empty.
+    Reads exactly what the curator passes to ``pick_article_ids`` — pending
+    (capped at ``ai_publish_pending_limit``), recent accepted headings, and
+    the pick count; each field falls back to its sample independently when
+    the DB is unreadable or that table/setting is empty.
     """
     _init_db()
     if not _DB_OK:
@@ -241,6 +242,7 @@ async def _load_pick_inputs() -> tuple[
         from app.db import (
             get_ai_publish_count,
             get_ai_publish_history,
+            get_ai_publish_pending_limit,
             get_pending_items,
             get_recent_accepted_titles,
         )
@@ -249,9 +251,17 @@ async def _load_pick_inputs() -> tuple[
         real_pending = [
             (item.id, item.title) for item in rows if item.id is not None
         ]
+        # The curator offers only the newest pending articles; mirror the
+        # same recency slice so the dump shows the real prompt.
+        recency_limit = await get_ai_publish_pending_limit()
+        if recency_limit > 0:
+            real_pending = real_pending[:recency_limit]
         if real_pending:
             pending = real_pending
-            print(f"(using {len(pending)} pending articles from DB)")
+            print(
+                f"(using {len(pending)} pending articles from DB; "
+                f"recency limit: {recency_limit or 'none'})"
+            )
         else:
             print("(no pending articles in DB; using sample pending list)")
 
