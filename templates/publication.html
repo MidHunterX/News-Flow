@@ -71,12 +71,20 @@
         {{ refresh_icon() }}
       </button>
     {% else %}
-      <button type="button" title="Scrape the article page (does not accept it)"
-              onclick="postAction('{{ scrape_href }}', event)"
-              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 hover:bg-indigo-600 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-indigo-500 dark:hover:text-white">
-        {{ refresh_icon() }}
-        <span>Scrape</span>
-      </button>
+      {% if card.word_count is not none %}
+        <button type="button" title="Scrape the article page (does not accept it)"
+                onclick="postAction('{{ scrape_href }}', event)"
+                class="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 hover:bg-indigo-600 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-indigo-500 dark:hover:text-white">
+          {{ refresh_icon() }}
+        </button>
+      {% else %}
+        <button type="button" title="Scrape the article page (does not accept it)"
+                onclick="postAction('{{ scrape_href }}', event)"
+                class="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 hover:bg-indigo-600 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-indigo-500 dark:hover:text-white">
+          {{ refresh_icon() }}
+          <span>Scrape</span>
+        </button>
+      {% endif %}
     {% endif %}
   {% endmacro %}
 
@@ -133,8 +141,8 @@
                 <div class="flex items-center justify-between gap-3 mt-auto pt-3 border-t border-gray-200 dark:border-gray-700">
                   {{ scrape_badge(card) }}
                   <div class="flex items-center gap-2 shrink-0">
-                    {{ preview_button(card) }}
                     {{ scrape_button(card) }}
+                    {{ preview_button(card) }}
                   </div>
                 </div>
               </div>
