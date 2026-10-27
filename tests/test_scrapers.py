@@ -281,4 +281,132 @@ class TestCoverImageDownload:
         saved = Path(local_path)
         assert saved.exists()
         assert saved.read_bytes() == cover_bytes
-        assert saved.name == "cover.png"
+        assert saved.name == "cover.png"  # undecodable: kept byte-for-byte
+
+    # ---- conversion to jpg (Pillow) ---------------------------------------
+
+    @staticmethod
+    def _serve(monkeypatch, tmp_path, content: bytes):
+        """Point download_image at *tmp_path* and serve *content* for any URL."""
+        from app import utils as app_utils
+
+        class BytesResponse:
+            def __init__(self) -> None:
+                self.content = content
+
+            def raise_for_status(self) -> None:
+                return None
+
+        class FakeBytesClient:
+            async def get(self, url: str) -> BytesResponse:
+                return BytesResponse()
+
+        async def fake_get_client():
+            return FakeBytesClient()
+
+        monkeypatch.setattr(app_utils, "COVERS_DIR", tmp_path)
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        return app_utils
+
+    @staticmethod
+    def _image_bytes(mode: str, fmt: str) -> bytes:
+        """A tiny real image in *fmt* (used as the fake HTTP payload)."""
+        from io import BytesIO
+
+        from PIL import Image
+
+        color = (255, 0, 0, 0) if "A" in mode else (255, 0, 0)
+        buf = BytesIO()
+        Image.new(mode, (8, 8), color).save(buf, fmt)
+        return buf.getvalue()
+
+    async def test_png_cover_is_saved_as_jpg(self, tmp_path, monkeypatch):
+        """A png cover lands on disk as real JPEG bytes under a .jpg name."""
+        from PIL import Image
+
+        app_utils = self._serve(
+            monkeypatch, tmp_path, self._image_bytes("RGB", "PNG")
+        )
+
+        local = await app_utils.download_image("https://images.example.com/cover.png")
+
+        assert local is not None
+        saved = Path(local)
+        assert saved.name == "cover.jpg"
+        with Image.open(saved) as img:
+            assert img.format == "JPEG"
+            assert img.mode == "RGB"
+
+    async def test_webp_cover_is_saved_as_jpg(self, tmp_path, monkeypatch):
+        """The case that broke the article desk's clipboard copy: webp covers."""
+        from PIL import Image
+
+        try:
+            webp = self._image_bytes("RGBA", "WEBP")
+        except (KeyError, OSError, ValueError):
+            pytest.skip("this Pillow build has no WebP support")
+        app_utils = self._serve(monkeypatch, tmp_path, webp)
+
+        local = await app_utils.download_image("https://images.example.com/cover.webp")
+
+        assert local is not None
+        saved = Path(local)
+        assert saved.name == "cover.jpg"
+        with Image.open(saved) as img:
+            assert img.format == "JPEG"
+
+    async def test_gif_cover_is_saved_as_jpg(self, tmp_path, monkeypatch):
+        """A (animated) gif collapses to a single-frame jpg: format detection
+        reads the bytes, so the .gif extension never survives the download."""
+        from io import BytesIO
+
+        from PIL import Image
+
+        buf = BytesIO()
+        frames = [Image.new("P", (8, 8), 0), Image.new("P", (8, 8), 1)]
+        try:
+            frames[0].save(
+                buf, "GIF", save_all=True, append_images=frames[1:], duration=100
+            )
+        except (KeyError, OSError, ValueError):
+            pytest.skip("this Pillow build has no GIF support")
+        app_utils = self._serve(monkeypatch, tmp_path, buf.getvalue())
+
+        local = await app_utils.download_image(
+            "https://images.example.com/anim.gif"
+        )
+
+        assert local is not None
+        saved = Path(local)
+        assert saved.name == "anim.jpg"
+        with Image.open(saved) as img:
+            assert img.format == "JPEG"
+            assert getattr(img, "n_frames", 1) == 1
+
+    async def test_transparency_is_flattened_onto_white(self, tmp_path, monkeypatch):
+        """JPEG has no alpha: transparent pixels must not turn black."""
+        from PIL import Image
+
+        app_utils = self._serve(
+            monkeypatch, tmp_path, self._image_bytes("RGBA", "PNG")
+        )
+
+        local = await app_utils.download_image("https://images.example.com/t.png")
+
+        assert local is not None
+        with Image.open(local) as img:
+            r, g, b = img.convert("RGB").getpixel((0, 0))
+        assert (r, g, b) == (255, 255, 255)
+
+    async def test_jpeg_bytes_are_renamed_not_reencoded(self, tmp_path, monkeypatch):
+        """Served-as-png but actually jpeg: same bytes, corrected extension,
+        so the browser's Content-Type finally matches the pixels."""
+        jpeg = self._image_bytes("RGB", "JPEG")
+        app_utils = self._serve(monkeypatch, tmp_path, jpeg)
+
+        local = await app_utils.download_image("https://images.example.com/cover.png")
+
+        assert local is not None
+        saved = Path(local)
+        assert saved.name == "cover.jpg"
+        assert saved.read_bytes() == jpeg
