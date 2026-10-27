@@ -132,6 +132,68 @@ class TestClear:
         assert await clear_notifications() == 0
 
 
+class TestReadState:
+    """The bell badge counts unread rows, ignoring info entries."""
+
+    async def test_new_entries_start_unread(self, db):
+        await _record(NOTIF_ERROR, "gemini", "boom")
+        (row,) = await _get()
+        assert row.is_read is False
+
+    async def test_unread_count_ignores_info(self, db):
+        await _record(NOTIF_INFO, "system", "daily reset")
+        await _record(NOTIF_WARNING, "gemini", "slow")
+        await _record(NOTIF_ERROR, "wordpress", "boom")
+        from app.db.notifications import get_unread_count
+
+        assert await get_unread_count() == 2  # info excluded
+
+    async def test_mark_read_clears_every_unseen_entry(self, db):
+        await _record(NOTIF_INFO, "system", "daily reset")
+        await _record(NOTIF_ERROR, "wordpress", "boom")
+        from app.db.notifications import get_unread_count, mark_notifications_read
+
+        assert await get_unread_count() == 1
+        assert await mark_notifications_read() == 2  # info rows are marked too
+        assert await get_unread_count() == 0
+        assert all(row.is_read for row in await _get())
+
+    async def test_mark_read_is_idempotent(self, db):
+        await _record(NOTIF_ERROR, "wordpress", "boom")
+        from app.db.notifications import mark_notifications_read
+
+        assert await mark_notifications_read() == 1
+        assert await mark_notifications_read() == 0
+
+
+class TestNotificationRoutes:
+    """The router in app/routes/notifications.py (called directly, offline)."""
+
+    async def test_list_reports_unread_count_and_flag(self, db):
+        from app.routes.notifications import list_notifications
+
+        await _record(NOTIF_INFO, "system", "daily reset")
+        await _record(NOTIF_ERROR, "wordpress", "boom")
+
+        payload = await list_notifications(limit=50)
+
+        assert payload["count"] == 2
+        assert payload["unread_count"] == 1  # info never counts
+        assert [item["is_read"] for item in payload["items"]] == [False, False]
+
+    async def test_mark_all_read_endpoint_zeroes_the_badge(self, db):
+        from app.routes.notifications import list_notifications, mark_all_read
+
+        await _record(NOTIF_WARNING, "gemini", "slow")
+
+        result = await mark_all_read()
+
+        assert result == {"ok": True, "marked": 1, "unread_count": 0}
+        payload = await list_notifications(limit=50)
+        assert payload["unread_count"] == 0
+        assert all(item["is_read"] for item in payload["items"])
+
+
 class TestFailSoft:
     async def test_db_failure_never_raises(self, db, monkeypatch, caplog):
         """Recording a notification on a broken DB must not raise."""

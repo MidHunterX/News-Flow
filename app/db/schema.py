@@ -65,6 +65,19 @@ def _migrate() -> None:
                     text(f"ALTER TABLE {table} ADD COLUMN wp_category_ids JSON")
                 )
 
+    # The notification log gained its unread flag with the bell badge; rows
+    # that predate it land as unread (DEFAULT 0), so they show up once.
+    if "notifications" in existing_tables:
+        columns = {col["name"] for col in inspector.get_columns("notifications")}
+        if "is_read" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE notifications ADD COLUMN "
+                        "is_read BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+
 
 def _clear_dir(path: Path) -> None:
     """Remove everything inside *path*, recreating it as an empty directory.

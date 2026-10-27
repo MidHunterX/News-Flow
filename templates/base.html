@@ -680,7 +680,8 @@
           const res = await fetch("/api/notifications?limit=100");
           if (!res.ok) return;
           const data = await res.json();
-          setNotifBadge(data.count || 0);
+          // Unread only, and info entries never count.
+          setNotifBadge(data.unread_count || 0);
         } catch (err) {
           /* badge stays hidden when the API is unreachable */
         }
@@ -688,6 +689,12 @@
 
       async function openNotifications() {
         document.getElementById("notifications-modal").classList.remove("hidden");
+        try {
+          // Opening the bell marks every unseen entry as read.
+          await fetch("/api/notifications/read", { method: "POST" });
+        } catch (err) {
+          /* list still renders below; the badge just catches up next load */
+        }
         setNotifBadge(0);
         try {
           const res = await fetch("/api/notifications?limit=100");

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select, update
 
 from app.db.constants import (
     MAX_MESSAGE_CHARS,
@@ -45,6 +45,7 @@ def _record_sync(
                     message=message,
                     article_id=article_id,
                     created_at=now_iso(),
+                    is_read=False,
                 )
             )
             session.flush()
@@ -87,6 +88,42 @@ def _get_sync(limit: int = 50) -> list[Notification]:
 async def get_notifications(limit: int = 50) -> list[Notification]:
     """Newest-first notifications, at most *limit* rows."""
     return await run_in_thread(_get_sync, max(1, min(limit, MAX_NOTIFICATIONS)))
+
+
+def _mark_read_sync() -> int:
+    """Flip every unread row to read; returns how many rows changed."""
+    with SessionLocal() as session:
+        result = session.execute(
+            update(Notification)
+            .where(Notification.is_read.is_(False))
+            .values(is_read=True)
+        )
+        session.commit()
+        return int(result.rowcount or 0)
+
+
+async def mark_notifications_read() -> int:
+    """Mark every unseen notification as read (what the bell button does)."""
+    return await run_in_thread(_mark_read_sync)
+
+
+def _unread_count_sync() -> int:
+    """Unread rows the badge should show — info entries never count."""
+    with SessionLocal() as session:
+        return int(
+            session.scalar(
+                select(func.count(Notification.id)).where(
+                    Notification.is_read.is_(False),
+                    Notification.level != NOTIF_INFO,
+                )
+            )
+            or 0
+        )
+
+
+async def get_unread_count() -> int:
+    """How many unread warnings/errors are waiting (info excluded)."""
+    return await run_in_thread(_unread_count_sync)
 
 
 def _clear_sync() -> int:

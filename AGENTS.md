@@ -71,6 +71,10 @@ app/
     kaumudi.py / mangalam.py / madhyamam.py
   routes/scrape.py   # API + UI routes, article accept/reject/clear, settings,
                      # GET /publication (print-publication inspection page)
+  routes/notifications.py
+                     # notification log routes: GET /api/notifications (list
+                     # + unread_count, info excluded), POST .../read (marks
+                     # every unseen row read), DELETE ...
   db/                # persistence layer (SQLAlchemy 2.0 + SQLite, WAL mode)
     engine.py        # engine, SessionLocal, Base, run_in_thread, DB_PATH
                      # (override the DB location with NEWSFLOW_DB_PATH)

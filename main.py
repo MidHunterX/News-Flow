@@ -9,7 +9,7 @@ from app.curator import run_due_selection
 from app.db import get_completion_interval, init_db
 from app.publisher import publish_due_articles
 from app.refresher import run_due_refresh
-from app.routes import scrape
+from app.routes import notifications, scrape
 from app.scrapers.init import SCRAPERS
 from app.utils import COVERS_DIR, PUBLICATION_COVERS_DIR
 from app.wordpress import ensure_terms, sync_terms_if_stale
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Include routers
 app.include_router(scrape.router)
+app.include_router(notifications.router)
 
 # Serve downloaded cover images.
 COVERS_DIR.mkdir(parents=True, exist_ok=True)

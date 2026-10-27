@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for the News Flow database."""
 
-from sqlalchemy import Index, Integer, String, func
+from sqlalchemy import Boolean, Index, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
@@ -94,4 +94,9 @@ class Notification(Base):
     article_id: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[str] = mapped_column(
         String, nullable=False, server_default=func.datetime("now")
+    )
+    # Unseen flag behind the bell badge: False until the notification button
+    # is clicked, which marks every unread row as read in one go.
+    is_read: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
     )

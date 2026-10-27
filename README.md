@@ -275,7 +275,8 @@ Feature toggles (in the settings modal) can only be switched on when their backi
 | `POST` | `/api/articles/{id}/clear` | Return an article to pending |
 | `GET` | `/api/settings` | Settings plus per-feature availability |
 | `POST` | `/api/settings` | Update settings (validated against known keys) |
-| `GET` | `/api/notifications` | The background-event journal, newest first |
+| `GET` | `/api/notifications` | The background-event journal, newest first, plus the unread count (info excluded) |
+| `POST` | `/api/notifications/read` | Mark every unseen notification as read (the bell click) |
 | `DELETE` | `/api/notifications` | Clear the journal |
 
 ---
@@ -306,7 +307,8 @@ news-flow/
 │   ├── wordpress.py            # Category/tag sync (TTL-refreshed)
 │   ├── refresher.py            # Scheduled background source refresh
 │   ├── scrapers/               # BaseScraper + one module per source
-│   ├── routes/scrape.py        # API + UI routes, settings, notifications
+│   ├── routes/scrape.py        # API + UI routes, settings
+│   ├── routes/notifications.py # Notification log: list / mark-read / clear
 │   └── db/                     # SQLAlchemy 2.0 (sync, wrapped in to_thread)
 │       ├── engine.py           # SQLite WAL engine + run_in_thread helper
 │       ├── schema.py           # create_all, migrations, daily reset

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from app.db import schema
@@ -369,6 +369,55 @@ class TestResetTimezone:
         """local mode compares against the server's local calendar date."""
         local_now = datetime.now().astimezone()  # local tz, per DTZ005's rule
         assert schema._reset_now_date("local") == local_now.date().isoformat()
+
+
+class TestMigrate:
+    """Columns introduced after the initial schema reach existing DBs."""
+
+    def test_is_read_added_to_legacy_notifications_table(self, reset_env):
+        """A pre-badge notifications table gains is_read, rows unread."""
+        _session_factory, _articles_dir, _covers_dir = reset_env
+        legacy = (
+            "CREATE TABLE notifications ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "level TEXT NOT NULL, source TEXT NOT NULL, "
+            "message TEXT NOT NULL, article_id INTEGER, "
+            "created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+        )
+        with schema.engine.begin() as conn:
+            conn.execute(text("DROP TABLE notifications"))  # fixture's new one
+            conn.execute(text(legacy))
+            conn.execute(
+                text(
+                    "INSERT INTO notifications (level, source, message) "
+                    "VALUES ('error', 'gemini', 'boom')"
+                )
+            )
+
+        schema._migrate()
+
+        with schema.engine.connect() as conn:
+            columns = {
+                row.name
+                for row in conn.execute(text("PRAGMA table_info(notifications)"))
+            }
+            assert "is_read" in columns
+            rows = conn.execute(
+                text("SELECT is_read FROM notifications")
+            ).fetchall()
+            assert [row[0] for row in rows] == [0]  # pre-existing rows are unread
+
+    def test_migrate_is_idempotent_on_current_schema(self, reset_env):
+        """Running the migration twice against a fresh schema is a no-op."""
+        _session_factory, _articles_dir, _covers_dir = reset_env
+        schema._migrate()
+        schema._migrate()
+        with schema.engine.connect() as conn:
+            columns = {
+                row.name
+                for row in conn.execute(text("PRAGMA table_info(notifications)"))
+            }
+            assert "is_read" in columns
 
 
 class TestInitDb:

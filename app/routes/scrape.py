@@ -15,7 +15,6 @@ from app.db import (
     STATUS_REJECTED,
     TOGGLE_ENV_KEYS,
     TOGGLE_SETTINGS,
-    clear_notifications,
     get_accepted_items,
     get_ai_publish_interval,
     get_ai_publish_last_run,
@@ -27,7 +26,6 @@ from app.db import (
     get_completed_items,
     get_completion_interval,
     get_items,
-    get_notifications,
     get_pending_display_limit,
     get_pending_items,
     get_publication_article_by_id,
@@ -273,33 +271,6 @@ async def update_settings(settings: dict[str, str]):
                 )
         await set_setting(key, value)
     return await get_all_settings()
-
-
-@router.get("/api/notifications")
-async def list_notifications(limit: int = Query(50, ge=1, le=100)):
-    """Return the stored notification log (newest first) as JSON."""
-    rows = await get_notifications(limit)
-    return {
-        "count": len(rows),
-        "items": [
-            {
-                "id": row.id,
-                "level": row.level,
-                "source": row.source,
-                "message": row.message,
-                "article_id": row.article_id,
-                "created_at": row.created_at,
-            }
-            for row in rows
-        ],
-    }
-
-
-@router.delete("/api/notifications")
-async def delete_notifications():
-    """Clear the entire notification log."""
-    deleted = await clear_notifications()
-    return {"ok": True, "deleted": deleted}
 
 
 def _review_fingerprint(

@@ -51,6 +51,8 @@ from app.db.models import Article, Notification, PublicationArticle, Setting
 from app.db.notifications import (
                              clear_notifications,
                              get_notifications,
+                             get_unread_count,
+                             mark_notifications_read,
                              record_notification,
 )
 from app.db.schema import init_db
@@ -148,5 +150,7 @@ __all__ = [  # noqa: RUF022
     # Notification log (surfaced in the UI).
     "record_notification",
     "get_notifications",
+    "get_unread_count",
+    "mark_notifications_read",
     "clear_notifications",
 ]
