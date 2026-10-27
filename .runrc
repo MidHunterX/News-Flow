@@ -1,0 +1,3 @@
+# vim: set filetype=sh :
+
+export GENERATE_UNIQUE_PORT=true
