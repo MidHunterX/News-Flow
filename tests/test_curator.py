@@ -43,12 +43,14 @@ class _Settings:
     """Mutable stand-in for the settings the curator reads."""
 
     def __init__(self, toggle: bool = True, last_run: str | None = None,
-                 interval: int = 3600, count: int = 3, history: int = 10):
+                 interval: int = 3600, count: int = 3, history: int = 10,
+                 pending_limit: int = 20):
         self.toggle = toggle
         self.last_run = last_run
         self.interval = interval
         self.count = count
         self.history = history
+        self.pending_limit = pending_limit
 
 
 @pytest.fixture
@@ -75,6 +77,9 @@ def env(monkeypatch):
 
     async def fake_get_history() -> int:
         return settings.history
+
+    async def fake_get_pending_limit() -> int:
+        return settings.pending_limit
 
     async def fake_get_pending_items() -> list[NewsItem]:
         return list(settings.pending)
@@ -106,6 +111,9 @@ def env(monkeypatch):
     monkeypatch.setattr(curator, "get_ai_publish_last_run", fake_get_last_run)
     monkeypatch.setattr(curator, "get_ai_publish_count", fake_get_count)
     monkeypatch.setattr(curator, "get_ai_publish_history", fake_get_history)
+    monkeypatch.setattr(
+        curator, "get_ai_publish_pending_limit", fake_get_pending_limit
+    )
     monkeypatch.setattr(curator, "get_pending_items", fake_get_pending_items)
     monkeypatch.setattr(
         curator, "get_recent_accepted_titles", fake_get_recent_accepted_titles
@@ -196,6 +204,35 @@ async def test_no_pending_articles_skips_gemini(env, monkeypatch):
     await curator.run_due_selection()
     # pick_article_ids would still be called; it returns [] for empty input.
     assert env.accepted_ids == []
+
+
+async def test_recency_limit_offers_only_the_newest_pending(env):
+    """Only ai_publish_pending_limit newest articles reach the prompt."""
+    env.pending = [_item(i) for i in range(1, 9)]  # newest first, as stored
+    env.pending_limit = 3
+    env.picked = [1]
+    await curator.run_due_selection()
+    pending, _recent, _count = env.pick_calls
+    assert pending == [(1, "Article 1"), (2, "Article 2"), (3, "Article 3")]
+    assert env.accepted_ids == [1]
+
+
+async def test_zero_recency_limit_offers_every_pending_article(env):
+    """0 disables the cap: the whole backlog is offered."""
+    env.pending = [_item(i) for i in range(1, 9)]
+    env.pending_limit = 0
+    await curator.run_due_selection()
+    pending, _recent, _count = env.pick_calls
+    assert len(pending) == 8
+
+
+async def test_recency_limit_below_the_pick_count_is_harmless(env):
+    """A tight cap still works: fewer offered than Gemini may pick."""
+    env.pending = [_item(7), _item(8)]
+    env.pending_limit = 2
+    env.picked = [7, 8]
+    assert await curator.run_due_selection() == 2
+    assert env.accepted_ids == [7, 8]
 
 
 async def test_no_pick_means_no_accept(env, monkeypatch):

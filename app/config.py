@@ -49,9 +49,6 @@ SOURCES = {
 
 TIMEOUT = httpx.Timeout(20.0)
 
-# Maximum number of articles to keep per source in the database.
-MAX_ARTICLES_PER_SOURCE = 10
-
 # --- WordPress publishing (see .env.example) --------------------------------
 # Completed articles are published to the WordPress REST API when these are
 # set; otherwise completion happens without publishing.

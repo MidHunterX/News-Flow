@@ -4,7 +4,9 @@ The background loop in ``main.py`` calls :func:`run_due_selection` on every
 tick. When the ``ai_publish`` toggle is on and ``ai_publish_interval`` seconds
 have elapsed since the last prompt:
 
-1. pending articles are offered to Gemini as ``<id>. <heading>`` lines;
+1. pending articles are offered to Gemini as ``<id>. <heading>`` lines —
+   only the ``ai_publish_pending_limit`` newest ones (0 = every pending
+   article), so a growing backlog can't bloat the prompt;
 2. the ``ai_publish_history`` most recently accepted headings are included as
    duplicate-avoidance context (the same story often appears on several
    sources);
@@ -31,6 +33,7 @@ from app.db import (
     get_ai_publish_history,
     get_ai_publish_interval,
     get_ai_publish_last_run,
+    get_ai_publish_pending_limit,
     get_pending_items,
     get_recent_accepted_titles,
     record_notification,
@@ -182,6 +185,13 @@ async def run_due_selection() -> int:
         pending = await get_pending_items()
         if not pending:
             return 0
+
+        # Recency context: only the newest pending articles are offered,
+        # oldest ones falling off the end as the backlog grows (0 = no cap).
+        # get_pending_items returns newest-first, so the slice keeps those.
+        recency_limit = await get_ai_publish_pending_limit()
+        if recency_limit > 0:
+            pending = pending[:recency_limit]
 
         count = await get_ai_publish_count()
         history_limit = await get_ai_publish_history()

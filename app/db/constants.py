@@ -22,6 +22,13 @@ DEFAULT_SETTINGS = {
     # AI Publish: how many previously accepted headings are fed to Gemini as
     # context so it avoids picking near-duplicates across sources.
     "ai_publish_history": "10",
+    # AI Publish: how many of the most recent pending articles are offered to
+    # Gemini to pick from (recency context — keeps the prompt small when the
+    # backlog grows). 0 offers every pending article.
+    "ai_publish_pending_limit": "20",
+    # How many of the most recent pending articles the review page lists.
+    # 0 shows every pending article.
+    "pending_display_limit": "20",
 }
 
 # Layouts the article grid setting accepts (validated in the settings API).

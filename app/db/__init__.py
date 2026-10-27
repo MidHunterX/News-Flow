@@ -28,7 +28,6 @@ from app.db.articles import (
                              mark_articles_completed,
                              save_items,
                              set_article_status,
-                             trim_articles,
                              update_article_cover_file,
                              update_publication_cover_file,
 )
@@ -60,10 +59,12 @@ from app.db.settings import (
                              get_ai_publish_history,
                              get_ai_publish_interval,
                              get_ai_publish_last_run,
+                             get_ai_publish_pending_limit,
                              get_all_settings,
                              get_all_toggle_states,
                              get_article_layout,
                              get_completion_interval,
+                             get_pending_display_limit,
                              get_refresh_interval,
                              get_reset_timezone,
                              get_setting,
@@ -106,7 +107,6 @@ __all__ = [  # noqa: RUF022
     "init_db",
     # Articles.
     "save_items",
-    "trim_articles",
     "get_items",
     "get_pending_items",
     "get_publication_items",
@@ -133,7 +133,9 @@ __all__ = [  # noqa: RUF022
     "get_ai_publish_count",
     "get_ai_publish_interval",
     "get_ai_publish_history",
+    "get_ai_publish_pending_limit",
     "get_ai_publish_last_run",
+    "get_pending_display_limit",
     "get_toggle",
     "get_all_toggle_states",
     # WordPress terms (categories + tags).

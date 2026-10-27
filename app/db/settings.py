@@ -106,6 +106,29 @@ async def get_ai_publish_history() -> int:
         return int(DEFAULT_SETTINGS["ai_publish_history"])
 
 
+async def get_ai_publish_pending_limit() -> int:
+    """Newest pending articles offered to Gemini per prompt (0 = all)."""
+    raw = await get_setting(
+        "ai_publish_pending_limit",
+        DEFAULT_SETTINGS["ai_publish_pending_limit"],
+    )
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return int(DEFAULT_SETTINGS["ai_publish_pending_limit"])
+
+
+async def get_pending_display_limit() -> int:
+    """Newest pending articles the review page lists (0 = all)."""
+    raw = await get_setting(
+        "pending_display_limit", DEFAULT_SETTINGS["pending_display_limit"]
+    )
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return int(DEFAULT_SETTINGS["pending_display_limit"])
+
+
 async def get_refresh_interval() -> int:
     """Seconds between background source refreshes, clamped to the floor."""
     raw = await get_setting("refresh_interval", DEFAULT_SETTINGS["refresh_interval"])
