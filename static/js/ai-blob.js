@@ -547,7 +547,11 @@
     endAct() {
       const a = this.act; if (!a) return;
       this.act = null; this.lastAct = a.name; if (a.def.end) a.def.end(this, a.d);
-      this.cool = rnd(1.2, 4.2) / (this.p.energy * this.calm) * (this.progress > .8 ? .6 : 1);
+      const gap = this.mode === "due" ? rnd(3, 8)
+        : this.mode === "curating" ? rnd(1.5, 2.5)   // curating cycles stay snappy
+        : rnd(10, 20);                                // waiting: rare idle fidgets
+      this.cool = gap / (this.p.energy * this.calm);
+      // this.cool = rnd(1.2, 4.2) / (this.p.energy * this.calm) * (this.progress > .8 ? .6 : 1);
     }
     startCurate() {
       if (!this.cq.length) { this.cq = shuffle(CURATE.slice()); if (this.cq[this.cq.length - 1] === this.lastCur) this.cq.unshift(this.cq.pop()); }
