@@ -79,6 +79,22 @@ def _convert_to_jpeg(data: bytes) -> bytes | None:
     except (UnidentifiedImageError, OSError, ValueError):
         return None
 
+def _unique_path(path: Path) -> Path:
+    """Return *path* if it doesn't exist, else append ``_2``, ``_3``, …
+
+    ``cover.jpg`` -> ``cover_2.jpg`` -> ``cover_3.jpg``. The suffix is
+    inserted before the extension so the file stays a ``.jpg``.
+    """
+    if not path.exists():
+        return path
+    stem, suffix = path.stem, path.suffix
+    n = 2
+    while True:
+        candidate = path.with_name(f"{stem}_{n}{suffix}")
+        if not candidate.exists():
+            return candidate
+        n += 1
+
 
 def _jpeg_path(directory: Path, filename: str) -> Path:
     """Target path for a cover: always ``.jpg``, whatever the source named it."""
@@ -128,5 +144,6 @@ async def download_image(url: str, filename: str | None = None,
         # keep the original bytes and name instead of dropping the image
         # (the HTTP fetch itself succeeded).
         data, save_path = jpeg, _jpeg_path(target_dir, filename)
+    save_path = _unique_path(save_path)
     save_path.write_bytes(data)
     return str(save_path)
