@@ -24,26 +24,35 @@ class MangalamScraper(BaseScraper):
         heading_el = container.select_one("h1")
         heading = clean_text(heading_el.get_text()) if heading_el else ""
 
-        article_el = container.select_one("div.article")
-        if article_el:
-            # Replace <br> tags with newlines to preserve paragraph breaks.
-            for br in article_el.find_all("br"):
-                br.replace_with("\n")
-            lines = [line.strip() for line in article_el.get_text(separator="\n").splitlines()]
-            content = "\n".join([line for line in lines if line])
-        else:
-            content = ""
-
-        img = container.select_one("figure.news-image-block img")
+        article_scope = container.select_one("article") or container
+        img = article_scope.select_one("figure.news-image-block img")
         cover_url = None
         if img:
             src = img.get("src")
-            cover_url = resolve_image_url(str(src) if src else None, SOURCES[self.source_name])
+            cover_url = resolve_image_url(
+                str(src) if src else None, SOURCES[self.source_name]
+            )
+
+        paragraphs: list[str] = []
+        for block in article_scope.select("div.article"):
+            # Preserve <br> breaks inside a block as newlines.
+            for br in block.find_all("br"):
+                br.replace_with("\n")
+            text = block.get_text(separator="\n")
+            cleaned = "\n".join(
+                line.strip() for line in text.splitlines() if line.strip()
+            )
+            if cleaned:
+                paragraphs.append(cleaned)
+
+        content = "\n\n".join(paragraphs)
 
         if not heading and not content:
             return None
 
-        return ScrapedArticleContent(heading=heading, content=content, cover_path=cover_url)
+        return ScrapedArticleContent(
+            heading=heading, content=content, cover_path=cover_url
+        )
 
     async def scrape(self, html: str) -> list[NewsItem]:
         soup = BeautifulSoup(html, "html.parser")

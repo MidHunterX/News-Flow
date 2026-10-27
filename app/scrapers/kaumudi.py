@@ -27,7 +27,7 @@ class KaumudiScraper(BaseScraper):
                 text = clean_text(p.get_text())
                 if text:
                     paragraphs.append(text)
-        content = "\n".join(paragraphs)
+        content = "\n\n".join(paragraphs)
 
         img = container.select_one("figure.image img")
         cover_url = None
