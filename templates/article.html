@@ -91,21 +91,73 @@
       }, 1500);
     }
 
+    // navigator.clipboard only exists in secure contexts (https:// or
+    // localhost), and its writeText() can reject when permission is denied or
+    // the document is not focused — so this must never assume it works.
     function copyText(text, message) {
-      navigator.clipboard.writeText(text).then(() => showToast(message));
+      const ok = () => showToast(message);
+      const fail = () =>
+        showToast("Couldn't copy — select the text and press Ctrl/Cmd+C.");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(ok, () => fallbackCopy(text) ? ok() : fail());
+      } else {
+        fallbackCopy(text) ? ok() : fail();
+      }
     }
 
-    // Copies the cover itself, not its path. The cover is a local /covers/…
-    // URL, so fetching it stays same-origin; the Clipboard API only accepts
-    // image/png, so any jpeg/webp cover is re-encoded through a canvas first.
+    // Legacy selection-based copy for plain-HTTP origins and any browser that
+    // blocks the async Clipboard API. Needs the click's user activation, so it
+    // is invoked synchronously from the onclick handler whenever possible.
+    function fallbackCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "0";
+      ta.style.left = "0";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } catch (err) {
+        copied = false;
+      }
+      document.body.removeChild(ta);
+      return copied;
+    }
+
+    // Fetch + re-encode the cover as PNG, kept as a promise so it can be
+    // handed straight to ClipboardItem (see copyImage). The cover is a local
+    // /covers/… URL, so fetching it stays same-origin; the Clipboard API only
+    // accepts image/png, so any jpeg/webp cover is re-encoded through a
+    // canvas first.
+    async function fetchPng(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("cover fetch failed: HTTP " + res.status);
+      const blob = await res.blob();
+      return blob.type === "image/png" ? blob : await toPng(blob);
+    }
+
+    // Copies the cover itself, not its path. The whole point is timing: the
+    // write must happen inside the click's user-activation window, so the
+    // fetch/encode starts synchronously and the *promise* goes into
+    // ClipboardItem (Safari only accepts that form). Browsers that reject
+    // promise payloads get a second, awaited write.
     async function copyImage(url) {
       try {
-        const blob = await (await fetch(url)).blob();
-        const png = blob.type === "image/png" ? blob : await toPng(blob);
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+        const png = fetchPng(url);
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+        } catch (payloadErr) {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": await png })]);
+        }
         showToast("Image copied!");
       } catch (err) {
-        // Unsupported browser/permission, a missing file, or a decode error.
+        // No clipboard API (plain HTTP), unsupported browser/permission, a
+        // missing file, or a decode error.
         showToast("Couldn't copy the image.");
       }
     }
