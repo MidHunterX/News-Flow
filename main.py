@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 app.include_router(scrape.router)
 app.include_router(notifications.router)
 
+# Serve static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Serve downloaded cover images.
 COVERS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/covers", StaticFiles(directory=str(COVERS_DIR)), name="covers")
