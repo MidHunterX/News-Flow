@@ -59,10 +59,10 @@
 
   /* ---------- personalities ---------- */
   const PERSONALITIES = {
-    sunny: { label: "Sunny", top: "#c4b5fd", bot: "#7c3aed", cheek: "#fb7185", energy: 1.15, lid: 1, blink: [2, 4.5], look: 1, curious: .3, shy: 0, mischief: .1,
+    sunny: { label: "Sunny", top: "#fde68a", bot: "#f59e0b", cheek: "#fb7185", energy: 1.15, lid: 1, blink: [2, 4.5], look: 1, curious: .3, shy: 0, mischief: .1,
       idle: { hop: 3, wiggle: 2, hum: 2, dance: 2, wave: 2, sparkle: 2, daydream: 1, lookAround: 2, stretch: 1, bubble: 1, spin: 1, checkTime: 1, nap: .2 },
       say: { poke: ["Hehe!", "Boop!", "Hi hi!", "Wheee!"], idle: ["Lovely day!", "La la la~", "Hello there!"], curate: ["On it!", "Picking the best!", "Ooh, good one!"], done: ["Ta-da!", "Fresh picks!", "All done!"] } },
-    sleepy: { label: "Sleepy", top: "#bfdbfe", bot: "#6366f1", cheek: "#fda4af", energy: .55, lid: .8, blink: [3, 6], look: .7, curious: .1, shy: .2, mischief: 0,
+    sleepy: { label: "Sleepy", top: "#c7d2fe", bot: "#4338ca", cheek: "#f9a8d4", energy: .55, lid: .8, blink: [3, 6], look: .7, curious: .1, shy: .2, mischief: 0,
       idle: { yawn: 4, nap: 4, sigh: 2, stretch: 2, lookAround: 1, hum: 1, bubble: 2, wiggle: .5, checkTime: 1 },
       say: { poke: ["Mmh?", "Five more min…", "Huh?"], idle: ["*yawn*", "So cozy…", "zzz…"], curate: ["Reading… slowly…", "Mmh, nice one", "Picking… zzz"], done: ["Done… nap time?", "Finished~", "Phew."] } },
     curious: { label: "Curious", top: "#99f6e4", bot: "#0d9488", cheek: "#fda4af", energy: 1, lid: 1, blink: [2.5, 5], look: 1.3, curious: 1, shy: .1, mischief: .2,
@@ -71,7 +71,7 @@
     mischief: { label: "Cheeky", top: "#fbcfe8", bot: "#db2777", cheek: "#fb7185", energy: 1.25, lid: .92, blink: [2, 4], look: 1, curious: .3, shy: 0, mischief: 1,
       idle: { tongue: 4, sneaky: 4, sneeze: 1, spin: 1.5, hop: 2, wiggle: 2, lookAround: 2, dance: 1, bubble: 1 },
       say: { poke: ["Hehehe", "Do it again.", "Ticklish!"], idle: ["Psst…", "Hehe, plotting", "Nobody's looking…"], curate: ["Ooh, spicy picks", "Oops, my favourites", "Sneaky good!"], done: ["Behold!", "Mwahaha — done!", "Too easy."] } },
-    shy: { label: "Shy", top: "#f5d0fe", bot: "#a855f7", cheek: "#fb7185", energy: .7, lid: .95, blink: [2, 4], look: .8, curious: .3, shy: 1, mischief: 0,
+    shy: { label: "Shy", top: "#fce7f3", bot: "#db2777", cheek: "#fb7185", energy: .7, lid: .95, blink: [2, 4], look: .8, curious: .3, shy: 1, mischief: 0,
       idle: { hide: 3, lookAround: 2, sigh: 1, hum: 1, daydream: 2, wiggle: 1, checkTime: 1, tilt: 1 },
       say: { poke: ["Eep!", "Oh! H-hi…", "*blush*"], idle: ["…", "Um, hello?", "Don't mind me"], curate: ["Um… working on it", "Hope you like these", "Almost…"], done: ["I did it…!", "Um, they're ready", "Done! Don't look!"] } },
     techy: { label: "Techy", top: "#a5f3fc", bot: "#4f46e5", cheek: "#f9a8d4", energy: .95, lid: .95, blink: [2.5, 5], look: 1, curious: .5, shy: 0, mischief: .1,

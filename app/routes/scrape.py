@@ -502,8 +502,8 @@ async def publication_view(
         )
         section = {
             "label": "Previous day",
-            "note": "archived by the daily reset — print-publication pipeline",
-            "empty": "Nothing archived yet — the first daily reset fills this tab.",
+            "note": "Archived by the daily reset",
+            "empty": "Nothing archived yet",
         }
 
     return templates.TemplateResponse(

@@ -197,7 +197,7 @@
              class="pr-4 border-b border-indigo-100 bg-gradient-to-r from-violet-50 to-indigo-50 dark:border-indigo-900 dark:from-violet-950 dark:to-indigo-950"
              data-last-run="{{ ai_publish_last_run or '' }}"
              data-interval="{{ ai_publish_interval }}">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-1">
             <div id="ai-blob" class="shrink-0 w-20 h-20 cursor-pointer select-none"></div>
             <div class="flex-1 min-w-0">
               <div class="flex items-center justify-between text-xs mb-1">
@@ -373,7 +373,8 @@
       aiRoundRunning = state.running;
       if (!state.running && state.fingerprint !== lastFingerprint) {
         lastFingerprint = state.fingerprint;
-        window.location.reload();
+        // Wait 5s before refresh for AI Blob's celebratory dance.
+        setTimeout(() => { window.location.reload(); }, 5000);
       }
     }
 
