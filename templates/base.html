@@ -194,12 +194,48 @@
                 class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
               />
             </div>
+            {% set auto_scrape = toggles.get("auto_scrape") %}
+            {% if auto_scrape %}
+            <!-- Auto Scrape sits with its own gap input rather than in the
+                 Features list: the switch and the interval belong together.
+                 It reuses the shared .toggle-option markup, so selectToggle()
+                 and the save payload work unchanged — hence exactly one
+                 instance of this switch in the modal. -->
+            <div>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                  Auto Scrape
+                </label>
+                {% if auto_scrape.available %}
+                  <button type="button" data-toggle-key="auto_scrape"
+                          onclick="selectToggle('auto_scrape')"
+                          class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
+                                 {% if auto_scrape.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
+                    <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
+                          style="transform: translateX({% if auto_scrape.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
+                  </button>
+                {% else %}
+                  <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded dark:bg-gray-900 dark:border-gray-600 dark:text-gray-400">
+                    Unavailable
+                  </span>
+                {% endif %}
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                {{ auto_scrape.description }}
+                {% if not auto_scrape.available %}
+                  <span class="text-amber-600 font-medium dark:text-amber-400">
+                    Requires {{ auto_scrape.required_env|join(", ") }} in the environment.
+                  </span>
+                {% endif %}
+              </p>
+            </div>
+            {% endif %}
             <div>
               <label for="auto-scrape-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 Auto-scrape gap (minutes)
               </label>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                How long the background auto-scraper waits between each article scrape. Only used while the Auto Scrape toggle is on.
+                How long to wait between each article scrape while Auto Scrape is on.
               </p>
               <input
                 id="auto-scrape-interval-input"
@@ -318,7 +354,7 @@
           <!-- ============================================================ -->
           <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
             <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Features</p>
-            {% for key, toggle in toggles.items() %}
+            {% for key, toggle in toggles.items() if key != "auto_scrape" %}
               <div>
                 <div class="flex items-center justify-between mb-1">
                   <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">

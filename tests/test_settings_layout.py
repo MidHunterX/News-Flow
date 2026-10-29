@@ -8,6 +8,7 @@ branch each layout renders.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 from fastapi import HTTPException
@@ -621,16 +622,52 @@ class TestSettingsModalPendingInputs:
 
 
 class TestSettingsModalAutoScrape:
-    """The auto-scrape gap lives in the Scraping & Completion group."""
+    """Auto Scrape and its gap live together in Scraping & Completion."""
 
-    def _render_base(self) -> str:
+    _TOGGLE: ClassVar[dict] = {
+        "label": "Auto Scrape",
+        "description": "Scrapes article pages in the background.",
+        "enabled": False,
+        "available": True,
+        "required_env": [],
+    }
+
+    def _render_base(self, toggles: dict | None = None) -> str:
         env = _template_env()
-        return env.get_template("base.html").render(toggles={})
+        return env.get_template("base.html").render(
+            toggles=toggles if toggles is not None else {}
+        )
 
     def test_interval_input_renders(self):
         html = self._render_base()
         assert 'id="auto-scrape-interval-input"' in html
         assert "Auto-scrape gap (minutes)" in html
+
+    def test_switch_sits_with_the_gap_input(self):
+        """The switch renders next to its interval — and only once."""
+        html = self._render_base({"auto_scrape": dict(self._TOGGLE)})
+        assert html.count('data-toggle-key="auto_scrape"') == 1
+        switch = html.index('data-toggle-key="auto_scrape"')
+        gap = html.index('id="auto-scrape-interval-input"')
+        assert switch < gap  # switch first, its input right below
+        assert "Scrapes article pages in the background." in html[switch:gap]
+
+    def test_switch_reflects_the_stored_state(self):
+        html = self._render_base({"auto_scrape": {**self._TOGGLE, "enabled": True}})
+        block = html.split('data-toggle-key="auto_scrape"', 1)[1][:600]
+        assert "bg-indigo-600" in block
+        assert "translateX(1.5rem)" in block
+
+    def test_switch_is_off_by_default(self):
+        html = self._render_base({"auto_scrape": dict(self._TOGGLE)})
+        block = html.split('data-toggle-key="auto_scrape"', 1)[1][:600]
+        assert "bg-gray-300" in block
+        assert "translateX(0.25rem)" in block
+
+    def test_missing_toggle_context_still_renders_the_gap(self):
+        html = self._render_base({})
+        assert 'data-toggle-key="auto_scrape"' not in html
+        assert 'id="auto-scrape-interval-input"' in html
 
     def test_save_sends_the_gap_in_seconds(self):
         html = self._render_base()
@@ -668,6 +705,29 @@ class TestSettingsModalToggles:
         assert "Requires" not in html
         # AI Publish knobs only render when the ai_publish toggle exists.
         assert 'id="ai-publish-count-input"' not in html
+
+    def test_auto_scrape_is_rendered_outside_features(self):
+        """The Features list skips auto_scrape — it lives with its interval."""
+        html = self._render_base({
+            "auto_publish": {
+                "label": "Auto Publishing",
+                "description": "Publish automatically.",
+                "enabled": True,
+                "available": True,
+                "required_env": ["WORDPRESS_URL"],
+            },
+            "auto_scrape": {
+                "label": "Auto Scrape",
+                "description": "Scrape in the background.",
+                "enabled": False,
+                "available": True,
+                "required_env": [],
+            },
+        })
+        features = html.split(">Features</p>", 1)[1]
+        assert "Auto Publishing" in features
+        assert "Auto Scrape" not in features
+        assert html.count('data-toggle-key="auto_scrape"') == 1
 
     def test_ai_publish_available_renders_setting_inputs(self):
         html = self._render_base({
