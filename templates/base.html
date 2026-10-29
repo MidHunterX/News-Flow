@@ -87,6 +87,41 @@
       </div>
     </header>
 
+    <!-- Shared switch markup for every feature toggle in the settings
+         modal: the label plus an on/off switch (or an "Unavailable" badge
+         when the backing env credentials are missing) and the description.
+         Called once per toggle, from the section that owns it. -->
+    {% macro toggle_switch(key, toggle) %}
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">
+          {{ toggle.label }}
+        </label>
+        {% if toggle.available %}
+          <button type="button" data-toggle-key="{{ key }}"
+                  onclick="selectToggle('{{ key }}')"
+                  class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
+                         {% if toggle.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
+            <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
+                  style="transform: translateX({% if toggle.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
+          </button>
+        {% else %}
+          <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300">
+            Unavailable
+          </span>
+        {% endif %}
+      </div>
+      <p class="text-xs text-gray-500 dark:text-gray-400">
+        {{ toggle.description }}
+        {% if not toggle.available %}
+          <span class="text-amber-600 font-medium dark:text-amber-400">
+            Requires {{ toggle.required_env|join(", ") }} in the environment.
+          </span>
+        {% endif %}
+      </p>
+    </div>
+    {% endmacro %}
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <!-- Capped to the viewport: pinned header, scrollable body, pinned
@@ -175,91 +210,10 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- Group 2: Scraping & Completion                               -->
+          <!-- Group 2: Daily Reset                                         -->
           <!-- ============================================================ -->
           <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Scraping &amp; Completion</p>
-            <div>
-              <label for="refresh-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                Refresh interval (minutes)
-              </label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                How often the backend re-scrapes every source in the background.
-              </p>
-              <input
-                id="refresh-interval-input"
-                type="number"
-                min="1"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
-            </div>
-            {% set auto_scrape = toggles.get("auto_scrape") %}
-            {% if auto_scrape %}
-            <!-- Auto Scrape sits with its own gap input rather than in the
-                 Features list: the switch and the interval belong together.
-                 It reuses the shared .toggle-option markup, so selectToggle()
-                 and the save payload work unchanged — hence exactly one
-                 instance of this switch in the modal. -->
-            <div>
-              <div class="flex items-center justify-between mb-1">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                  Auto Scrape
-                </label>
-                {% if auto_scrape.available %}
-                  <button type="button" data-toggle-key="auto_scrape"
-                          onclick="selectToggle('auto_scrape')"
-                          class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
-                                 {% if auto_scrape.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
-                    <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
-                          style="transform: translateX({% if auto_scrape.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
-                  </button>
-                {% else %}
-                  <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded dark:bg-gray-900 dark:border-gray-600 dark:text-gray-400">
-                    Unavailable
-                  </span>
-                {% endif %}
-              </div>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                {{ auto_scrape.description }}
-                {% if not auto_scrape.available %}
-                  <span class="text-amber-600 font-medium dark:text-amber-400">
-                    Requires {{ auto_scrape.required_env|join(", ") }} in the environment.
-                  </span>
-                {% endif %}
-              </p>
-            </div>
-            {% endif %}
-            <div>
-              <label for="auto-scrape-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                Auto-scrape gap (minutes)
-              </label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                How long to wait between each article scrape while Auto Scrape is on.
-              </p>
-              <input
-                id="auto-scrape-interval-input"
-                type="number"
-                min="1"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
-            </div>
-            <div>
-              <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                Completion interval (minutes)
-              </label>
-              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Accepted articles are marked completed one by one, each this long after being accepted.
-              </p>
-              <input
-                id="completion-interval-input"
-                type="number"
-                min="1"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
-            </div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Daily Reset</p>
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Daily reset clock</label>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -279,13 +233,60 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- Group 3: AI Curation                                         -->
+          <!-- Group 3: Scraping                                            -->
           <!-- ============================================================ -->
-          {% if toggles.get("ai_publish", {}).get("available") %}
-            <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-              <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                AI Curation
+          <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Scraping</p>
+            <div>
+              <label for="refresh-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                Refresh interval (minutes)
+              </label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                How often the backend re-scrapes every source in the background.
               </p>
+              <input
+                id="refresh-interval-input"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <!-- Auto Scrape sits with its own gap input so the switch and
+                 the interval stay together. It reuses the shared
+                 .toggle-option markup, so selectToggle() and the save
+                 payload work unchanged. -->
+            {% set auto_scrape = toggles.get("auto_scrape") %}
+            {% if auto_scrape %}
+              {{ toggle_switch("auto_scrape", auto_scrape) }}
+            {% endif %}
+            <div>
+              <label for="auto-scrape-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                Auto-scrape gap (minutes)
+              </label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                How long to wait between each article scrape while Auto Scrape is on.
+              </p>
+              <input
+                id="auto-scrape-interval-input"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+          </div>
+
+          <!-- ============================================================ -->
+          <!-- Group 4: AI Curation                                         -->
+          <!-- ============================================================ -->
+          {% set ai_publish = toggles.get("ai_publish") %}
+          <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">AI Curation</p>
+            {% if ai_publish %}
+              {{ toggle_switch("ai_publish", ai_publish) }}
+            {% endif %}
+            {% if ai_publish and ai_publish.available %}
               <div>
                 <label for="ai-publish-count-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                   Articles per prompt
@@ -346,44 +347,37 @@
                   class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                 />
               </div>
-            </div>
-          {% endif %}
+            {% endif %}
+          </div>
 
           <!-- ============================================================ -->
-          <!-- Group 4: Features / Toggles                                  -->
+          <!-- Group 5: Completion                                          -->
           <!-- ============================================================ -->
           <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Features</p>
-            {% for key, toggle in toggles.items() if key != "auto_scrape" %}
-              <div>
-                <div class="flex items-center justify-between mb-1">
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                    {{ toggle.label }}
-                  </label>
-                  {% if toggle.available %}
-                    <button type="button" data-toggle-key="{{ key }}"
-                            onclick="selectToggle('{{ key }}')"
-                            class="toggle-option relative inline-flex h-6 w-11 items-center rounded-full transition
-                                   {% if toggle.enabled %}bg-indigo-600{% else %}bg-gray-300{% endif %}">
-                      <span class="toggle-knob inline-block h-4 w-4 transform rounded-full bg-white shadow transition"
-                            style="transform: translateX({% if toggle.enabled %}1.5rem{% else %}0.25rem{% endif %});"></span>
-                    </button>
-                  {% else %}
-                    <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded dark:bg-gray-900 dark:border-gray-600 dark:text-gray-300">
-                      Unavailable
-                    </span>
-                  {% endif %}
-                </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ toggle.description }}
-                  {% if not toggle.available %}
-                    <span class="text-amber-600 font-medium dark:text-amber-400">
-                      Requires {{ toggle.required_env|join(", ") }} in the environment.
-                    </span>
-                  {% endif %}
-                </p>
-              </div>
-            {% endfor %}
+            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Completion</p>
+            <div>
+              <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                Completion interval (minutes)
+              </label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Accepted articles are marked completed one by one, each this long after being accepted.
+              </p>
+              <input
+                id="completion-interval-input"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+            {% set auto_publish = toggles.get("auto_publish") %}
+            {% if auto_publish %}
+              {{ toggle_switch("auto_publish", auto_publish) }}
+            {% endif %}
+            {% set ai_auto_categorization = toggles.get("ai_auto_categorization") %}
+            {% if ai_auto_categorization %}
+              {{ toggle_switch("ai_auto_categorization", ai_auto_categorization) }}
+            {% endif %}
           </div>
         </div>
 

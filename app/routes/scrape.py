@@ -53,7 +53,7 @@ TOGGLE_META = {
         "description": "Gemini picks related WordPress categories for each article right before it is published.",
     },
     "ai_publish": {
-        "label": "AI Publish",
+        "label": "AI Curation",
         "description": "Gemini periodically picks pending articles to accept, avoiding stories already covered.",
     },
     "auto_publish": {

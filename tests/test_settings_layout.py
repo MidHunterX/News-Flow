@@ -622,7 +622,7 @@ class TestSettingsModalPendingInputs:
 
 
 class TestSettingsModalAutoScrape:
-    """Auto Scrape and its gap live together in Scraping & Completion."""
+    """Auto Scrape and its gap live together in the Scraping section."""
 
     _TOGGLE: ClassVar[dict] = {
         "label": "Auto Scrape",
@@ -706,8 +706,8 @@ class TestSettingsModalToggles:
         # AI Publish knobs only render when the ai_publish toggle exists.
         assert 'id="ai-publish-count-input"' not in html
 
-    def test_auto_scrape_is_rendered_outside_features(self):
-        """The Features list skips auto_scrape — it lives with its interval."""
+    def test_toggles_no_longer_share_a_features_section(self):
+        """Each toggle now lives in its owning section, not a Features list."""
         html = self._render_base({
             "auto_publish": {
                 "label": "Auto Publishing",
@@ -724,10 +724,9 @@ class TestSettingsModalToggles:
                 "required_env": [],
             },
         })
-        features = html.split(">Features</p>", 1)[1]
-        assert "Auto Publishing" in features
-        assert "Auto Scrape" not in features
+        assert ">Features</p>" not in html
         assert html.count('data-toggle-key="auto_scrape"') == 1
+        assert html.count('data-toggle-key="auto_publish"') == 1
 
     def test_ai_publish_available_renders_setting_inputs(self):
         html = self._render_base({
@@ -760,6 +759,92 @@ class TestSettingsModalToggles:
         assert "Requires" in html
         # No interactive switch is rendered for an unavailable toggle.
         assert 'data-toggle-key="ai_auto_categorization"' not in html
+
+
+class TestSettingsSections:
+    """Settings are grouped by pipeline stage, in the order it runs:
+    Display → Daily Reset → Scraping → AI Curation → Completion. Every
+    feature toggle sits in the section that owns it."""
+
+    _TOGGLES: ClassVar[dict] = {
+        "auto_scrape": {
+            "label": "Auto Scrape", "description": "Scrape pages.",
+            "enabled": False, "available": True, "required_env": [],
+        },
+        "ai_publish": {
+            "label": "AI Curation", "description": "Gemini picks articles.",
+            "enabled": True, "available": True,
+            "required_env": ["GEMINI_API_KEY"],
+        },
+        "auto_publish": {
+            "label": "Auto Publishing", "description": "Push to WordPress.",
+            "enabled": True, "available": True, "required_env": [],
+        },
+        "ai_auto_categorization": {
+            "label": "AI Auto Categorization",
+            "description": "Gemini picks categories.",
+            "enabled": False, "available": True,
+            "required_env": ["GEMINI_API_KEY"],
+        },
+    }
+
+    def _render_base(self, toggles: dict) -> str:
+        env = _template_env()
+        return env.get_template("base.html").render(toggles=toggles)
+
+    @staticmethod
+    def _section(html: str, name: str, next_name: str | None = None) -> str:
+        """Rendered markup between the named section header and the next."""
+        _, rest = html.split(f">{name}</p>", 1)
+        if next_name and f">{next_name}</p>" in rest:
+            rest = rest.split(f">{next_name}</p>", 1)[0]
+        return rest
+
+    def test_sections_appear_in_pipeline_order(self):
+        html = self._render_base({})
+        order = [
+            ">Display</p>",
+            ">Daily Reset</p>",
+            ">Scraping</p>",
+            ">AI Curation</p>",
+            ">Completion</p>",
+        ]
+        positions = [html.index(marker) for marker in order]
+        assert positions == sorted(positions)
+
+    def test_auto_scrape_lives_in_scraping(self):
+        html = self._render_base(
+            {"auto_scrape": dict(self._TOGGLES["auto_scrape"])}
+        )
+        scraping = self._section(html, "Scraping", "AI Curation")
+        assert 'data-toggle-key="auto_scrape"' in scraping
+        assert 'id="auto-scrape-interval-input"' in scraping
+
+    def test_ai_curation_toggle_lives_with_its_inputs(self):
+        html = self._render_base({"ai_publish": dict(self._TOGGLES["ai_publish"])})
+        section = self._section(html, "AI Curation", "Completion")
+        assert 'data-toggle-key="ai_publish"' in section
+        assert 'id="ai-publish-count-input"' in section
+
+    def test_completion_section_holds_interval_and_publishing(self):
+        html = self._render_base({
+            "auto_publish": dict(self._TOGGLES["auto_publish"]),
+            "ai_auto_categorization": dict(self._TOGGLES["ai_auto_categorization"]),
+        })
+        completion = self._section(html, "Completion")
+        assert 'id="completion-interval-input"' in completion
+        assert 'data-toggle-key="auto_publish"' in completion
+        assert 'data-toggle-key="ai_auto_categorization"' in completion
+        # The other toggles belong to their own sections, not here.
+        assert 'data-toggle-key="auto_scrape"' not in completion
+        assert 'data-toggle-key="ai_publish"' not in completion
+
+    def test_completion_interval_moved_out_of_scraping(self):
+        html = self._render_base({})
+        scraping = self._section(html, "Scraping", "AI Curation")
+        completion = self._section(html, "Completion")
+        assert 'id="completion-interval-input"' not in scraping
+        assert 'id="completion-interval-input"' in completion
 
 
 class TestTemplateLayouts:
