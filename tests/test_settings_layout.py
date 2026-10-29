@@ -1012,8 +1012,14 @@ class TestInnerPageDarkStyles:
         assert "text-gray-900" in html
 
 
-class TestCoverImageCopy:
-    """Clicking the cover copies the image itself, not its file path."""
+class TestCoverImage:
+    """The cover is a plain, right-click-copyable image.
+
+    The click-to-copy-the-pixels flow (fetch → PNG re-encode →
+    ClipboardItem) was removed: `clipboard.write()` with an image blob is
+    rejected by enough browsers — and needs a secure context — that
+    right-click → Copy image covers the same ground everywhere.
+    """
 
     def _render(self) -> str:
         env = _template_env()
@@ -1025,31 +1031,29 @@ class TestCoverImageCopy:
             cover_file="/covers/img-1.jpg",
         )
 
-    def test_cover_zone_calls_copy_image(self):
+    def test_cover_is_a_plain_image_without_a_click_handler(self):
         html = self._render()
-        assert 'onclick="copyImage(this.dataset.path)"' in html
-        assert 'copyText(this.dataset.path' not in html
-        assert "Click to copy image" in html
+        assert '<img src="/covers/img-1.jpg" alt="Cover"' in html
+        assert "copyImage" not in html
+        assert "ClipboardItem" not in html
+        assert "Click to copy image" not in html
         assert "Click to copy image path" not in html
 
-    def test_copy_image_writes_a_png_clipboard_item(self):
-        """The image lands on the clipboard as pixels, via write() — never
-        writeText(), and the toast reports success or failure either way."""
+    def test_only_the_text_zones_still_copy(self):
+        """Heading and body keep their click-to-copy zones; the cover is not
+        one of them."""
         html = self._render()
-        fn = html.split("async function copyImage(", 1)[1].split("\n    }", 1)[0]
-        assert 'navigator.clipboard.write([new ClipboardItem(' in fn
-        assert '"image/png"' in fn
-        assert "writeText" not in fn
-        assert 'showToast("Image copied!")' in fn
-        assert 'showToast("Couldn\'t copy the image.")' in fn
+        assert html.count("copy-zone") == 2
+        assert "copyText(this.dataset.heading" in html
+        assert "copyText(this.dataset.content" in html
+        assert "copyText(this.dataset.path" not in html
 
-    def test_non_png_covers_are_reencoded_first(self):
-        """Covers are whatever the source served (jpeg/webp), so anything
-        that is not image/png goes through the canvas converter."""
+    def test_no_leftover_png_helper_javascript(self):
+        """The removed feature took its helpers with it — nothing that only
+        served the image copy may linger in the page script."""
         html = self._render()
-        assert 'blob.type === "image/png" ? blob : await toPng(blob)' in html
-        assert "function toPng(blob)" in html
-        assert 'canvas.toBlob(' in html
+        for leftover in ("fetchPng", "function toPng", "canvas.toBlob", "toPng(blob)"):
+            assert leftover not in html
 
 
 class TestArticleView:
