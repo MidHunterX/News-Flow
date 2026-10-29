@@ -60,6 +60,13 @@ TOGGLE_META = {
         "label": "Auto Publishing",
         "description": "Completed articles are published to WordPress automatically.",
     },
+    "auto_scrape": {
+        "label": "Auto Scrape",
+        "description": (
+            "Scrapes article pages in the background — cover plus content — "
+            "for every article that has no local copy yet, one at a time."
+        ),
+    },
 }
 
 
@@ -206,6 +213,14 @@ async def update_settings(settings: dict[str, str]):
             except ValueError:
                 raise HTTPException(
                     400, "refresh_interval must be a positive number of seconds"
+                )
+        elif key == "auto_scrape_interval":
+            try:
+                if int(value) < 1:
+                    raise ValueError
+            except ValueError:
+                raise HTTPException(
+                    400, "auto_scrape_interval must be a positive number of seconds"
                 )
         elif key == "ai_publish_count":
             try:

@@ -127,6 +127,47 @@ class TestGetResetTimezone:
         assert RESET_TIMEZONES == ("utc", "local")
 
 
+class TestAutoScrapeSettings:
+    """auto_scrape_interval: the gap between background article scrapes."""
+
+    async def test_defaults_when_unseeded(self, db):
+        assert await settings_mod.get_auto_scrape_interval() == int(
+            DEFAULT_SETTINGS["auto_scrape_interval"]
+        )
+        assert DEFAULT_SETTINGS["auto_scrape_interval"] == "60"
+
+    async def test_stored_value_wins(self, db, monkeypatch):
+        async def fake_get(key, default):
+            return "300"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_auto_scrape_interval() == 300
+
+    async def test_invalid_value_falls_back_to_default(self, db, monkeypatch):
+        async def fake_get(key, default):
+            return "bogus"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_auto_scrape_interval() == int(
+            DEFAULT_SETTINGS["auto_scrape_interval"]
+        )
+
+    async def test_below_floor_is_clamped(self, db, monkeypatch):
+        from app.db.constants import AUTO_SCRAPE_MIN_INTERVAL
+
+        async def fake_get(key, default):
+            return "5"
+
+        monkeypatch.setattr(settings_mod, "get_setting", fake_get)
+        assert await settings_mod.get_auto_scrape_interval() == (
+            AUTO_SCRAPE_MIN_INTERVAL
+        )
+
+    def test_toggle_defaults_off(self, db):
+        """Background scraping is opt-in: the seeded toggle is off."""
+        assert DEFAULT_SETTINGS["auto_scrape"] == "0"
+
+
 class TestPendingLimits:
     """Recency limits: 0 means 'no cap', anything invalid falls back."""
 
@@ -180,9 +221,14 @@ class TestPendingLimits:
 class TestToggleHelpers:
     def test_every_toggle_has_env_keys(self):
         assert set(TOGGLE_SETTINGS) == {
-            "ai_auto_categorization", "ai_publish", "auto_publish"
+            "ai_auto_categorization", "ai_publish", "auto_publish", "auto_scrape"
         }
         assert set(TOGGLE_ENV_KEYS) == set(TOGGLE_SETTINGS)
+
+    def test_auto_scrape_needs_no_env(self):
+        """An empty env tuple means the toggle is always available."""
+        assert TOGGLE_ENV_KEYS["auto_scrape"] == ()
+        assert toggle_is_available("auto_scrape") is True
 
     def test_availability_tracks_env(self, monkeypatch):
         monkeypatch.setenv("GEMINI_API_KEY", "k")
@@ -220,6 +266,8 @@ class TestToggleHelpers:
             "ai_auto_categorization": False,
             "ai_publish": True,
             "auto_publish": True,
+            # Opt-in: auto_scrape stays off until the user enables it.
+            "auto_scrape": False,
         }
 
 
@@ -278,6 +326,12 @@ class TestToggleApi:
         )
         assert recorded == {"ai_auto_categorization": "0"}
         assert result["ai_auto_categorization"] == "0"
+
+    async def test_auto_scrape_needs_no_credentials(self, recorded):
+        """auto_scrape has an empty env tuple: enabling it always works."""
+        result = await scrape_routes.update_settings({"auto_scrape": "1"})
+        assert recorded == {"auto_scrape": "1"}
+        assert result["auto_scrape"] == "1"
 
     async def test_settings_payload_reports_toggle_state(self, monkeypatch):
         async def fake_states() -> dict[str, bool]:
@@ -381,6 +435,18 @@ class TestSettingsApi:
         result = await scrape_routes.update_settings({"refresh_interval": "1200"})
         assert recorded == {"refresh_interval": "1200"}
         assert result["refresh_interval"] == "1200"
+
+    @pytest.mark.parametrize("value", ["0", "-5", "abc"])
+    async def test_auto_scrape_interval_rejects_below_one(self, recorded, value):
+        with pytest.raises(HTTPException) as excinfo:
+            await scrape_routes.update_settings({"auto_scrape_interval": value})
+        assert excinfo.value.status_code == 400
+        assert recorded == {}
+
+    async def test_auto_scrape_interval_accepts_seconds(self, recorded):
+        result = await scrape_routes.update_settings({"auto_scrape_interval": "120"})
+        assert recorded == {"auto_scrape_interval": "120"}
+        assert result["auto_scrape_interval"] == "120"
 
     async def test_ai_publish_count_positive(self, recorded):
         result = await scrape_routes.update_settings({"ai_publish_count": "5"})
@@ -552,6 +618,31 @@ class TestSettingsModalPendingInputs:
         )
         assert 'id="pending-display-limit-input"' in html
         assert 'id="ai-publish-pending-limit-input"' in html
+
+
+class TestSettingsModalAutoScrape:
+    """The auto-scrape gap lives in the Scraping & Completion group."""
+
+    def _render_base(self) -> str:
+        env = _template_env()
+        return env.get_template("base.html").render(toggles={})
+
+    def test_interval_input_renders(self):
+        html = self._render_base()
+        assert 'id="auto-scrape-interval-input"' in html
+        assert "Auto-scrape gap (minutes)" in html
+
+    def test_save_sends_the_gap_in_seconds(self):
+        html = self._render_base()
+        assert "auto_scrape_interval: String(autoScrapeMinutes * 60)" in html
+
+    def test_open_populates_the_gap_from_settings(self):
+        html = self._render_base()
+        assert "settings.auto_scrape_interval" in html
+
+    def test_save_validates_the_gap(self):
+        html = self._render_base()
+        assert "Auto-scrape gap must be at least 1 minute." in html
 
 
 class TestSettingsModalToggles:

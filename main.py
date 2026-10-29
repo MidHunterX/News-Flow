@@ -4,6 +4,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from app.autoscraper import run_due_auto_scrape
 from app.client import get_client
 from app.curator import run_due_selection
 from app.db import get_completion_interval, init_db
@@ -47,8 +48,10 @@ async def _completion_loop() -> None:
     being marked completed. The WordPress terms sync is refreshed here on
     its TTL so Gemini always categorizes against a current term list. The AI
     Publish curator also ticks here, prompting Gemini to pick pending
-    articles once its (user-settable) interval has elapsed, and every
-    source is re-scraped once its (user-settable) refresh interval elapses.
+    articles once its (user-settable) interval has elapsed, every
+    source is re-scraped once its (user-settable) refresh interval elapses,
+    and — while the auto_scrape toggle is on — one not-yet-scraped article
+    is scraped every auto_scrape_interval seconds.
     """
     while True:
         try:
@@ -56,6 +59,7 @@ async def _completion_loop() -> None:
             await publish_due_articles(interval)
             await run_due_refresh()
             await run_due_selection()
+            await run_due_auto_scrape()
             await sync_terms_if_stale()
         except Exception:
             # Keep the loop alive on transient errors (e.g. locked DB).

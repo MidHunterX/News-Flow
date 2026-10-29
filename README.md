@@ -244,7 +244,7 @@ Everything AI-shaped is opt-in via environment variables; the app runs fine with
 | `GEMINI_API_KEY` | AI Publish · Auto-categorization | [Get a key](https://aistudio.google.com/apikey) |
 | `GEMINI_MODEL` | — | Optional; default `gemini-flash-lite-latest` (an alias that tracks the latest Flash-Lite release — chosen for its higher rate limits) |
 
-Feature toggles (in the settings modal) can only be switched on when their backing credentials are present — the API refuses the write otherwise — and all default to on.
+Feature toggles (in the settings modal) can only be switched on when their backing credentials are present — the API refuses the write otherwise — and all default to on. **Auto Scrape** is the exception: it has no credentials and starts off, since it makes background requests by itself.
 
 ### App settings (editable in the UI)
 
@@ -252,6 +252,7 @@ Feature toggles (in the settings modal) can only be switched on when their backi
 |---------|---------|-------------|
 | `completion_interval` | `600 s` | Time from accept to completion (and publish) per article |
 | `refresh_interval` | `900 s` | Background re-scrape cadence (floored at 30 s) |
+| `auto_scrape_interval` | `60 s` | Gap between background auto-scrapes — one article page per gap while the Auto Scrape toggle is on (floored at 30 s) |
 | `article_layout` | `grid` | Pending-list layout: `grid`, `rows`, or `compact` |
 | `pending_display_limit` | `20` | Newest pending articles the review page lists (0 = all) |
 | `reset_timezone` | `utc` | Clock the daily workspace reset uses: `utc` or the server's local time zone (`local`) |

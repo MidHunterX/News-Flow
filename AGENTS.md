@@ -19,6 +19,10 @@ their scraped content saved to `public/articles/<id>.txt`.
 - The same background task re-scrapes every source once `refresh_interval`
   (a user-editable setting, default 900 s) elapses (`app/refresher.py`);
   the browser never triggers refreshes
+- The same background task auto-scrapes article pages while the `auto_scrape`
+  toggle is on (default **off**): the oldest article with no
+  `public/articles/<id>.txt` is scraped every `auto_scrape_interval` seconds
+  (default 60 s) (`app/autoscraper.py`), status untouched
 - WordPress publishing: categories/tags are synced from the site at startup
   (`app/wordpress.py`, TTL-refreshed) and Gemini picks related categories for
   each article (`app/gemini.py`) right before it is published
@@ -91,6 +95,7 @@ app/
     settings.py      # settings queries/mutations
   wordpress.py       # WordPress terms sync (categories + tags → wp_terms)
   refresher.py       # backend source refresh (refresh_sources, run_due_refresh)
+  autoscraper.py     # background article scraping (run_due_auto_scrape)
   gemini.py          # Gemini categorization (article + terms → category IDs)
 templates/           # Jinja2 UI (base/index/publication/article.html),
                      # Tailwind via CDN
@@ -147,6 +152,13 @@ Two workspaces exist side by side:
   `save_items` → `trim_articles` → stamp `refresh_last_run`. `run_due_refresh()`
   mirrors the AI Publish curator: stamp-before-scrape so a crashed run can't
   hot-retry, fail-soft (logged + notification, never kills the caller's loop).
+- **Auto-scrape** (`app/autoscraper.py`): gated by the `auto_scrape` toggle and
+  spaced by `auto_scrape_interval`. Each due tick scrapes *one* article — the
+  oldest in the curation workspace without `public/articles/<id>.txt`, any
+  status — through the same `enrich_accepted_article()` as the accept flow, so
+  statuses never change. A page that fails is recorded once and remembered in
+  a module-level `_FAILED` set (a restart retries it) so it can't block the
+  oldest-first queue.
 - **Curation auto-refresh** (`GET /api/state`): the open curation page polls
   a fingerprint of what the Review & Status panel shows (accepted /
   completed / rejected IDs + the AI Publish stamp) and reloads itself when

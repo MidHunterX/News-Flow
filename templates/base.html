@@ -195,6 +195,21 @@
               />
             </div>
             <div>
+              <label for="auto-scrape-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+                Auto-scrape gap (minutes)
+              </label>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                How long the background auto-scraper waits between each article scrape. Only used while the Auto Scrape toggle is on.
+              </p>
+              <input
+                id="auto-scrape-interval-input"
+                type="number"
+                min="1"
+                step="1"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div>
               <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 Completion interval (minutes)
               </label>
@@ -509,6 +524,9 @@
           document.getElementById("completion-interval-input").value = Math.max(1, Math.round(seconds / 60));
           const refreshSeconds = parseInt(settings.refresh_interval, 10) || 900;
           document.getElementById("refresh-interval-input").value = Math.max(1, Math.round(refreshSeconds / 60));
+          const autoScrapeSeconds = parseInt(settings.auto_scrape_interval, 10) || 60;
+          document.getElementById("auto-scrape-interval-input").value =
+            Math.max(1, Math.round(autoScrapeSeconds / 60));
           selectArticleLayout(settings.article_layout || "grid");
           selectResetTimezone(settings.reset_timezone === "local" ? "local" : "utc");
           const pendingLimitInput = document.getElementById("pending-display-limit-input");
@@ -539,6 +557,7 @@
         } catch (err) {
           document.getElementById("completion-interval-input").value = 10;
           document.getElementById("refresh-interval-input").value = 15;
+          document.getElementById("auto-scrape-interval-input").value = 1;
           selectArticleLayout("grid");
         }
         document.getElementById("settings-modal").classList.remove("hidden");
@@ -559,9 +578,17 @@
           alert("Refresh interval must be at least 1 minute.");
           return;
         }
+        const autoScrapeMinutes = parseInt(
+          document.getElementById("auto-scrape-interval-input").value, 10
+        );
+        if (!autoScrapeMinutes || autoScrapeMinutes < 1) {
+          alert("Auto-scrape gap must be at least 1 minute.");
+          return;
+        }
         const payload = {
           completion_interval: String(minutes * 60),
           refresh_interval: String(refreshMinutes * 60),
+          auto_scrape_interval: String(autoScrapeMinutes * 60),
           article_layout: selectedLayout,
           reset_timezone: selectedResetTimezone,
           ...Object.fromEntries(

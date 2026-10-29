@@ -29,6 +29,9 @@ DEFAULT_SETTINGS = {
     # How many of the most recent pending articles the review page lists.
     # 0 shows every pending article.
     "pending_display_limit": "20",
+    # Seconds to wait between individual background auto-scrapes: one
+    # article page per gap while the auto_scrape toggle is on.
+    "auto_scrape_interval": "60",  # 1 minute
 }
 
 # Layouts the article grid setting accepts (validated in the settings API).
@@ -46,16 +49,22 @@ RESET_TIMEZONES = ("utc", "local")
 #     GEMINI_API_KEY).
 #   auto_publish: completed articles are pushed to WordPress (needs
 #     WORDPRESS_URL + WORDPRESS_USERNAME + WORDPRESS_APP_PASSWORD).
+#   auto_scrape: the background loop scrapes article pages that have no local
+#     content yet (no credentials — always available).
 TOGGLE_SETTINGS = {
     "ai_auto_categorization": "gemini",
     "ai_publish": "gemini",
     "auto_publish": "wordpress",
+    "auto_scrape": "none",
 }
 
 # Defaults for the toggle settings ("0"/"1" stored as strings).
 DEFAULT_SETTINGS = {
     **DEFAULT_SETTINGS,
     **dict.fromkeys(TOGGLE_SETTINGS, "1"),
+    # Auto Scrape is opt-in: it starts only once the user switches it on,
+    # since it makes background requests to the news sites by itself.
+    "auto_scrape": "0",
 }
 
 # Which env-var names must be present for each toggle to be available.
@@ -64,6 +73,8 @@ TOGGLE_ENV_KEYS = {
     "ai_publish": ("GEMINI_API_KEY",),
     "auto_publish": ("WORDPRESS_URL", "WORDPRESS_USERNAME",
                      "WORDPRESS_APP_PASSWORD"),
+    # No credentials: an empty tuple means "always available".
+    "auto_scrape": (),
 }
 
 
@@ -105,6 +116,14 @@ REFRESH_LAST_RUN_KEY = "refresh_last_run"
 # Floor (seconds) on the refresh interval so a tiny setting can't hammer the
 # news sites with back-to-back scrapes.
 REFRESH_MIN_INTERVAL = 30
+
+# Setting key storing the UTC timestamp of the last background auto-scrape.
+# The next article is scraped auto_scrape_interval seconds after it.
+AUTO_SCRAPE_LAST_RUN_KEY = "auto_scrape_last_run"
+
+# Floor (seconds) on the auto-scrape gap so a tiny setting can't turn the
+# background loop into back-to-back article fetches.
+AUTO_SCRAPE_MIN_INTERVAL = 30
 
 # How long a WordPress terms sync stays fresh before being refreshed.
 WP_CATEGORIES_TTL = 24 * 60 * 60  # seconds

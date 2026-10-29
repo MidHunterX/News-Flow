@@ -6,6 +6,7 @@ from app.db.constants import (
     AI_PUBLISH_LAST_RUN_KEY,
     AI_PUBLISH_MIN_INTERVAL,
     ARTICLE_LAYOUTS,
+    AUTO_SCRAPE_MIN_INTERVAL,
     DEFAULT_SETTINGS,
     REFRESH_MIN_INTERVAL,
     RESET_TIMEZONES,
@@ -137,6 +138,18 @@ async def get_refresh_interval() -> int:
     except TypeError, ValueError:
         interval = int(DEFAULT_SETTINGS["refresh_interval"])
     return max(REFRESH_MIN_INTERVAL, interval)
+
+
+async def get_auto_scrape_interval() -> int:
+    """Seconds to wait between background auto-scrapes, clamped to the floor."""
+    raw = await get_setting(
+        "auto_scrape_interval", DEFAULT_SETTINGS["auto_scrape_interval"]
+    )
+    try:
+        interval = int(raw)
+    except (TypeError, ValueError):
+        interval = int(DEFAULT_SETTINGS["auto_scrape_interval"])
+    return max(AUTO_SCRAPE_MIN_INTERVAL, interval)
 
 
 async def get_ai_publish_last_run() -> str | None:
