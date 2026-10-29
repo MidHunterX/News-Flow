@@ -448,11 +448,13 @@
     startTimerMeters();
   </script>
 
-  <script src="{{ url_for('static', path='js/ai-blob.js') }}"></script>
   <script>
     // AI Publish meter: counts down to the next Gemini selection prompt.
     // The next prompt goes out ai_publish_interval seconds after the last
     // one; when nothing has been sent yet the fill starts growing from 0.
+    // This meter — and with it the blob — only exists while AI Publish is
+    // on; when it is off the blob idles in the settings modal instead
+    // (ai-blob.js itself is loaded once, by base.html).
     function startAiPublishMeter() {
       const meter = document.getElementById("ai-publish-meter");
       if (!meter) return;

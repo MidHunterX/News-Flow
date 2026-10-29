@@ -1076,6 +1076,11 @@ class TestArticleView:
 
         monkeypatch.setattr(scrape_routes, "get_article_by_id", fake_article)
         monkeypatch.setattr(scrape_routes, "_toggle_context", fake_toggles)
+        # base.html calls url_for for the shared ai-blob.js include; this
+        # test has no ASGI app behind its bare request, so route the call to
+        # the same static-only stub the template tests use.
+        monkeypatch.setitem(scrape_routes.templates.env.globals, "url_for",
+                            _url_for)
 
         # Would raise NameError before the fix; Jinja reads the template from
         # disk so no app startup is needed.
@@ -1128,6 +1133,67 @@ class TestAiPublishMeter:
         html = _render("grid", [], ai_publish_enabled=True,
                        ai_publish_last_run=None)
         assert 'data-last-run=""' in html
+
+
+class TestAiBlobHomes:
+    """The mascot has exactly one home: the settings modal while AI Publish
+    is off, the main page's meter while it is on."""
+
+    _AI_PUBLISH: ClassVar[dict] = {
+        "label": "AI Curation",
+        "description": "Gemini picks articles.",
+        "available": True,
+        "required_env": ["GEMINI_API_KEY"],
+    }
+
+    def _render_base(self, enabled: bool) -> str:
+        env = _template_env()
+        return env.get_template("base.html").render(
+            toggles={"ai_publish": {**self._AI_PUBLISH, "enabled": enabled}}
+        )
+
+    def test_blob_parks_in_settings_when_toggle_is_off(self):
+        html = self._render_base(enabled=False)
+        assert 'id="ai-blob-settings"' in html
+
+    def test_blob_leaves_settings_when_toggle_is_on(self):
+        """On = the blob lives on the main page's meter instead."""
+        html = self._render_base(enabled=True)
+        assert 'id="ai-blob-settings"' not in html
+
+    def test_index_meter_is_the_blob_home_when_on(self):
+        html = _render("grid", [], ai_publish_enabled=True)
+        assert 'id="ai-blob"' in html
+        assert 'id="ai-publish-meter"' in html
+
+    def test_index_has_no_blob_when_off(self):
+        """Off: the meter (and its blob) are gone from the main page…"""
+        html = _render("grid", [], ai_publish_enabled=False)
+        assert 'id="ai-blob"' not in html
+        assert 'id="ai-publish-meter"' not in html
+
+    def test_off_index_still_carries_the_settings_blob_host(self):
+        """…and the settings modal on that same page offers its other home."""
+        html = _render("grid", [], ai_publish_enabled=False,
+                       toggles={"ai_publish": {**self._AI_PUBLISH,
+                                               "enabled": False}})
+        assert 'id="ai-blob-settings"' in html
+        assert 'id="ai-blob"' not in html
+
+    def test_settings_open_mounts_the_blob(self):
+        html = self._render_base(enabled=False)
+        assert "mountSettingsBlob();" in html
+        assert "AIBlob.mount(host);" in html
+
+    def test_blob_script_loads_exactly_once_per_page(self):
+        """Loaded by base.html, so index.html must not include it again."""
+        html = _render("grid", [], ai_publish_enabled=True)
+        assert html.count("js/ai-blob.js") == 1
+
+    def test_missing_toggle_context_means_no_blob_in_settings(self):
+        env = _template_env()
+        html = env.get_template("base.html").render(toggles={})
+        assert 'id="ai-blob-settings"' not in html
 
 
 # ---------------------------------------------------------------------------

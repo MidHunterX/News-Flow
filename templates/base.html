@@ -286,6 +286,18 @@
             {% if ai_publish %}
               {{ toggle_switch("ai_publish", ai_publish) }}
             {% endif %}
+            {% if ai_publish and not ai_publish.enabled %}
+              <!-- The mascot idles here while AI Curation is off (mounted by
+                   openSettings); flipping the toggle moves it onto the main
+                   page's countdown meter instead. -->
+              <div class="flex items-center gap-3 rounded-lg border border-indigo-100 bg-gradient-to-r from-violet-50 to-indigo-50 p-3 dark:border-indigo-900 dark:from-violet-950 dark:to-indigo-950">
+                <div id="ai-blob-settings" class="shrink-0 w-20 h-20 cursor-pointer select-none"></div>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  Off duty. Turn on AI Curation and the blob moves to the main
+                  page to watch the countdown to the next pick.
+                </p>
+              </div>
+            {% endif %}
             {% if ai_publish and ai_publish.available %}
               <div>
                 <label for="ai-publish-count-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
@@ -427,6 +439,11 @@
     <footer class="bg-white border-t border-gray-200 py-6 text-center text-sm text-gray-500 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400">
       News Flow Scraper &bull; Built with FastAPI & Tailwind CSS
     </footer>
+
+    <!-- The AI mascot: the settings modal mounts it while AI Curation is
+         off; the curation page's meter mounts it while the feature is on.
+         Loaded here (before page scripts) so every page has it once. -->
+    <script src="{{ url_for('static', path='js/ai-blob.js') }}"></script>
 
     {% block scripts %}{% endblock %}
 
@@ -591,6 +608,17 @@
           selectArticleLayout("grid");
         }
         document.getElementById("settings-modal").classList.remove("hidden");
+        mountSettingsBlob();
+      }
+
+      // The mascot idles in the AI Curation section while AI Publish is off
+      // (it lives on the main page's meter when the feature is on). Mounted
+      // on modal open rather than at load, so it only animates while seen;
+      // mount() tears down any prior instance, so reopening is safe.
+      function mountSettingsBlob() {
+        const host = document.getElementById("ai-blob-settings");
+        if (!host || !window.AIBlob) return;
+        AIBlob.mount(host);
       }
 
       function closeSettings() {
