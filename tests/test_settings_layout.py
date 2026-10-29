@@ -474,11 +474,29 @@ def _item(idx: int, **overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def _render(layout: str, items: list, **extra) -> str:
+def _url_for(name: str, **params: str) -> str:
+    """The app's Starlette ``url_for``, minus the routing.
+
+    Templates call it for mounted static files (``ai-blob.js``); only the
+    ``static`` route is used here, matching ``app.mount("/static", ...)``.
+    """
+    if name != "static":
+        raise AssertionError(f"tests only stub the static route, got {name!r}")
+    return "/static/" + params["path"]
+
+
+def _template_env() -> Environment:
+    """Bare Jinja environment carrying the globals Jinja2Templates adds."""
     env = Environment(
         loader=FileSystemLoader("templates"),
         autoescape=select_autoescape(["html"]),
     )
+    env.globals["url_for"] = _url_for
+    return env
+
+
+def _render(layout: str, items: list, **extra) -> str:
+    env = _template_env()
     template = env.get_template("index.html")
     context = {
         "items": items,
@@ -520,10 +538,7 @@ class TestSettingsModalPendingInputs:
     """Both recency fields are present in the settings modal."""
 
     def test_inputs_render(self):
-        env = Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        env = _template_env()
         html = env.get_template("base.html").render(
             toggles={
                 "ai_publish": {
@@ -543,10 +558,7 @@ class TestSettingsModalToggles:
     """The settings modal renders toggle switches with env messaging."""
 
     def _render_base(self, toggles: dict) -> str:
-        env = Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        env = _template_env()
         template = env.get_template("base.html")
         return template.render(toggles=toggles)
 
@@ -619,10 +631,7 @@ class TestResetTimezonePicker:
     """The settings modal renders a UTC/Local picker for the daily reset."""
 
     def _render_base(self, toggles: dict) -> str:
-        env = Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        env = _template_env()
         template = env.get_template("base.html")
         return template.render(toggles=toggles)
 
@@ -649,10 +658,7 @@ class TestThemePicker:
     """The theme mode is a local-only setting: picker + localStorage."""
 
     def _render_base(self, toggles: dict | None = None) -> str:
-        env = Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        env = _template_env()
         template = env.get_template("base.html")
         return template.render(toggles=toggles or {})
 
@@ -724,10 +730,7 @@ class TestInnerPageDarkStyles:
     """
 
     def _env(self) -> Environment:
-        return Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        return _template_env()
 
     def test_curation_cards_go_dark(self):
         html = _render("grid", [_item(1)])
@@ -777,10 +780,7 @@ class TestCoverImageCopy:
     """Clicking the cover copies the image itself, not its file path."""
 
     def _render(self) -> str:
-        env = Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        env = _template_env()
         return env.get_template("article.html").render(
             toggles={},
             article=_item(1),
@@ -851,10 +851,7 @@ class TestRefreshIntervalInput:
     """The settings modal renders the backend refresh interval field."""
 
     def _render_base(self, toggles: dict) -> str:
-        env = Environment(
-            loader=FileSystemLoader("templates"),
-            autoescape=select_autoescape(["html"]),
-        )
+        env = _template_env()
         template = env.get_template("base.html")
         return template.render(toggles=toggles)
 
