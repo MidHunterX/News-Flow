@@ -1,3 +1,4 @@
 # vim: set filetype=sh :
 
 export GENERATE_UNIQUE_PORT=true
+export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
