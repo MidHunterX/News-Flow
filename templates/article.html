@@ -26,7 +26,7 @@
     <!-- Heading -->
     <div
       class="copy-zone bg-white rounded-xl border border-gray-200 p-6 cursor-pointer group hover:border-indigo-300 transition dark:bg-gray-800 dark:border-gray-700 dark:hover:border-indigo-700"
-      onclick="copyText(this.dataset.heading, 'Heading copied!')"
+      onclick="copyZone(this.dataset.heading, 'Heading copied!')"
       data-heading="{{ scraped_heading }}"
     >
       <h1 class="text-2xl font-bold text-gray-900 leading-snug dark:text-gray-100">{{ scraped_heading }}</h1>
@@ -37,7 +37,7 @@
     {% if scraped_content %}
       <div
         class="copy-zone bg-white rounded-xl border border-gray-200 p-6 cursor-pointer group hover:border-indigo-300 transition dark:bg-gray-800 dark:border-gray-700 dark:hover:border-indigo-700 whitespace-pre-line"
-        onclick="copyText(this.dataset.content, 'Article copied!')"
+        onclick="copyZone(this.dataset.content, 'Article copied!')"
         data-content="{{ scraped_content }}"
       >
         <div class="text-gray-700 text-base leading-relaxed dark:text-gray-300">{{ scraped_content }}</div>
@@ -92,6 +92,27 @@
       } else {
         fallbackCopy(text) ? ok() : fail();
       }
+    }
+
+    // If the user has selected some text inside the page, copy *only* that
+    // selection and clear it. Otherwise fall back to copying the whole zone
+    // (heading / article) as before.
+    function copyZone(zoneText, message) {
+      const sel = window.getSelection ? window.getSelection() : null;
+      const selected = sel ? sel.toString() : "";
+      if (selected && selected.trim().length > 0) {
+        copyText(selected, message);
+        // Deselect after the copy attempt. Done synchronously so the visual
+        // feedback is immediate; the clipboard call above was already invoked
+        // with the click's user activation.
+        if (sel.removeAllRanges) {
+          sel.removeAllRanges();
+        } else if (sel.empty) {
+          sel.empty(); // legacy IE/Edge path
+        }
+        return;
+      }
+      copyText(zoneText, message);
     }
 
     // Legacy selection-based copy for plain-HTTP origins and any browser that
