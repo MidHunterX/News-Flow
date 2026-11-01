@@ -64,6 +64,13 @@ def _migrate() -> None:
                 conn.execute(
                     text(f"ALTER TABLE {table} ADD COLUMN wp_category_ids JSON")
                 )
+            if "is_print_published" not in columns:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {table} ADD COLUMN is_print_published "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
 
     # The notification log gained its unread flag with the bell badge; rows
     # that predate it land as unread (DEFAULT 0), so they show up once.

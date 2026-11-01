@@ -407,6 +407,47 @@ class TestMigrate:
             ).fetchall()
             assert [row[0] for row in rows] == [0]  # pre-existing rows are unread
 
+    def test_is_print_published_added_to_legacy_article_tables(self, reset_env):
+        """Pre-print-flag article tables gain is_print_published, rows 0."""
+        _session_factory, _articles_dir, _covers_dir = reset_env
+
+        legacy = (
+            "CREATE TABLE {table} ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "title TEXT NOT NULL, url TEXT, image_url TEXT, "
+            "description TEXT NOT NULL, published_at TEXT NOT NULL, "
+            "source TEXT NOT NULL, scraped_at TEXT NOT NULL "
+            "DEFAULT (datetime('now')), status TEXT, accepted_at TEXT, "
+            "accepted_order INTEGER, cover_file TEXT, wp_category_ids JSON)"
+        )
+        with schema.engine.begin() as conn:
+            # Replace the fixture's new tables with pre-print-flag ones.
+            conn.execute(text("DROP TABLE articles"))
+            conn.execute(text("DROP TABLE publication_articles"))
+            for table in ("articles", "publication_articles"):
+                conn.execute(text(legacy.format(table=table)))
+            conn.execute(
+                text(
+                    "INSERT INTO articles (title, description, published_at, "
+                    "source) VALUES ('Old row', 'd', '2026-01-01', 'kaumudi')"
+                )
+            )
+
+        schema._migrate()
+
+        with schema.engine.connect() as conn:
+            for table in ("articles", "publication_articles"):
+                columns = {
+                    row.name
+                    for row in conn.execute(text(f"PRAGMA table_info({table})"))
+                }
+                assert "is_print_published" in columns
+            rows = conn.execute(
+                text("SELECT is_print_published FROM articles")
+            ).fetchall()
+            # Pre-existing rows land unmarked.
+            assert [row[0] for row in rows] == [0]
+
     def test_migrate_is_idempotent_on_current_schema(self, reset_env):
         """Running the migration twice against a fresh schema is a no-op."""
         _session_factory, _articles_dir, _covers_dir = reset_env

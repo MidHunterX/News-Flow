@@ -13,7 +13,7 @@ import pytest
 from fastapi import HTTPException
 
 import app.db as db_pkg
-from app.db.models import PublicationArticle
+from app.db.models import Article, PublicationArticle
 from app.routes import publication as pub_routes
 
 
@@ -39,7 +39,7 @@ def pub_workspace(tmp_path, monkeypatch):
     return content_dir
 
 
-def _insert(title: str) -> int:
+def _insert(title: str, **overrides) -> int:
     """Add an archived article row, returning its (auto-increment) id."""
     with db_pkg.SessionLocal() as session:
         row = PublicationArticle(
@@ -49,6 +49,7 @@ def _insert(title: str) -> int:
             description="desc",
             published_at="2026-10-31",
             source="kaumudi",
+            **overrides,
         )
         session.add(row)
         session.commit()
@@ -131,3 +132,85 @@ async def test_sort_pills_link_both_orders_keeping_the_day(pub_workspace):
     html = response.body.decode()
     assert "/publication?sort=id" in html
     assert "/publication?sort=word" in html
+
+
+# ---------------------------------------------------------------------------
+# Mark as print-published
+# ---------------------------------------------------------------------------
+
+
+def _insert_curation(title: str, **overrides) -> int:
+    """Add a *today*-workspace (curation) article row, returning its id."""
+    with db_pkg.SessionLocal() as session:
+        row = Article(
+            title=title,
+            url=f"https://example.com/{title}",
+            image_url=None,
+            description="desc",
+            published_at="2026-10-31",
+            source="kaumudi",
+            **overrides,
+        )
+        session.add(row)
+        session.commit()
+        return row.id
+
+
+async def test_publish_route_marks_todays_curation_row(pub_workspace):
+    article_id = _insert_curation("Today article", status="accepted")
+
+    result = await pub_routes.mark_published(article_id=article_id, day="today")
+    assert result == {"ok": True}
+    with db_pkg.SessionLocal() as session:
+        row = session.get(Article, article_id)
+        assert row.is_print_published  # Print-published…
+        assert row.status == "accepted"  # …while the WP pipeline is untouched.
+
+
+async def test_publish_route_marks_archived_row(pub_workspace):
+    article_id = _insert("Archived article")
+
+    result = await pub_routes.mark_published(
+        article_id=article_id, day="previous"
+    )
+    assert result == {"ok": True}
+    with db_pkg.SessionLocal() as session:
+        assert session.get(PublicationArticle, article_id).is_print_published
+
+
+async def test_publish_route_404s_for_unknown_article(pub_workspace):
+    for day in ("previous", "today"):
+        with pytest.raises(HTTPException) as excinfo:
+            await pub_routes.mark_published(article_id=999_999, day=day)
+        assert excinfo.value.status_code == 404
+
+
+async def test_cards_show_print_state_and_offer_the_button_once(pub_workspace):
+    """An unmarked card gets the Mark published button; once marked it shows
+    the #print badge instead. WP-published cards say #wp, not #published."""
+    marked = _insert("Already printed")
+    unmarked = _insert("Not printed yet")
+    with db_pkg.SessionLocal() as session:
+        session.get(PublicationArticle, marked).is_print_published = True
+        session.commit()
+
+    response = await pub_routes.publication_view(
+        request=object(), day=None, sort="id"
+    )
+    html = response.body.decode()
+    assert "bg-amber-50" in html  # The #print badge on the marked card.
+    assert f"/api/publication/{marked}/publish" not in html  # Button gone…
+    assert f"/api/publication/{unmarked}/publish" in html  # …still offered.
+
+
+async def test_wp_completed_card_keeps_its_own_badge(pub_workspace):
+    """status=completed means *WordPress*-published — it renders as #wp,
+    distinct from the print flag (both may appear together)."""
+    _insert("WP-published", status="completed")
+
+    response = await pub_routes.publication_view(
+        request=object(), day=None, sort="id"
+    )
+    html = response.body.decode()
+    assert 'title="Published to WordPress by the pipeline"' in html
+    assert "#published" not in html  # The old ambiguous label is gone.

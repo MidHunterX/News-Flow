@@ -28,6 +28,7 @@ from app.db.articles import (
                              mark_articles_completed,
                              save_items,
                              set_article_status,
+                             set_print_published,
                              update_article_cover_file,
                              update_publication_cover_file,
 )
@@ -117,6 +118,7 @@ __all__ = [  # noqa: RUF022
     "get_completed_items",
     "get_rejected_items",
     "set_article_status",
+    "set_print_published",
     "get_article_by_id",
     "get_publication_article_by_id",
     "get_due_articles",

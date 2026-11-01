@@ -115,7 +115,9 @@ Two workspaces exist side by side:
   previous day's curation workspace, filled by the daily reset and read by
   `GET /publication`. The page follows the curation UI: **Previous day**
   and **Today** pill tabs (previous day first and the default, `?day=today`
-  selects the second), the same results header, and the same
+  selects the second), **ID / Word count** sort pills (`?sort=id` default,
+  `?sort=word` ranks by scraped word count with unscraped articles last),
+  the same results header, and the same
   `article_layout` grid/rows/compact branches. Each card carries its
   local-scrape status and word count plus two actions: **Preview** opens
   `GET /article/<id>?day=<previous|today>` (the same `article.html`, with
@@ -123,6 +125,11 @@ Two workspaces exist side by side:
   have a local copy, since there is nothing to open otherwise — and
   **Scrape** POSTs `/api/articles/<id>/scrape?day=...`, which saves the
   page into the selected workspace *without* changing the article's status.
+  **Mark published** (shown until the flag is set) POSTs
+  `/api/publication/<id>/publish?day=...`, setting the row's
+  `is_print_published` flag — the *print* meaning of "published" (the
+  `#print` badge), distinct from the WordPress pipeline where
+  `status == "completed"` means published (the `#wp` badge).
 
 ## Runtime behavior worth knowing
 

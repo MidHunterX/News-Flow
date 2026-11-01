@@ -16,7 +16,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.db import get_article_layout, get_items, get_publication_items
+from app.db import (
+    get_article_layout,
+    get_items,
+    get_publication_items,
+    set_print_published,
+)
 from app.models import NewsItem
 from app.routes.scrape import _archived_cover, _toggle_context
 from app.utils import ARTICLES_DIR, PUBLICATION_ARTICLES_DIR
@@ -145,3 +150,24 @@ async def publication_view(
             **await _toggle_context(),
         },
     )
+
+
+@router.post("/api/publication/{article_id}/publish")
+async def mark_published(
+    article_id: int,
+    day: str | None = Query(
+        None, description="'previous' to mark an archived publication article"
+    ),
+):
+    """Flag an article as published in the printed paper.
+
+    "Published" on this page means *printed* — distinct from the WordPress
+    pipeline, where the ``completed`` status is what means published. Sets
+    ``is_print_published`` on the row the given tab shows: ``day=previous``
+    targets the archived ``publication_articles`` row, anything else
+    today's curation row. Returns 404 when the row doesn't exist; the
+    article's status is never touched.
+    """
+    if not await set_print_published(article_id, archived=day == "previous"):
+        raise HTTPException(404, "Article not found")
+    return {"ok": True}

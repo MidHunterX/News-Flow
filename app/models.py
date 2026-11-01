@@ -23,6 +23,9 @@ class NewsItem(BaseModel):
     # WordPress category IDs chosen by Gemini before publishing (JSON column;
     # None until the publisher marks them).
     wp_category_ids: list[int] | None = None
+    # Print publication: marked as published in the printed paper from the
+    # /publication page (distinct from the WP pipeline's completed status).
+    is_print_published: bool = False
 
 
 class ScrapeResponse(BaseModel):

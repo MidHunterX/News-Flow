@@ -36,6 +36,14 @@ class _ArticleFields:
     # NULL until the publisher marks them.
     wp_category_ids: Mapped[list[int] | None] = mapped_column(JSON)
 
+    # Print publication flag: the human marked this article as published in
+    # the printed paper (set from /publication). Deliberately separate from
+    # ``status`` — "completed" there means *WordPress*-published by the
+    # pipeline, this means *printed*.
+    is_print_published: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+
 
 class Article(_ArticleFields, Base):
     __tablename__ = "articles"
