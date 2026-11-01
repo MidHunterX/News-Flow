@@ -73,7 +73,8 @@ app/
     init.py          # SCRAPERS registry + scrape_source() pipeline
                      # (the file is literally named init.py, not __init__.py)
     kaumudi.py / mangalam.py / madhyamam.py
-  routes/scrape.py   # API + UI routes, article accept/reject/clear, settings,
+  routes/scrape.py   # API + UI routes, article accept/reject/clear, settings
+  routes/publication.py
                      # GET /publication (print-publication inspection page)
   routes/notifications.py
                      # notification log routes: GET /api/notifications (list
