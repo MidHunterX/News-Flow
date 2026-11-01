@@ -6,9 +6,10 @@
        same grid/rows/compact layout branches (the article_layout setting
        drives which one renders), plus the card action row: Preview opens
        the article page, Scrape saves the article's page/content without
-       accepting it, and Mark published flags the article as printed
-       (#print — distinct from the WP pipeline's #wp badge). Preview only
-       appears once the article has a local copy to open. -->
+       accepting it, and the Mark published button toggles the article's
+       printed-paper flag (the button itself shows the state — distinct
+       from the WP pipeline's #wp badge). Preview only appears once the
+       article has a local copy to open. -->
 
   {% set selected_sort = selected_sort|default("id") %}
 
@@ -29,11 +30,6 @@
     {% if card.item.status == "completed" %}
       <span title="Published to WordPress by the pipeline" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900 dark:text-indigo-300 dark:border-indigo-800 px-2.5 py-1 rounded-full">
           #wp
-      </span>
-    {% endif %}
-    {% if card.item.is_print_published %}
-      <span title="Marked published in the printed paper" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-900 dark:text-amber-300 dark:border-amber-800 px-2.5 py-1 rounded-full">
-          #print
       </span>
     {% endif %}
     </div>
@@ -95,23 +91,27 @@
     {% endif %}
   {% endmacro %}
 
-  <!-- Mark published: flags the card's article as printed in the paper
-       (is_print_published). Shown only until the flag is set, then the
-       badge row's #print chip takes over. -->
   {% macro publish_button(card, compact=False) %}
-    {% set publish_href = "/api/publication/" ~ card.item.id ~ "/publish?day=" ~ selected_day %}
-    {% set failure = "Marking the article as published failed — nothing was saved." %}
+    {% set published = card.item.is_print_published %}
+    {# Toggle: the button posts the *opposite* of the current state. #}
+    {% set publish_href = "/api/publication/" ~ card.item.id ~ "/publish?day=" ~ selected_day ~ "&published=" ~ ("0" if published else "1") %}
+    {% set failure = "Updating the print-published mark failed — nothing was saved." %}
+    {% if published %}
+      {% set button_title = "Click to clear the print-published mark" %}
+    {% else %}
+      {% set button_title = "Mark as published in the printed paper" %}
+    {% endif %}
     {% if compact %}
-      <button type="button" title="Mark as published in the printed paper"
+      <button type="button" title="{{ button_title }}"
               onclick="postAction('{{ publish_href }}', event, '{{ failure }}')"
-              class="p-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-amber-500 hover:text-white transition shrink-0 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-amber-500 dark:hover:text-white">
+              class="p-1.5 rounded-lg transition shrink-0 {% if published %}bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:text-white dark:hover:bg-amber-600{% else %}bg-gray-100 text-gray-600 hover:bg-amber-500 hover:text-white dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-amber-500 dark:hover:text-white{% endif %}">
         {{ check_icon() }}
       </button>
     {% else %}
-      <button type="button" title="Mark as published in the printed paper"
+      <button type="button" title="{{ button_title }}"
               onclick="postAction('{{ publish_href }}', event, '{{ failure }}')"
-              class="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 hover:bg-amber-500 hover:text-white font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-amber-500 dark:hover:text-white">
-        {{ check_icon() }} Mark published
+              class="flex items-center justify-center gap-2 px-4 py-2.5 font-semibold rounded-lg transition shadow-sm hover:shadow-md text-sm {% if published %}bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-500 dark:text-white dark:hover:bg-amber-600{% else %}bg-gray-100 text-gray-700 hover:bg-amber-500 hover:text-white dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-amber-500 dark:hover:text-white{% endif %}">
+        {{ check_icon() }}
       </button>
     {% endif %}
   {% endmacro %}
@@ -164,7 +164,8 @@
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
-            <article class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+            {% set published = card.item.is_print_published %}
+            <article class="{% if published %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
                 <div class="w-44 sm:w-56 shrink-0 bg-gray-100 relative dark:bg-gray-700">
@@ -184,13 +185,13 @@
                 <p class="text-gray-600 text-sm mb-4 line-clamp-2 flex-grow dark:text-gray-300">{{ card.item.description }}</p>
 
                 <!-- Action row: scrape status plus Scrape / Preview /
-                     Mark published (the latter only until it's marked). -->
+                     the print-published toggle. -->
                 <div class="flex items-center justify-between gap-3 mt-auto pt-3 border-t border-gray-200 dark:border-gray-700">
                   {{ scrape_badge(card) }}
                   <div class="flex items-center gap-2 shrink-0">
                     {{ scrape_button(card) }}
                     {{ preview_button(card) }}
-                    {% if not card.item.is_print_published %}{{ publish_button(card) }}{% endif %}
+                    {{ publish_button(card) }}
                   </div>
                 </div>
               </div>
@@ -221,7 +222,7 @@
                 {{ scrape_badge(card) }}
                 {{ preview_button(card, compact=True) }}
                 {{ scrape_button(card, compact=True) }}
-                {% if not card.item.is_print_published %}{{ publish_button(card, compact=True) }}{% endif %}
+                {{ publish_button(card, compact=True) }}
               </div>
             </div>
           {% endfor %}
@@ -253,18 +254,17 @@
                 </h3>
                 <p class="text-gray-600 text-sm mb-4 flex-grow line-clamp-3 dark:text-gray-300">{{ card.item.description }}</p>
 
-                <!-- Action row: scrape status plus Preview / Scrape /
-                     Mark published. Columns grow with the buttons shown:
-                     two base (three once scraped side-by-side), plus one
-                     while the article isn't marked print-published yet. -->
+                <!-- Action row: scrape status plus Scrape / Preview /
+                     the print-published toggle. Columns track the scraped
+                     state: three buttons side-by-side once scraped (word
+                     count shown), two otherwise. -->
                 <div class="pt-4 border-t border-gray-200 mt-auto space-y-3 dark:border-gray-700">
                   {{ scrape_badge(card) }}
-                  {% set show_publish = not card.item.is_print_published %}
-                  {% set button_cols = (2 if card.word_count is not none else 1) + (1 if show_publish else 0) %}
-                  <div class="grid gap-3{% if button_cols > 1 %} grid-cols-{{ button_cols }}{% endif %}">
+                  {% set button_cols = 3 if card.word_count is not none else 2 %}
+                  <div class="grid gap-3 grid-cols-{{ button_cols }}">
                     {{ preview_button(card) }}
                     {{ scrape_button(card) }}
-                    {% if show_publish %}{{ publish_button(card) }}{% endif %}
+                    {{ publish_button(card) }}
                   </div>
                 </div>
               </div>

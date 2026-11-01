@@ -125,10 +125,11 @@ Two workspaces exist side by side:
   have a local copy, since there is nothing to open otherwise — and
   **Scrape** POSTs `/api/articles/<id>/scrape?day=...`, which saves the
   page into the selected workspace *without* changing the article's status.
-  **Mark published** (shown until the flag is set) POSTs
-  `/api/publication/<id>/publish?day=...`, setting the row's
-  `is_print_published` flag — the *print* meaning of "published" (the
-  `#print` badge), distinct from the WordPress pipeline where
+  **Mark published** is a toggle button (the card's print state lives on
+  the button itself, not a badge): it POSTs
+  `/api/publication/<id>/publish?day=...&published=1|0` to set or clear
+  the row's `is_print_published` flag — the *print* meaning of
+  "published", distinct from the WordPress pipeline where
   `status == "completed"` means published (the `#wp` badge).
 
 ## Runtime behavior worth knowing

@@ -158,16 +158,22 @@ async def mark_published(
     day: str | None = Query(
         None, description="'previous' to mark an archived publication article"
     ),
+    # Plain default (not Query) so calling the handler directly passes a real
+    # bool; FastAPI still parses it as an optional query parameter, where
+    # published=false clears the mark (unmark) instead of setting it.
+    published: bool = True,
 ):
-    """Flag an article as published in the printed paper.
+    """Set — or, with ``published=false``, clear — the print-published mark.
 
     "Published" on this page means *printed* — distinct from the WordPress
-    pipeline, where the ``completed`` status is what means published. Sets
-    ``is_print_published`` on the row the given tab shows: ``day=previous``
-    targets the archived ``publication_articles`` row, anything else
-    today's curation row. Returns 404 when the row doesn't exist; the
-    article's status is never touched.
+    pipeline, where the ``completed`` status is what means published. The
+    flag lands on the row the given tab shows: ``day=previous`` targets the
+    archived ``publication_articles`` row, anything else today's curation
+    row. Returns 404 when the row doesn't exist; the article's status is
+    never touched.
     """
-    if not await set_print_published(article_id, archived=day == "previous"):
+    if not await set_print_published(
+        article_id, published, archived=day == "previous"
+    ):
         raise HTTPException(404, "Article not found")
     return {"ok": True}

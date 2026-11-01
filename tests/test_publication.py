@@ -185,9 +185,26 @@ async def test_publish_route_404s_for_unknown_article(pub_workspace):
         assert excinfo.value.status_code == 404
 
 
-async def test_cards_show_print_state_and_offer_the_button_once(pub_workspace):
-    """An unmarked card gets the Mark published button; once marked it shows
-    the #print badge instead. WP-published cards say #wp, not #published."""
+async def test_publish_route_clears_the_mark_when_asked(pub_workspace):
+    """published=false un-marks — the same route toggles both ways."""
+    article_id = _insert("Marked then cleared")
+    assert await pub_routes.mark_published(
+        article_id=article_id, day="previous"
+    ) == {"ok": True}
+
+    result = await pub_routes.mark_published(
+        article_id=article_id, day="previous", published=False
+    )
+    assert result == {"ok": True}
+    with db_pkg.SessionLocal() as session:
+        assert not session.get(PublicationArticle, article_id).is_print_published
+
+
+async def test_publish_button_toggles_by_state(pub_workspace):
+    """The button doubles as the print state — no badge: unmarked cards
+    offer Mark published (published=1); marked cards render the solid
+    Published state and post published=0 to clear it. WP-published cards
+    keep their separate #wp badge."""
     marked = _insert("Already printed")
     unmarked = _insert("Not printed yet")
     with db_pkg.SessionLocal() as session:
@@ -198,9 +215,19 @@ async def test_cards_show_print_state_and_offer_the_button_once(pub_workspace):
         request=object(), day=None, sort="id"
     )
     html = response.body.decode()
-    assert "bg-amber-50" in html  # The #print badge on the marked card.
-    assert f"/api/publication/{marked}/publish" not in html  # Button gone…
-    assert f"/api/publication/{unmarked}/publish" in html  # …still offered.
+    assert "#print" not in html  # State lives on the button, not a badge.
+    # Jinja escapes & inside the onclick attribute.
+    assert (
+        f"/api/publication/{marked}/publish?day=previous&amp;published=0"
+        in html
+    )
+    assert (
+        f"/api/publication/{unmarked}/publish?day=previous&amp;published=1"
+        in html
+    )
+    assert 'title="Click to clear the print-published mark"' in html
+    assert 'title="Mark as published in the printed paper"' in html
+    assert "bg-amber-500" in html  # Solid amber = toggled-on button.
 
 
 async def test_wp_completed_card_keeps_its_own_badge(pub_workspace):

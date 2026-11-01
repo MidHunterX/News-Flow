@@ -234,27 +234,34 @@ async def update_publication_cover_file(
     )
 
 
-def _set_print_published_sync(article_id: int, archived: bool) -> bool:
-    """Flag a row as published in the printed paper (see is_print_published)."""
+def _set_print_published_sync(
+    article_id: int, published: bool, archived: bool
+) -> bool:
+    """Set or clear a row's print-published flag (is_print_published)."""
     model = PublicationArticle if archived else Article
     with SessionLocal() as session:
         article = session.get(model, article_id)
         if article is None:
             return False
-        article.is_print_published = True
+        article.is_print_published = published
         session.commit()
     return True
 
 
-async def set_print_published(article_id: int, *, archived: bool = False) -> bool:
-    """Mark an article as print-published. Returns False when not found.
+async def set_print_published(
+    article_id: int, published: bool = True, *, archived: bool = False
+) -> bool:
+    """Set or clear an article's print-published flag. False when not found.
 
-    ``archived`` picks the workspace: the previous day's
-    ``publication_articles`` row, or today's curation ``articles`` row (the
-    publication page's two tabs). Only the print flag moves — the article's
-    status (the WordPress pipeline's business) is left untouched.
+    ``published=False`` un-marks a previously printed article. ``archived``
+    picks the workspace: the previous day's ``publication_articles`` row,
+    or today's curation ``articles`` row (the publication page's two tabs).
+    Only the print flag moves — the article's status (the WordPress
+    pipeline's business) is left untouched.
     """
-    return await run_in_thread(_set_print_published_sync, article_id, archived)
+    return await run_in_thread(
+        _set_print_published_sync, article_id, published, archived
+    )
 
 
 def _get_due_articles_sync(interval_seconds: int) -> list[NewsItem]:
