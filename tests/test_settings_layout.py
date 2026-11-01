@@ -1041,11 +1041,16 @@ class TestCoverImage:
 
     def test_only_the_text_zones_still_copy(self):
         """Heading and body keep their click-to-copy zones; the cover is not
-        one of them."""
+        one of them. Each zone handler now goes through copyZone, which
+        copies just the user's selection when there is one (partial copy)
+        and falls back to the whole zone text otherwise."""
         html = self._render()
         assert html.count("copy-zone") == 2
-        assert "copyText(this.dataset.heading" in html
-        assert "copyText(this.dataset.content" in html
+        assert "copyZone(this.dataset.heading" in html
+        assert "copyZone(this.dataset.content" in html
+        assert "copyZone(this.dataset.path" not in html
+        # Partial copy: the zone handler reads the live selection first.
+        assert "window.getSelection" in html
         assert "copyText(this.dataset.path" not in html
 
     def test_no_leftover_png_helper_javascript(self):
