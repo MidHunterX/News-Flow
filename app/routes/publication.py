@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -24,6 +24,11 @@ from app.utils import ARTICLES_DIR, PUBLICATION_ARTICLES_DIR
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
 
+# Card orders the publication page's sort pills switch between: "id" keeps
+# the default id-descending order the queries return, "word" ranks by the
+# scraped body's word count.
+PUBLICATION_SORTS = ("id", "word")
+
 
 def _word_count(path: Path) -> int | None:
     """Word count of a locally scraped article body, or None when it's absent."""
@@ -33,6 +38,25 @@ def _word_count(path: Path) -> int | None:
         return len(path.read_text(encoding="utf-8").split())
     except (OSError, UnicodeError):
         return None  # Unreadable counts as not scraped; the card just says so.
+
+
+def _sort_cards(cards: list[dict], sort: str) -> list[dict]:
+    """Order the page's cards per the requested sort.
+
+    ``id`` (the default) returns them untouched — the queries already come
+    back newest-id-first. ``word`` ranks scraped articles by word count,
+    biggest first, with unscraped ones (``None``) last; the sort is stable,
+    so equal counts keep the id order.
+    """
+    if sort != "word":
+        return cards
+    return sorted(
+        cards,
+        key=lambda card: (
+            card["word_count"] if card["word_count"] is not None else -1
+        ),
+        reverse=True,
+    )
 
 
 def _build_cards(
@@ -69,6 +93,11 @@ async def publication_view(
     day: str | None = Query(
         None, description="Tab to show: 'today' for the ongoing workspace"
     ),
+    sort: str = Query(
+        "id",
+        description="Card order: 'id' (default, newest id first) or "
+        "'word' (scraped word count, biggest first)",
+    ),
 ):
     """Read-only view of the print-publication workspace.
 
@@ -78,8 +107,11 @@ async def publication_view(
     from today's curation workspace or the previous day's archive
     (``publication_articles`` + ``public/publication/`` files). Each card
     flags whether the article body was scraped locally and, when it was, its
-    word count. Nothing is scraped or mutated from here — inspection only.
+    word count. ``sort`` picks the card order (see :func:`_sort_cards`).
+    Nothing is scraped or mutated from here — inspection only.
     """
+    if sort not in PUBLICATION_SORTS:
+        raise HTTPException(400, f"sort must be one of: {', '.join(PUBLICATION_SORTS)}")
     show_today = day == "today"
     if show_today:
         cards = _build_cards(await get_items(), ARTICLES_DIR, archived=False)
@@ -97,6 +129,7 @@ async def publication_view(
             "note": "Archived by the daily reset",
             "empty": "Nothing archived yet",
         }
+    cards = _sort_cards(cards, sort)
 
     return templates.TemplateResponse(
         request=request,
@@ -105,6 +138,7 @@ async def publication_view(
             "request": request,
             "active_nav": "publication",
             "selected_day": "today" if show_today else "previous",
+            "selected_sort": sort,
             "section": {**section, "cards": cards},
             "count": len(cards),
             "article_layout": await get_article_layout(),

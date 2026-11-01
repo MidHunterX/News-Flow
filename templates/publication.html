@@ -2,11 +2,14 @@
 
 {% block content %}
   <!-- Print-publication inspection, shaped like the curation workspace:
-       day pills, a results header, and the same grid/rows/compact layout
-       branches (the article_layout setting drives which one renders), plus
-       the curation card's action row: Preview opens the article page and
-       Scrape saves the article's page/content without accepting it.
-       Preview only appears once the article has a local copy to open. -->
+       day pills, sort pills (id / word count), a results header, and the
+       same grid/rows/compact layout branches (the article_layout setting
+       drives which one renders), plus the curation card's action row:
+       Preview opens the article page and Scrape saves the article's
+       page/content without accepting it. Preview only appears once the
+       article has a local copy to open. -->
+
+  {% set selected_sort = selected_sort|default("id") %}
 
   {% macro scrape_badge(card) %}
     <div class="flex items-center gap-1.5">
@@ -92,6 +95,21 @@
       <a href="/publication?day=today"
          class="px-4 py-2 rounded-lg text-sm font-semibold transition {% if selected_day == 'today' %}bg-indigo-600 text-white shadow-sm{% else %}bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:border-gray-600{% endif %}">
         Today
+      </a>
+
+      <!-- Sort pills: id order (default) or word count (biggest first).
+           The links keep whichever day tab is active. -->
+      {% set day_query = "day=today&" if selected_day == "today" else "" %}
+      <span class="ml-3 text-xs uppercase tracking-wider text-gray-400 font-semibold dark:text-gray-500">Sort</span>
+      <a href="/publication?{{ day_query }}sort=id"
+         title="Newest article ID first (default)"
+         class="px-3 py-2 rounded-lg text-sm font-semibold transition {% if selected_sort == 'id' %}bg-indigo-600 text-white shadow-sm{% else %}bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:border-gray-600{% endif %}">
+        ID
+      </a>
+      <a href="/publication?{{ day_query }}sort=word"
+         title="Biggest scraped word count first; unscraped articles last"
+         class="px-3 py-2 rounded-lg text-sm font-semibold transition {% if selected_sort == 'word' %}bg-indigo-600 text-white shadow-sm{% else %}bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:border-gray-600{% endif %}">
+        Word count
       </a>
       <span class="ml-auto text-xs uppercase tracking-wider bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-semibold dark:bg-indigo-950 dark:text-indigo-300">
         Print
