@@ -23,7 +23,12 @@ class KaumudiScraper(BaseScraper):
         body_el = container.select_one("div.news-body")
         paragraphs = []
         if body_el:
-            for p in body_el.find_all("p"):
+            # The page sometimes nests a whole <html><body> inside the div.
+            # Due to malformed HTML from server + html parser behavior
+            # Unwrap it so paragraphs become direct children.
+            for junk in body_el.find_all(["html", "body"]):
+                junk.unwrap()
+            for p in body_el.find_all("p", recursive=False):
                 text = clean_text(p.get_text())
                 if text:
                     paragraphs.append(text)
