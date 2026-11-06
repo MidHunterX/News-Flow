@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
 
 from app.db.constants import (
     STATUS_ACCEPTED,
@@ -51,20 +52,43 @@ def _article_to_item(article: Article | PublicationArticle) -> NewsItem:
     )
 
 
-def _save_items_sync(items: list[NewsItem]) -> None:
+def _stored_keys(
+    session: Session,
+    model: type[Article | PublicationArticle],
+    source: str,
+) -> set[str]:
+    """``url or title`` keys of every row *source* already has in *model*.
+
+    Used by :func:`_save_items_sync` against both article tables: today's
+    curation workspace (``articles``) and yesterday's archive
+    (``publication_articles``), which the daily reset filled with exactly
+    the previous day's workspace.
+    """
+    return {
+        key
+        for (url, title) in session.execute(
+            select(model.url, model.title).where(model.source == source)
+        )
+        if (key := url or title)
+    }
+
+
+def _save_items_sync(items: list[NewsItem]) -> list[NewsItem]:
+    """Store the *items* not already present in today's or yesterday's
+    workspace, returning exactly those stored rows (in input order)."""
     by_source: dict[str, list[NewsItem]] = defaultdict(list)
     for item in _dedupe(items):
         by_source[item.source].append(item)
 
+    stored: list[NewsItem] = []
     with SessionLocal() as session:
         for source, source_items in by_source.items():
-            existing_keys = {
-                key
-                for (url, title) in session.execute(
-                    select(Article.url, Article.title).where(Article.source == source)
-                )
-                if (key := url or title)
-            }
+            # Today's rows plus yesterday's archive: news sites keep listing
+            # stories they ran the day before, so a key found in
+            # publication_articles must not re-enter today's clean slate.
+            existing_keys = _stored_keys(
+                session, Article, source
+            ) | _stored_keys(session, PublicationArticle, source)
             new_items = [
                 item
                 for item in source_items
@@ -83,12 +107,22 @@ def _save_items_sync(items: list[NewsItem]) -> None:
                 )
                 for item in new_items
             )
+            stored.extend(new_items)
         session.commit()
+    return stored
 
 
-async def save_items(items: list[NewsItem]) -> None:
-    """Insert cached articles not already stored, keeping previously seen ones."""
-    await run_in_thread(_save_items_sync, items)
+async def save_items(items: list[NewsItem]) -> list[NewsItem]:
+    """Insert cached articles not already stored, keeping previously seen ones.
+
+    A story already in yesterday's archive (``publication_articles``) is
+    skipped too, so the daily clean slate can't be refilled with articles
+    the previous day's workspace already covered.
+
+    Returns the articles actually stored — the input minus every duplicate
+    — so callers can report real new arrivals instead of scrape totals.
+    """
+    return await run_in_thread(_save_items_sync, items)
 
 
 def _get_items_sync(

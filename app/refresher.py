@@ -36,23 +36,27 @@ logger = logging.getLogger(__name__)
 async def refresh_sources(sources: list[str] | None = None) -> list[NewsItem]:
     """Re-scrape the given sources (default: all), replace their cached rows.
 
-    Returns the freshly scraped articles. Raises on scrape failure — callers
-    decide whether that is fatal (API) or logged-and-skipped (loop).
+    Returns the articles actually stored — freshly scraped ones minus
+    duplicates already in today's workspace or yesterday's archive — so
+    callers report new arrivals, not scrape totals. Raises on scrape
+    failure — callers decide whether that is fatal (API) or
+    logged-and-skipped (loop).
     """
     from app.scrapers.init import scrape_source  # lazy: tests patch this
 
     names = sources if sources is not None else list(SOURCES)
     results = [await scrape_source(name) for name in names]
     items = [item for sublist in results for item in sublist]
-    await save_items(items)
+    stored = await save_items(items)
     await set_setting(REFRESH_LAST_RUN_KEY, now_iso())
-    return items
+    return stored
 
 
 async def run_due_refresh() -> int:
     """Run one background refresh round when the interval has elapsed.
 
-    Returns the number of articles scraped (0 most ticks). Never raises: an
+    Returns the number of articles newly stored by the round (0 most ticks,
+    and 0 when every scraped story was already known). Never raises: an
     unexpected error is logged, recorded in the notification log, and the
     round is skipped.
     """

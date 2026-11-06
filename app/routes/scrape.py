@@ -121,7 +121,9 @@ async def refresh_news(
     """Re-scrape the requested sources and replace their cached articles.
 
     Manual trigger for the same work the background loop performs on its
-    ``refresh_interval`` schedule (both go through app.refresher).
+    ``refresh_interval`` schedule (both go through app.refresher). The
+    response reports only the articles newly stored — stories already in
+    today's workspace or yesterday's archive are dropped as duplicates.
     """
     if source:
         _validate_sources([source])

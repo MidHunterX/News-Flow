@@ -49,8 +49,9 @@ def env(monkeypatch):
         calls.append(name)
         return [_item(len(calls))]
 
-    async def fake_save_items(items: list[NewsItem]) -> None:
+    async def fake_save_items(items: list[NewsItem]) -> list[NewsItem]:
         saved.append(list(items))
+        return list(items)
 
     async def fake_get_interval() -> int:
         return settings["refresh_interval"]
@@ -103,6 +104,28 @@ async def test_refresh_sources_stamps_last_run(env):
     await refresher.refresh_sources(["kaumudi"])
     keys = [key for key, _ in env["stamps"]]
     assert keys.count("refresh_last_run") == 1
+
+
+async def test_refresh_sources_reports_only_newly_stored_articles(
+    env, monkeypatch
+):
+    """Duplicates dropped by save_items are not reported as refreshed.
+
+    ``refresh_sources`` (and therefore POST /api/refresh and the background
+    round's count) mirrors what the writer stored, not what the scraper saw.
+    """
+    seen: list[list[NewsItem]] = []
+
+    async def partial_save(items: list[NewsItem]) -> list[NewsItem]:
+        seen.append(list(items))
+        return items[:1]  # everything but the first story was a duplicate
+
+    monkeypatch.setattr(refresher, "save_items", partial_save)
+
+    items = await refresher.refresh_sources()
+
+    assert [i.id for i in items] == [1]  # only the stored one comes back
+    assert len(seen[0]) == len(_all_source_names())  # all were handed to save
 
 
 async def test_refresh_sources_raises_on_scrape_failure(env):
