@@ -98,6 +98,8 @@ app/
   refresher.py       # backend source refresh (refresh_sources, run_due_refresh)
   autoscraper.py     # background article scraping (run_due_auto_scrape)
   gemini.py          # Gemini categorization (article + terms → category IDs)
+  source_health.py   # per-source scrape health (ok/down) surfaced in the UI;
+                     # a down source is skipped, never fatal
 templates/           # Jinja2 UI (base/index/publication/article.html),
                      # Tailwind via CDN
 static/              # logo.svg
@@ -147,6 +149,14 @@ Two workspaces exist side by side:
   replaces it.
 - **Refresh trimming:** `/api/refresh` and the scheduled background refresh
   both keep at most `MAX_ARTICLES_PER_SOURCE` (10) articles per source.
+- **Down sources:** sources are scraped independently. `scrape_source()`
+  records the outcome in `app/source_health.py`, and a failing source (404
+  during maintenance, timeout, parse error) is skipped by `GET /`,
+  `GET /api/scrape`, and both refresh paths — it never fails the page or
+  costs the other sources their stories. `templates/index.html` marks it
+  **Down** in the source filter (plus a banner naming the reason) and shows
+  an explanation when it is the selected filter. Health is in-memory; the
+  next refresh rediscovers it, and recovery is automatic.
 - **Accept flow** (`routes/scrape.py`): marks the article accepted → scrapes
   its page (via Playwright when `needs_browser`) → downloads the cover to
   `public/covers/` → saves heading+content to `public/articles/<id>.txt` and

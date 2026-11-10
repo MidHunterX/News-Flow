@@ -12,10 +12,16 @@ Scheduling mirrors the AI Publish curator: the attempt timestamp is stored
 *before* scraping so a crashed/slow run can't wedge the loop into a tight
 retry, and any failure is swallowed (recorded in the notification log) so the
 caller's loop never dies.
+
+Sources are scraped independently: one site being down (404 during
+maintenance, a timeout) only costs that source's stories for the round. The
+healthy sources are stored as usual, the down one is flagged in the UI via
+:mod:`app.source_health`, and it is retried on the next round.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -29,6 +35,7 @@ from app.db import (
 )
 from app.db.constants import NOTIF_ERROR, REFRESH_LAST_RUN_KEY
 from app.models import NewsItem
+from app.source_health import is_down
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +45,47 @@ async def refresh_sources(sources: list[str] | None = None) -> list[NewsItem]:
 
     Returns the articles actually stored — freshly scraped ones minus
     duplicates already in today's workspace or yesterday's archive — so
-    callers report new arrivals, not scrape totals. Raises on scrape
-    failure — callers decide whether that is fatal (API) or
-    logged-and-skipped (loop).
+    callers report new arrivals, not scrape totals.
+
+    Sources are scraped concurrently and independently: a source that fails
+    is logged (and notified the first time it goes down), then skipped — it
+    never stops the other sources' stories from being stored, and it is
+    retried on the next round.
     """
     from app.scrapers.init import scrape_source  # lazy: tests patch this
 
     names = sources if sources is not None else list(SOURCES)
-    results = [await scrape_source(name) for name in names]
-    items = [item for sublist in results for item in sublist]
-    stored = await save_items(items)
+    # Snapshot before scraping: a source already known to be down has
+    # already told the user, so a repeated failure stays quiet in the log.
+    was_down = {name: is_down(name) for name in names}
+
+    results = await asyncio.gather(
+        *(scrape_source(name) for name in names), return_exceptions=True
+    )
+
+    items: list[NewsItem] = []
+    for name, result in zip(names, results):
+        if isinstance(result, BaseException):
+            if isinstance(result, asyncio.CancelledError):
+                raise result
+            logger.warning(
+                "Scrape failed for %s: %s: %s",
+                name,
+                type(result).__name__,
+                result,
+            )
+            if not was_down[name]:
+                await record_notification(
+                    NOTIF_ERROR,
+                    name,
+                    f"Source unavailable ({type(result).__name__}): "
+                    f"{result or 'no details'}. Other sources keep "
+                    "scraping; this one is retried automatically.",
+                )
+            continue
+        items.extend(result)
+
+    stored = await save_items(items) if items else []
     await set_setting(REFRESH_LAST_RUN_KEY, now_iso())
     return stored
 

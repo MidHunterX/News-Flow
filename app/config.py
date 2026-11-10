@@ -41,7 +41,7 @@ USER_AGENT = (
 )
 
 SOURCES = {
-    "kaumudi": "https://keralakaumudi.com/latest",
+    "kaumudi": "https://www.keralakaumudi.com/latest",
     "mangalam": "https://www.mangalam.com/category/latest-news",
     # It is ridden with pro articles, no tags etc.
     # "madhyamam": "https://www.madhyamam.com/latest-news",

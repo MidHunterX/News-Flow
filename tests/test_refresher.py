@@ -30,7 +30,7 @@ def env(monkeypatch):
     saved: list[list[NewsItem]] = []
     notifications: list[tuple[str, str, str]] = []
     stamp_writes: list[tuple[str, str]] = []
-    state = {"fail_scrape": False}
+    state = {"fail_scrape": False, "fail_names": set()}
 
     def _item(idx: int) -> NewsItem:
         return NewsItem(
@@ -44,7 +44,7 @@ def env(monkeypatch):
         )
 
     async def fake_scrape_source(name: str) -> list[NewsItem]:
-        if state["fail_scrape"]:
+        if state["fail_scrape"] or name in state["fail_names"]:
             raise RuntimeError("network down")
         calls.append(name)
         return [_item(len(calls))]
@@ -128,10 +128,16 @@ async def test_refresh_sources_reports_only_newly_stored_articles(
     assert len(seen[0]) == len(_all_source_names())  # all were handed to save
 
 
-async def test_refresh_sources_raises_on_scrape_failure(env):
-    env["state"]["fail_scrape"] = True
-    with pytest.raises(RuntimeError):
-        await refresher.refresh_sources(["kaumudi"])
+async def test_refresh_sources_survives_a_failing_source(env):
+    """One down source neither raises nor costs the others their stories."""
+    env["state"]["fail_names"] = {"kaumudi"}
+
+    items = await refresher.refresh_sources(_all_source_names())
+
+    assert "kaumudi" not in env["calls"]
+    assert items  # the healthy sources were stored
+    assert env["saved"] == [items]
+    assert any(source == "kaumudi" for _, source, _ in env["notifications"])
 
 
 # ---------------------------------------------------------------------------
@@ -175,12 +181,14 @@ async def test_success_records_no_notification(env):
     assert env["notifications"] == []
 
 
-async def test_scrape_error_is_swallowed_and_notified(env):
+async def test_all_sources_down_is_swallowed_and_notified(env):
     env["state"]["fail_scrape"] = True
     assert await refresher.run_due_refresh() == 0
     assert env["saved"] == []
     levels = [level for level, _, _ in env["notifications"]]
     assert "error" in levels
+    # One entry per source, so the log says which site is unreachable.
+    assert len(env["notifications"]) == len(_all_source_names())
 
 
 # ---------------------------------------------------------------------------

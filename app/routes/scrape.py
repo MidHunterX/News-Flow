@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -39,7 +40,10 @@ from app.models import NewsItem, ScrapeResponse
 from app.publisher import publish_due_articles
 from app.refresher import refresh_sources
 from app.scrapers.init import scrape_source
+from app.source_health import STATUS_DOWN, get_source_statuses
 from app.utils import ARTICLES_DIR, PUBLICATION_ARTICLES_DIR
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -91,13 +95,34 @@ def _validate_sources(sources: list[str]) -> None:
 
 
 async def _get_articles(sources: list[str]) -> list[NewsItem]:
-    """Return cached articles, scraping (and caching) any source not yet stored."""
+    """Return cached articles, scraping (and caching) any source not yet stored.
+
+    Sources are scraped concurrently and independently: a source that is
+    down (404, timeout, parse error) is skipped — its status is recorded for
+    the UI — instead of failing the whole page. The healthy sources are
+    cached and returned as usual.
+    """
     cached = await get_cached_sources()
     missing = [name for name in sources if name not in cached]
     if missing:
-        results = await asyncio.gather(*[scrape_source(name) for name in missing])
-        fresh_items = [item for sublist in results for item in sublist]
-        await save_items(fresh_items)
+        results = await asyncio.gather(
+            *(scrape_source(name) for name in missing), return_exceptions=True
+        )
+        fresh_items: list[NewsItem] = []
+        for name, result in zip(missing, results):
+            if isinstance(result, BaseException):
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
+                logger.warning(
+                    "Scrape failed for %s: %s: %s",
+                    name,
+                    type(result).__name__,
+                    result,
+                )
+                continue
+            fresh_items.extend(result)
+        if fresh_items:
+            await save_items(fresh_items)
     return await get_items(sources[0] if len(sources) == 1 else None)
 
 
@@ -475,6 +500,7 @@ async def get_news_ui(
     reset_timezone = await get_reset_timezone()
 
     toggles = await _toggle_context()
+    source_status = get_source_statuses(list(SOURCES))
     ai_publish_interval = await get_ai_publish_interval()
     ai_publish_last_run = await get_ai_publish_last_run()
     return templates.TemplateResponse(
@@ -489,6 +515,14 @@ async def get_news_ui(
             "rejected_items": rejected_items,
             "sources": SOURCES.keys(),
             "selected_source": current_source,
+            # Last scrape outcome per source, so a site that is down is
+            # flagged in the filter rather than silently missing.
+            "source_status": source_status,
+            "down_sources": {
+                name: status
+                for name, status in source_status.items()
+                if status["state"] == STATUS_DOWN
+            },
             "count": pending_total,
             "items_shown": len(items),
             "completion_interval": interval,
