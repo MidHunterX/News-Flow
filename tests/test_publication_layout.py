@@ -613,3 +613,85 @@ class TestBareRender:
             '"word_allowance": 100};' in html
         )
         assert "Undefined" not in html
+
+
+# ---------------------------------------------------------------------------
+# Picker meter: the live word-count usage inside the "Add articles" modal
+# ---------------------------------------------------------------------------
+
+
+class TestPickerMeter:
+    """Static checks on the modal's live meter (no JS runtime offline).
+
+    The meter projects the target page's fill — words already on it plus
+    the selection — against the quota and upper limit, using the same
+    geometry and color ramp as the sidebar's fill bars.
+    """
+
+    async def test_meter_sits_between_the_list_and_the_footer(self, pub_workspace):
+        response = await _view(day=None, sort="id")
+        html = response.body.decode()
+
+        assert 'id="picker-meter"' in html
+        assert 'id="picker-meter-fill"' in html
+        assert 'id="picker-meter-tick"' in html
+        assert 'id="picker-meter-text"' in html
+        # Inside the picker modal, above its action footer.
+        assert (
+            html.index('id="picker-list"')
+            < html.index('id="picker-meter"')
+            < html.index('id="picker-add"')
+        )
+
+    async def test_page_word_counts_are_embedded_as_the_baseline(
+        self, pub_workspace
+    ):
+        """The projection starts from the words already on the page —
+        embedded per page (index = page - 1) from the sidebar's rows."""
+        article_id = _insert("Placed")
+        await db_pkg.assign_articles_to_page([article_id], 2, archived=True)
+        _write_body(pub_workspace, article_id, 120)
+
+        response = await _view(day=None, sort="id")
+        html = response.body.decode()
+        raw = html.split("const pageWordCounts = ", 1)[1].split(";", 1)[0]
+
+        assert json.loads(raw) == [0, 120, 0, 0, 0, 0, 0, 0]
+
+    def test_bare_render_defaults_the_baseline_to_nothing(self):
+        """The scripts block repeats the ``pages`` default like the other
+        sidebar context, so a minimal render never sees an Undefined."""
+        html = _render_bare()
+        assert "const pageWordCounts = [];" in html
+        assert "Undefined" not in html
+
+    def test_meter_recomputes_on_every_selection_change(self):
+        """renderPicker (every toggle and keystroke in the search) →
+        updatePickerFooter → the meter, so the numbers move live."""
+        html = _render_bare()
+        picker = html.split("function renderPicker()", 1)[1].split(
+            "function updatePickerFooter()", 1
+        )[0]
+        assert "updatePickerFooter();" in picker
+        footer = html.split("function updatePickerFooter()", 1)[1].split(
+            "async function addPicked()", 1
+        )[0]
+        assert "updatePickerMeter()" in footer
+
+    def test_meter_projects_the_selection_against_the_quota(self):
+        html = _render_bare()
+        meter = html.split("function updatePickerMeter()", 1)[1].split(
+            "function updatePickerFooter()", 1
+        )[0]
+
+        # Baseline + selection, and the same bar geometry as the sidebar.
+        assert "const current = pageWordCounts[pickerPage - 1] || 0;" in meter
+        assert "const upper = quota + pubLayout.word_allowance;" in meter
+        assert "added ? ` (+${added})`" in meter  # shows what's about to land
+        assert "quota / upper" in meter  # quota hairline position
+
+    def test_meter_color_mirrors_the_sidebar_ramp(self):
+        html = _render_bare()
+        fn = html.split("function meterColor(", 1)[1].split("\n    }", 1)[0]
+        for color in ("#6366f1", "#22c55e", "#f97316", "#ef4444"):
+            assert color in fn

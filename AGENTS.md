@@ -182,11 +182,15 @@ Two workspaces exist side by side:
   `page_number` column (added to both article tables by `_migrate`, copied
   by the daily reset). The three knobs live in `app/db/layout.py` — plain
   `settings` rows but with their own API (`/api/publication/settings`);
-  `/api/settings` rejects those keys on purpose. Fill color: indigo under
-  quota, green at 100%, heating through orange to red at
-  `page_words + word_allowance`. Assigning is all-or-nothing (404 on any
-  unknown id, 400 past `total_pages`), and shrinking `total_pages`
-  un-places the orphans in both workspaces. **Export JSON**
+  `/api/settings` rejects those keys on purpose. The picker modal
+  carries a live word-count meter: words already on the target page plus
+  the current selection, projected against the quota/upper limit with the
+  same color ramp as the sidebar bars (baseline embedded per page as
+  `pageWordCounts`) — indigo under quota, green at 100%, heating through
+  orange to red at `page_words + word_allowance`. Assigning is
+  all-or-nothing (404 on any unknown id, 400 past `total_pages`), and
+  shrinking `total_pages` un-places the orphans in both workspaces.
+  **Export JSON**
   (`GET /api/publication/export`) builds settings + limits, pages with
   each article's heading/body split on a blank line, whole-file word
   counts, and each cover's URL / absolute path / pixel size — the payload

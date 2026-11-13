@@ -440,6 +440,24 @@
                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
       </div>
       <div id="picker-list" class="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0 dark:divide-gray-700"></div>
+
+      <!-- Live word-count meter: the target page's usage as the selection
+           grows. Same geometry and colors as the sidebar's fill bars —
+           the track's end is the upper limit, the hairline the quota. -->
+      <div id="picker-meter" class="px-6 py-3 border-t border-gray-200 shrink-0 dark:border-gray-700">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+          <span class="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Page <span id="picker-meter-page">1</span> fill
+          </span>
+          <span id="picker-meter-text" class="text-xs font-bold tabular-nums"
+                title="Words on the page after adding the selection">
+          </span>
+        </div>
+        <div class="relative h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+          <div id="picker-meter-fill" class="h-full rounded-full" style="width: 0%; background-color: #6366f1"></div>
+          <span id="picker-meter-tick" class="absolute inset-y-0 w-px bg-gray-500/70 dark:bg-gray-400/70" aria-hidden="true"></span>
+        </div>
+      </div>
       <div class="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0 dark:border-gray-700 dark:bg-gray-900">
         <span id="picker-count" class="text-xs font-semibold text-gray-500 dark:text-gray-400">0 selected</span>
         <button type="button" id="picker-add" onclick="addPicked()" disabled
@@ -547,6 +565,7 @@
      content block computes, so bare renders (tests) never see Undefined. #}
   {% set selected_day = selected_day|default("previous") %}
   {% set layout_settings = layout_settings|default({"total_pages": 8, "page_words": 300, "word_allowance": 100}) %}
+  {% set pages = pages|default([]) %}
   <script>
     // Action buttons (Scrape, Mark published): POST the article's endpoint,
     // then reload so the card's badges/word count pick up the change.
@@ -597,6 +616,9 @@
     const unassignedData = JSON.parse(
       document.getElementById("pub-unassigned").textContent
     );
+    // Words already on each sidebar page (index = page - 1): the picker
+    // meter's baseline, so the projection starts from the real fill.
+    const pageWordCounts = {{ pages|map(attribute='words')|list|tojson }};
 
     // ---- Publication settings modal + slider widget ----
     // Geometry of the SVG: a number line from 0 to an auto-scaled maximum
@@ -868,12 +890,73 @@
       updatePickerFooter();
     }
 
+    // ---- Picker meter: the page's word-count usage as it's filled ----
+    // Mirrors the sidebar's fill bars: the track's end is the upper limit
+    // (quota + allowance), the hairline the quota, and the color heats
+    // indigo → green → orange → red with the percentage — so the modal
+    // agrees with the page section it's about to update.
+    const wordsById = new Map(
+      unassignedData.map((article) => [
+        article.id,
+        article.word_count == null ? 0 : article.word_count,
+      ])
+    );
+
+    function lerpHex(start, end, t) {
+      const lo = [1, 3, 5].map((i) => parseInt(start.slice(i, i + 2), 16));
+      const hi = [1, 3, 5].map((i) => parseInt(end.slice(i, i + 2), 16));
+      return (
+        "#" +
+        lo
+          .map((a, i) => Math.round(a + (hi[i] - a) * t))
+          .map((v) => v.toString(16).padStart(2, "0"))
+          .join("")
+      );
+    }
+
+    function meterColor(percent) {
+      if (percent < 100) return "#6366f1";
+      const span = (pubLayout.word_allowance / pubLayout.page_words) * 100;
+      if (span <= 0 || percent >= 100 + span) return "#ef4444";
+      const t = (percent - 100) / span;
+      if (t < 0.5) return lerpHex("#22c55e", "#f97316", t * 2);
+      return lerpHex("#f97316", "#ef4444", (t - 0.5) * 2);
+    }
+
+    function updatePickerMeter() {
+      const quota = pubLayout.page_words;
+      const upper = quota + pubLayout.word_allowance;
+      const current = pageWordCounts[pickerPage - 1] || 0;
+      let added = 0;
+      picked.forEach((id) => {
+        added += wordsById.get(id) || 0; // unscraped counts as zero words
+      });
+      const total = current + added;
+      const percent = (total / quota) * 100;
+      const color = meterColor(percent);
+
+      document.getElementById("picker-meter-page").textContent =
+        String(pickerPage);
+      const text = document.getElementById("picker-meter-text");
+      text.textContent =
+        `${total} / ${quota} wc · ${Math.round(percent)}%` +
+        (added ? ` (+${added})` : ""); // what the selection is about to add
+      text.style.color = color;
+      const fill = document.getElementById("picker-meter-fill");
+      fill.style.width =
+        `${Math.min((total / upper) * 100, 100).toFixed(1)}%`;
+      fill.style.backgroundColor = color;
+      document.getElementById("picker-meter-tick").style.left =
+        `${((quota / upper) * 100).toFixed(1)}%`;
+    }
+
     function updatePickerFooter() {
       document.getElementById("picker-count").textContent =
         `${picked.size} selected`;
       const add = document.getElementById("picker-add");
       add.textContent = `Add to page ${pickerPage}`;
       add.disabled = picked.size === 0;
+      updatePickerMeter(); // every selection/search change lands here
     }
 
     async function addPicked() {
