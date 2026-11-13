@@ -842,6 +842,17 @@
       body.append(title, meta);
       row.appendChild(body);
 
+      // Mirror the main card list: completed means WordPress-published,
+      // so the picker rows carry the same #wp chip as the cards.
+      if (article.status === "completed") {
+        const wp = document.createElement("span");
+        wp.className =
+          "shrink-0 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900 dark:text-indigo-300 dark:border-indigo-800 px-2 py-0.5 rounded-full";
+        wp.textContent = "#wp";
+        wp.title = "Published to WordPress by the pipeline";
+        row.appendChild(wp);
+      }
+
       const words = document.createElement("span");
       words.className = "text-xs tabular-nums text-gray-400 shrink-0";
       words.textContent =
@@ -873,19 +884,21 @@
           !query ||
           (article.title || "").toLowerCase().includes(query) ||
           (article.source || "").toLowerCase().includes(query)
-      );
-      list.replaceChildren();
-      if (!items.length) {
-        const empty = document.createElement("p");
-        empty.className = "px-6 py-8 text-sm text-gray-400 text-center";
-        empty.textContent = unassignedData.length
-          ? "No unassigned article matches that search."
-          : "Every article is already placed on a page.";
-        list.appendChild(empty);
-      } else {
-        const fragment = document.createDocumentFragment();
-        items.forEach((article) => fragment.appendChild(pickerRow(article)));
-        list.appendChild(fragment);
+      );        list.replaceChildren();
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "px-6 py-8 text-sm text-gray-400 text-center";
+          empty.textContent = unassignedData.length
+            ? "No unassigned article matches that search."
+            : "Every article is already placed on a page.";
+          list.appendChild(empty);
+        } else {
+          const fragment = document.createDocumentFragment();
+          items.forEach((article) => {
+            const row = pickerRow(article);
+            fragment.appendChild(row);
+          });
+          list.appendChild(fragment);
       }
       updatePickerFooter();
     }

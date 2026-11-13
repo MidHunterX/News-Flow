@@ -210,6 +210,7 @@ def _unassigned_cards(cards: list[dict]) -> list[dict]:
             "source": card["item"].source,
             "image": card["cover"] or card["item"].image_url,
             "word_count": card["word_count"],
+            "status": card["item"].status,
         }
         for card in cards
         if card["item"].page_number is None
