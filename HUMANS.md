@@ -20,7 +20,7 @@ effort to where humans are really good at and where it actually matters.
 
 **For AI**: Context from the machine space and Actions from the human space
 used in combination to pair work with humans using the tools the human operator
-uses for doing **Non-Deterministic** works.
+uses for doing **Non-Deterministic** clerical works or even auto-piloting.
 
 ## Development Process
 

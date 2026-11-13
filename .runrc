@@ -2,3 +2,16 @@
 
 export GENERATE_UNIQUE_PORT=true
 export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
+
+setup_post_init_hook() {
+    intention server
+}
+
+setup_layout_custom() {
+    create_window "Web Server" "uv run fastapi run --port $(generate_port)"
+    create_window "Editor (Web)" "uv run nvim"
+}
+
+setup_post_exit_hook() {
+    intention linux
+}
