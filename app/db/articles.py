@@ -49,6 +49,7 @@ def _article_to_item(article: Article | PublicationArticle) -> NewsItem:
         cover_file=article.cover_file,
         wp_category_ids=article.wp_category_ids,
         is_print_published=bool(article.is_print_published),
+        page_number=article.page_number,
     )
 
 

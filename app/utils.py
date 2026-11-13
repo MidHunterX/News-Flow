@@ -79,6 +79,21 @@ def _convert_to_jpeg(data: bytes) -> bytes | None:
     except (UnidentifiedImageError, OSError, ValueError):
         return None
 
+def image_dimensions(path: Path) -> tuple[int, int] | None:
+    """Pixel size of a local image, or None when it can't be read.
+
+    Feeds the publication export (ExtendScript wants to know how big a
+    cover is before placing it). A missing or undecodable file is not an
+    error for the caller — it just exports width/height as null.
+    """
+    try:
+        with Image.open(path) as img:
+            width, height = img.size
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+    return width, height
+
+
 def _unique_path(path: Path) -> Path:
     """Return *path* if it doesn't exist, else append ``_2``, ``_3``, …
 

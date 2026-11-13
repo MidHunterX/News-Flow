@@ -76,6 +76,12 @@ app/
   routes/scrape.py   # API + UI routes, article accept/reject/clear, settings
   routes/publication.py
                      # GET /publication (print-publication inspection page)
+                     # + the print-layout API the sidebar drives:
+                     # GET/POST /api/publication/settings, POST
+                     # /api/publication/assign, POST
+                     # /api/publication/{id}/unassign, GET
+                     # /api/publication/export (layout JSON for the
+                     # InDesign ExtendScript)
   routes/notifications.py
                      # notification log routes: GET /api/notifications (list
                      # + unread_count, info excluded), POST .../read (marks
@@ -94,6 +100,11 @@ app/
     articles.py      # article queries/mutations (curation + publication)
     wp_terms.py      # WordPress terms (categories/tags) queries/mutations
     settings.py      # settings queries/mutations
+    layout.py        # publication-only layout settings (total_pages,
+                     # page_words, word_allowance — kept out of
+                     # settings.py + /api/settings on purpose) and the
+                     # page_number placement helpers both article tables
+                     # share
   wordpress.py       # WordPress terms sync (categories + tags → wp_terms)
   refresher.py       # backend source refresh (refresh_sources, run_due_refresh)
   autoscraper.py     # background article scraping (run_due_auto_scrape)
@@ -166,6 +177,20 @@ Two workspaces exist side by side:
   with `archived=True` for the previous-day tab (cover → `public/publication/covers/`,
   content → `public/publication/articles/<id>.txt`, cover path → the
   `publication_articles` row) but never touches the article's status.
+- **Print-layout sidebar** (`/publication`): the right-hand panel groups
+  the shown workspace's articles onto `total_pages` pages via the
+  `page_number` column (added to both article tables by `_migrate`, copied
+  by the daily reset). The three knobs live in `app/db/layout.py` — plain
+  `settings` rows but with their own API (`/api/publication/settings`);
+  `/api/settings` rejects those keys on purpose. Fill color: indigo under
+  quota, green at 100%, heating through orange to red at
+  `page_words + word_allowance`. Assigning is all-or-nothing (404 on any
+  unknown id, 400 past `total_pages`), and shrinking `total_pages`
+  un-places the orphans in both workspaces. **Export JSON**
+  (`GET /api/publication/export`) builds settings + limits, pages with
+  each article's heading/body split on a blank line, whole-file word
+  counts, and each cover's URL / absolute path / pixel size — the payload
+  the InDesign ExtendScript consumes.
 - **Scheduled refresh** (`app/refresher.py`): `refresh_sources()` is shared by
   the manual `POST /api/refresh` and the background loop — scrape →
   `save_items` → `trim_articles` → stamp `refresh_last_run`. `run_due_refresh()`

@@ -36,6 +36,7 @@ def _isolate_db(tmp_path, monkeypatch):
 
     import app.db as db_pkg
     import app.db.articles as articles_mod
+    import app.db.layout as layout_mod
     import app.db.notifications as notifications_mod
     import app.db.schema as schema_mod
     import app.db.settings as settings_mod
@@ -56,7 +57,7 @@ def _isolate_db(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, expire_on_commit=False)
 
-    for mod in (engine_mod, db_pkg, articles_mod, notifications_mod,
+    for mod in (engine_mod, db_pkg, articles_mod, layout_mod, notifications_mod,
                 schema_mod, settings_mod, wp_terms_mod):
         monkeypatch.setattr(mod, "SessionLocal", session_factory)
         # Only schema and the package __init__ import `engine` itself.

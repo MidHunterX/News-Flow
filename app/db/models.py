@@ -44,6 +44,12 @@ class _ArticleFields:
         Boolean, nullable=False, default=False, server_default="0"
     )
 
+    # Page of the print layout this article is grouped onto (1-based, set
+    # from the publication sidebar); NULL means it isn't placed yet. The
+    # daily reset copies it with every other column, so yesterday's layout
+    # survives inside the archive while today starts unplaced.
+    page_number: Mapped[int | None] = mapped_column(Integer)
+
 
 class Article(_ArticleFields, Base):
     __tablename__ = "articles"

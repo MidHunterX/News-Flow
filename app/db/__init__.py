@@ -10,6 +10,7 @@ Modules:
     schema      — table creation / migrations / init_db
     articles    — data access for cached articles
     settings    — data access for app settings
+    layout      — print-layout settings + page groupings (publication)
     notifications — data access for the UI notification log
 """
 
@@ -48,6 +49,13 @@ from app.db.constants import (
                              toggle_is_available,
 )
 from app.db.engine import DB_PATH, Base, SessionLocal, engine
+from app.db.layout import (
+                             PUBLICATION_LAYOUT_DEFAULTS,
+                             assign_articles_to_page,
+                             clear_article_page,
+                             get_publication_layout,
+                             set_publication_layout,
+)
 from app.db.models import Article, Notification, PublicationArticle, Setting
 from app.db.notifications import (
                              clear_notifications,
@@ -144,6 +152,12 @@ __all__ = [  # noqa: RUF022
     "get_pending_display_limit",
     "get_toggle",
     "get_all_toggle_states",
+    # Print-layout settings + page groupings (publication sidebar).
+    "PUBLICATION_LAYOUT_DEFAULTS",
+    "get_publication_layout",
+    "set_publication_layout",
+    "assign_articles_to_page",
+    "clear_article_page",
     # WordPress terms (categories + tags).
     "get_categories",
     "get_tags",

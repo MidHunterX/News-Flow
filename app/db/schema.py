@@ -16,6 +16,7 @@ from app.db.constants import (
     STATUS_PUBLISHING,
 )
 from app.db.engine import Base, SessionLocal, engine
+from app.db.layout import PUBLICATION_LAYOUT_DEFAULTS
 from app.db.models import Article, Notification, PublicationArticle, Setting
 from app.utils import (
     ARTICLES_DIR,
@@ -70,6 +71,10 @@ def _migrate() -> None:
                         f"ALTER TABLE {table} ADD COLUMN is_print_published "
                         "BOOLEAN NOT NULL DEFAULT 0"
                     )
+                )
+            if "page_number" not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN page_number INTEGER")
                 )
 
     # The notification log gained its unread flag with the bell badge; rows
@@ -224,6 +229,14 @@ def init_db() -> None:
 
     with SessionLocal() as session:
         for key, value in DEFAULT_SETTINGS.items():
+            session.execute(
+                sqlite_insert(Setting)
+                .values(key=key, value=value)
+                .on_conflict_do_nothing()
+            )
+        # The print-layout knobs live in their own module (app.db.layout)
+        # but are seeded here with the rest, into the same settings table.
+        for key, value in PUBLICATION_LAYOUT_DEFAULTS.items():
             session.execute(
                 sqlite_insert(Setting)
                 .values(key=key, value=value)

@@ -26,6 +26,9 @@ class NewsItem(BaseModel):
     # Print publication: marked as published in the printed paper from the
     # /publication page (distinct from the WP pipeline's completed status).
     is_print_published: bool = False
+    # Print layout: page (1-based) this article is grouped onto from the
+    # publication sidebar; None until placed.
+    page_number: int | None = None
 
 
 class ScrapeResponse(BaseModel):
