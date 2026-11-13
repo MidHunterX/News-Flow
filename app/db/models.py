@@ -56,6 +56,15 @@ class Article(_ArticleFields, Base):
     __table_args__ = (
         Index("idx_articles_source", "source"),
         Index("idx_articles_status", "status"),
+        # Two scrapers (background refresh + auto-scrape, or two refreshes
+        # back-to-back after a reset) can race to insert the same story. A
+        # DB unique constraint is the only check that survives that race: the
+        # application dedupe in _save_items_sync is a read-then-write inside
+        # one transaction, which two concurrent transactions can both pass.
+        # url is nullable (some sources have no link), so the constraint is on
+        # the non-null values only — title-only rows are still dedeuped in
+        # application code.
+        Index("idx_articles_url", "url", unique=True),
     )
 
 
@@ -65,6 +74,12 @@ class PublicationArticle(_ArticleFields, Base):
     Written by ``_reset_daily_workspace`` (which replaces the whole archive
     on every new day) and read by the ``/publication`` page. It is an exact
     mirror of :class:`Article`, ids included.
+
+    The archive keeps the prior day's unique-url invariant without itself
+    being unique-constrained: the daily reset clears and refills it in one
+    transaction, so duplicate urls can only come from a reset that mirrored
+    a curation workspace that already contained them (which the constraint on
+    ``articles`` is what we are fixing).
     """
 
     __tablename__ = "publication_articles"

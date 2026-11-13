@@ -5,7 +5,7 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import delete, insert, inspect, select, text
+from sqlalchemy import delete, func, insert, inspect, select, text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.db.constants import (
@@ -216,6 +216,43 @@ def _reset_daily_workspace() -> None:
         logger.warning("Could not store daily-reset notification", exc_info=True)
 
 
+def _dedupe_existing_urls_sync(session) -> int:
+    """Remove duplicate ``url`` rows from today's curation workspace.
+
+    A race between scrapers after a clean-slate reset can insert the same url
+    more than once before the unique constraint was in place, or on a DB that
+    predates it. This is the one-shot repair that runs on the next startup:
+    for every url that appears more than once in ``articles``, keep exactly one
+    row (the newest, highest-id one) and delete the rest. Rows without a url
+    are left alone — they are still dedeuped by title in
+    :func:`app.db.articles._save_items_sync`, which is good enough for the
+    rare title-only case and avoids touching rows the constraint does not
+    cover.
+
+    The caller holds an open write transaction (the session ``init_db`` opens
+    for seeding settings), so this mutates that same transaction rather than
+    starting a nested one.
+
+    Returns the number of rows removed.
+    """
+    removed = 0
+    rows = session.execute(
+        select(Article.url, func.max(Article.id).label("kept_id"))
+        .where(Article.url.isnot(None))
+        .group_by(Article.url)
+        .having(func.count(Article.id) > 1)
+    ).all()
+    for (url, kept_id) in rows:
+        deleted = session.execute(
+            delete(Article).where(
+                Article.url == url,
+                Article.id != kept_id,
+            )
+        )
+        removed += deleted.rowcount
+    return removed
+
+
 def init_db() -> None:
     """Create the tables/indexes (and migrate) if they don't exist."""
     Base.metadata.create_all(engine)
@@ -250,5 +287,17 @@ def init_db() -> None:
             Article.status == STATUS_PUBLISHING
         ).all():
             article.status = STATUS_ACCEPTED
+
+        # Repair any duplicate ``url`` rows the race at clean launch could
+        # have inserted before the unique constraint took effect (or on a DB
+        # that predates it). Doing it after the reset keeps the repair inside
+        # today's fresh workspace, and it is safe to be idempotent — a clean
+        # DB touches nothing.
+        deduped = _dedupe_existing_urls_sync(session)
+        if deduped:
+            logger.info(
+                "Deduplicated %d duplicate article url(s) in today's workspace",
+                deduped,
+            )
 
         session.commit()

@@ -1210,11 +1210,21 @@ class TestAiBlobHomes:
 # ---------------------------------------------------------------------------
 
 
+_seed_article_counter = 0
+
+
 def _seed_article(session, *, source: str = "kaumudi", status: str | None = None):
-    """One row in the curation workspace; returns its ID."""
+    """One row in the curation workspace; returns its ID.
+
+    Each row gets its own url so the helper can be called more than once in a
+    session without tripping the unique constraint on articles.url (added to
+    prevent the scraper race at clean launch).
+    """
+    global _seed_article_counter
+    _seed_article_counter += 1
     article = Article(
         title="Story",
-        url="https://example.com/story",
+        url=f"https://example.com/story/{_seed_article_counter}",
         image_url=None,
         description="desc",
         published_at="2026-10-26",

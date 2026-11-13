@@ -789,13 +789,22 @@ def db_session(monkeypatch, tmp_path):
     return session_factory
 
 
+_insert_article_counter = 0
+
+
 def _insert_article(session, **overrides) -> Article:
+    global _insert_article_counter
+    _insert_article_counter += 1
     past = (datetime.now(UTC) - timedelta(seconds=700)).isoformat(
         timespec="seconds"
     )
+    # Each inserted row gets its own url so the helper can be called more
+    # than once in a session without tripping the unique constraint on
+    # articles.url (added to prevent the scraper race at clean launch).
+    url = f"https://example.com/article/{_insert_article_counter}"
     defaults = {
         "title": "First Article",
-        "url": "https://example.com/a",
+        "url": url,
         "image_url": None,
         "description": "desc",
         "published_at": "2026-09-19",

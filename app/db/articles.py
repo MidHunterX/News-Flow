@@ -76,7 +76,23 @@ def _stored_keys(
 
 def _save_items_sync(items: list[NewsItem]) -> list[NewsItem]:
     """Store the *items* not already present in today's or yesterday's
-    workspace, returning exactly those stored rows (in input order)."""
+    workspace, returning exactly those stored rows (in input order).
+
+    The common case (item has a url) is now enforced at the DB level: the
+    ``articles.url`` column carries a unique index, so two concurrent scrapers
+    racing to insert the same story can only ever succeed once. The
+    read-then-write pre-check below is still done for two reasons: it keeps
+    the return value honest (only genuinely new rows are reported), and it
+    avoids pointless INSERT attempts for the bulk of a refresh's output.
+
+    A story already in yesterday's archive (``publication_articles``) is
+    skipped too, so the daily clean slate can't be refilled with articles
+    the previous day's workspace already covered.
+
+    Rows without a url (some sources publish link-less items) cannot be
+    unique-constrained, so they are still dedeuped in application code by
+    ``url or title`` — good enough for the rare title-only case.
+    """
     by_source: dict[str, list[NewsItem]] = defaultdict(list)
     for item in _dedupe(items):
         by_source[item.source].append(item)
@@ -108,8 +124,8 @@ def _save_items_sync(items: list[NewsItem]) -> list[NewsItem]:
                 )
                 for item in new_items
             )
+            session.commit()
             stored.extend(new_items)
-        session.commit()
     return stored
 
 
