@@ -123,13 +123,10 @@
     {% endmacro %}
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <!-- Capped to the viewport: pinned header, scrollable body, pinned
-           footer — the close and Cancel/Save buttons stay reachable no
-           matter how many settings are added. To add a future settings
-           group, append another "border-t pt-4" group div to the body. -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur bg-black/40 p-4">
       <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden dark:bg-gray-800">
-        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 dark:border-gray-700">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
           <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">Settings</h3>
           <button onclick="closeSettings()" class="text-gray-400 hover:text-gray-600 transition dark:hover:text-gray-200" title="Close">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -137,33 +134,39 @@
             </svg>
           </button>
         </div>
+
+        <!-- Scrollable body -->
         <div class="space-y-6 overflow-y-auto px-6 py-5 flex-1 min-h-0">
 
           <!-- ============================================================ -->
-          <!-- Group 1: Display                                             -->
+          <!-- Group 1: Display — indigo accent                             -->
           <!-- ============================================================ -->
-          <div class="space-y-4">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Display</p>
+          <div class="rounded-lg border border-indigo-100 bg-indigo-50/40 p-4 space-y-4 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+              Display
+            </p>
+
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Article list layout</label>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">How pending articles are displayed on the left.</p>
               <div id="article-layout-picker" class="grid grid-cols-3 gap-2">
                 <button type="button" data-layout="grid" onclick="selectArticleLayout('grid')"
-                        class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="layout-option border border-indigo-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
                   </svg>
                   Grid
                 </button>
                 <button type="button" data-layout="rows" onclick="selectArticleLayout('rows')"
-                        class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="layout-option border border-indigo-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7"></path>
                   </svg>
                   Rows
                 </button>
                 <button type="button" data-layout="compact" onclick="selectArticleLayout('compact')"
-                        class="layout-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="layout-option border border-indigo-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700">
                   <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
                   </svg>
@@ -171,6 +174,7 @@
                 </button>
               </div>
             </div>
+
             <div>
               <label for="pending-display-limit-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 Pending articles shown
@@ -178,14 +182,10 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 How many of the newest pending articles the list shows. 0 shows all of them.
               </p>
-              <input
-                id="pending-display-limit-input"
-                type="number"
-                min="0"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
+              <input id="pending-display-limit-input" type="number" min="0" step="1"
+                     class="w-full border border-indigo-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white dark:border-indigo-700 dark:bg-gray-800 dark:text-gray-100" />
             </div>
+
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Theme</label>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -194,15 +194,15 @@
               </p>
               <div id="theme-picker" class="grid grid-cols-3 gap-2">
                 <button type="button" data-theme="light" onclick="selectTheme('light')"
-                        class="theme-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="theme-option border border-indigo-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700">
                   Light
                 </button>
                 <button type="button" data-theme="dark" onclick="selectTheme('dark')"
-                        class="theme-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="theme-option border border-indigo-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700">
                   Dark
                 </button>
                 <button type="button" data-theme="system" onclick="selectTheme('system')"
-                        class="theme-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="theme-option border border-indigo-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700">
                   System
                 </button>
               </div>
@@ -210,10 +210,13 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- Group 2: Daily Reset                                         -->
+          <!-- Group 2: Daily Reset — amber accent                          -->
           <!-- ============================================================ -->
-          <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Daily Reset</p>
+          <div class="rounded-lg border border-amber-100 bg-amber-50/40 p-4 space-y-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+            <p class="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              Daily Reset
+            </p>
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Daily reset clock</label>
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
@@ -221,11 +224,11 @@
               </p>
               <div id="reset-timezone-picker" class="grid grid-cols-2 gap-2">
                 <button type="button" data-reset-tz="utc" onclick="selectResetTimezone('utc')"
-                        class="reset-tz-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="reset-tz-option border border-amber-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:bg-gray-800 dark:text-amber-300 dark:hover:bg-gray-700">
                   UTC
                 </button>
                 <button type="button" data-reset-tz="local" onclick="selectResetTimezone('local')"
-                        class="reset-tz-option border rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1">
+                        class="reset-tz-option border border-amber-200 rounded-lg px-2 py-2 text-xs font-semibold transition flex flex-col items-center gap-1 bg-white text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:bg-gray-800 dark:text-amber-300 dark:hover:bg-gray-700">
                   Local time
                 </button>
               </div>
@@ -233,10 +236,13 @@
           </div>
 
           <!-- ============================================================ -->
-          <!-- Group 3: Scraping                                            -->
+          <!-- Group 3: Scraping — emerald accent                           -->
           <!-- ============================================================ -->
-          <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Scraping</p>
+          <div class="rounded-lg border border-emerald-100 bg-emerald-50/40 p-4 space-y-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+            <p class="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Scraping
+            </p>
             <div>
               <label for="refresh-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 Refresh interval (minutes)
@@ -244,22 +250,15 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 How often the backend re-scrapes every source in the background.
               </p>
-              <input
-                id="refresh-interval-input"
-                type="number"
-                min="1"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
+              <input id="refresh-interval-input" type="number" min="1" step="1"
+                     class="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:border-emerald-700 dark:bg-gray-800 dark:text-gray-100" />
             </div>
-            <!-- Auto Scrape sits with its own gap input so the switch and
-                 the interval stay together. It reuses the shared
-                 .toggle-option markup, so selectToggle() and the save
-                 payload work unchanged. -->
+
             {% set auto_scrape = toggles.get("auto_scrape") %}
             {% if auto_scrape %}
               {{ toggle_switch("auto_scrape", auto_scrape) }}
             {% endif %}
+
             <div>
               <label for="auto-scrape-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 Auto-scrape gap (minutes)
@@ -267,30 +266,27 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 How long to wait between each article scrape while Auto Scrape is on.
               </p>
-              <input
-                id="auto-scrape-interval-input"
-                type="number"
-                min="1"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
+              <input id="auto-scrape-interval-input" type="number" min="1" step="1"
+                     class="w-full border border-emerald-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white dark:border-emerald-700 dark:bg-gray-800 dark:text-gray-100" />
             </div>
           </div>
 
           <!-- ============================================================ -->
-          <!-- Group 4: AI Curation                                         -->
+          <!-- Group 4: AI Curation — violet accent                         -->
           <!-- ============================================================ -->
           {% set ai_publish = toggles.get("ai_publish") %}
-          <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">AI Curation</p>
+          <div class="rounded-lg border border-violet-100 bg-violet-50/40 p-4 space-y-4 dark:border-violet-900/50 dark:bg-violet-950/20">
+            <p class="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-violet-500"></span>
+              AI Curation
+            </p>
+
             {% if ai_publish %}
               {{ toggle_switch("ai_publish", ai_publish) }}
             {% endif %}
+
             {% if ai_publish and not ai_publish.enabled %}
-              <!-- The mascot idles here while AI Curation is off (mounted by
-                   openSettings); flipping the toggle moves it onto the main
-                   page's countdown meter instead. -->
-              <div class="flex items-center gap-3 rounded-lg border border-indigo-100 bg-gradient-to-r from-violet-50 to-indigo-50 p-3 dark:border-indigo-900 dark:from-violet-950 dark:to-indigo-950">
+              <div class="flex items-center gap-3 rounded-lg border border-violet-200 bg-gradient-to-r from-violet-50 to-indigo-50 p-3 dark:border-violet-800 dark:from-violet-950 dark:to-indigo-950">
                 <div id="ai-blob-settings" class="shrink-0 w-20 h-20 cursor-pointer select-none"></div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   Off duty. Turn on AI Curation and the blob moves to the main
@@ -299,6 +295,7 @@
                 </p>
               </div>
             {% endif %}
+
             {% if ai_publish and ai_publish.available %}
               <div>
                 <label for="ai-publish-count-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
@@ -307,13 +304,8 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   How many pending articles Gemini picks each time.
                 </p>
-                <input
-                  id="ai-publish-count-input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                />
+                <input id="ai-publish-count-input" type="number" min="1" step="1"
+                       class="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white dark:border-violet-700 dark:bg-gray-800 dark:text-gray-100" />
               </div>
               <div>
                 <label for="ai-publish-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
@@ -322,13 +314,8 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   How long to wait between Gemini selection prompts.
                 </p>
-                <input
-                  id="ai-publish-interval-input"
-                  type="number"
-                  min="1"
-                  step="1"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                />
+                <input id="ai-publish-interval-input" type="number" min="1" step="1"
+                       class="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white dark:border-violet-700 dark:bg-gray-800 dark:text-gray-100" />
               </div>
               <div>
                 <label for="ai-publish-history-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
@@ -337,13 +324,8 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   How many previously accepted headings Gemini sees so it avoids picking the same story from other sources.
                 </p>
-                <input
-                  id="ai-publish-history-input"
-                  type="number"
-                  min="0"
-                  step="1"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                />
+                <input id="ai-publish-history-input" type="number" min="0" step="1"
+                       class="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white dark:border-violet-700 dark:bg-gray-800 dark:text-gray-100" />
               </div>
               <div>
                 <label for="ai-publish-pending-limit-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
@@ -352,22 +334,21 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   How many of the newest pending articles Gemini gets to pick from each prompt. 0 offers all of them.
                 </p>
-                <input
-                  id="ai-publish-pending-limit-input"
-                  type="number"
-                  min="0"
-                  step="1"
-                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-                />
+                <input id="ai-publish-pending-limit-input" type="number" min="0" step="1"
+                       class="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white dark:border-violet-700 dark:bg-gray-800 dark:text-gray-100" />
               </div>
             {% endif %}
           </div>
 
           <!-- ============================================================ -->
-          <!-- Group 5: Completion                                          -->
+          <!-- Group 5: Completion — sky/cyan accent                        -->
           <!-- ============================================================ -->
-          <div class="border-t border-gray-200 pt-4 space-y-4 dark:border-gray-700">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Completion</p>
+          <div class="rounded-lg border border-sky-100 bg-sky-50/40 p-4 space-y-4 dark:border-sky-900/50 dark:bg-sky-950/20">
+            <p class="text-xs font-semibold uppercase tracking-wide text-sky-600 dark:text-sky-400 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+              Completion
+            </p>
+
             <div>
               <label for="completion-interval-input" class="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                 Completion interval (minutes)
@@ -375,18 +356,15 @@
               <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
                 Accepted articles are marked completed one by one, each this long after being accepted.
               </p>
-              <input
-                id="completion-interval-input"
-                type="number"
-                min="1"
-                step="1"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
-              />
+              <input id="completion-interval-input" type="number" min="1" step="1"
+                     class="w-full border border-sky-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white dark:border-sky-700 dark:bg-gray-800 dark:text-gray-100" />
             </div>
+
             {% set auto_publish = toggles.get("auto_publish") %}
             {% if auto_publish %}
               {{ toggle_switch("auto_publish", auto_publish) }}
             {% endif %}
+
             {% set ai_auto_categorization = toggles.get("ai_auto_categorization") %}
             {% if ai_auto_categorization %}
               {{ toggle_switch("ai_auto_categorization", ai_auto_categorization) }}
@@ -394,18 +372,14 @@
           </div>
         </div>
 
-        <!-- Pinned footer: always visible, outside the scroll area. -->
+        <!-- Pinned footer -->
         <div class="flex justify-end gap-2 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0 dark:border-gray-700 dark:bg-gray-900">
-          <button
-            onclick="closeSettings()"
-            class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition dark:text-gray-300 dark:hover:bg-gray-700"
-          >
+          <button onclick="closeSettings()"
+                  class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition dark:text-gray-300 dark:hover:bg-gray-700">
             Cancel
           </button>
-          <button
-            onclick="saveSettings()"
-            class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition"
-          >
+          <button onclick="saveSettings()"
+                  class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
             Save
           </button>
         </div>

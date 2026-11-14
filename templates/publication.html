@@ -192,7 +192,7 @@
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
             {% set published = card.item.is_print_published %}
-            <article class="{% if published %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+            <article class="{% if published or card.item.page_number %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
                 <div class="w-44 sm:w-56 shrink-0 bg-gray-100 relative dark:bg-gray-700">
@@ -378,7 +378,10 @@
                 <span class="w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-[10px] font-bold uppercase dark:bg-indigo-950 dark:text-indigo-400">{{ card.item.source[:2] }}</span>
               {% endif %}
               <div class="min-w-0 flex-1">
-                <p class="text-xs text-gray-700 truncate leading-4 dark:text-gray-300" title="{{ card.item.title }}">{{ card.item.title }}</p>
+                {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
+                <a href="{{ preview_href }}">
+                  <p class="text-xs text-gray-700 truncate leading-4 dark:text-gray-300 hover:text-indigo-600 transition dark:hover:text-indigo-400">{{ card.item.title }}</p>
+                </a>
                 <p class="text-[10px] text-gray-400 dark:text-gray-500">
                   {% if card.word_count is not none %}{{ card.word_count }} wc{% else %}not scraped{% endif %}
                 </p>
@@ -424,7 +427,7 @@
   <!-- Picker modal: the unassigned articles (assigned ones never show
        here — they sit beside their page). The list can run into the
        hundreds, so it is searched client-side and rendered on demand. -->
-  <div id="pub-picker-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  <div id="pub-picker-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur bg-black/40 p-4">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden dark:bg-gray-800">
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 dark:border-gray-700">
         <h3 id="picker-title" class="text-lg font-bold text-gray-900 dark:text-gray-100">Add articles</h3>
@@ -472,7 +475,7 @@
        out of the app-wide settings modal on purpose. The slider's thumb
        sets the word quota and the ring around it the allowance — where
        the ring meets the axis is the lower/upper limit. -->
-  <div id="pub-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  <div id="pub-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur bg-black/40 p-4">
     <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden dark:bg-gray-800">
       <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 dark:border-gray-700">
         <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">Publication settings</h3>
