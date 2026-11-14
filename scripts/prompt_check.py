@@ -393,12 +393,20 @@ async def show_layout() -> None:
         if not layout:
             layout = {"total_pages": 4, "page_words": 300, "word_allowance": 50}
 
+        articles_per_page_hint = (
+            sum(wc for _, _, _, wc in articles if wc) // layout["page_words"]
+            + (1 if sum(wc for _, _, _, wc in articles if wc) % layout["page_words"] else 0)
+            if layout["page_words"] and any(wc for _, _, _, wc in articles if wc)
+            else 0
+        )
         user = build_layout_prompt(
             articles,
             layout["total_pages"],
             layout["page_words"],
             layout["word_allowance"],
+            articles_per_page_hint,
         )
+        print(f"(using articles_per_page_hint: {articles_per_page_hint})")
         _print_prompt("AI LAYOUT PROMPT (suggest_layout)",
                       _LAYOUT_SYSTEM_PROMPT, user, _LAYOUT_RESPONSE_SCHEMA)
     else:
