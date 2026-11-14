@@ -400,6 +400,21 @@ async def show_layout() -> None:
             articles_per_page_hint = max(1, math.ceil(layout["page_words"] / mean_wc))
         else:
             articles_per_page_hint = 0
+        total_words = sum(wc for _, _, _, wc in articles if wc)
+        if total_words and layout["page_words"]:
+            mean_wc = total_words / sum(1 for _, _, _, wc in articles if wc)
+            articles_per_page_hint = max(1, math.ceil(layout["page_words"] / mean_wc))
+        else:
+            articles_per_page_hint = 0
+
+        # Mirror what suggest_layout does: render the system prompt with the
+        # concrete article counts (the real call does this; the dumped user
+        # prompt below is what gets sent as the content part).
+        _ = build_layout_prompt.__globals__["_LAYOUT_SYSTEM_PROMPT"].format(
+            total_articles=len(articles),
+            total_pages=layout["total_pages"],
+            articles_per_page_target=articles_per_page_hint,
+        )
         user = build_layout_prompt(
             articles,
             layout["total_pages"],

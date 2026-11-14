@@ -421,16 +421,30 @@ _LAYOUT_SYSTEM_PROMPT = (
     "- Distribute articles evenly across all pages.\n"
     "- Try to fill each page close to page_words words (between page_words - word_allowance "
     "and page_words + word_allowance is ideal).\n"
-    "- Mix sources across pages - don't put all articles from one source on the same page.\n"
-    "- Prefer placing higher-word-count articles first to ensure big stories fit.\n"
+    "- Distribute all articles across the pages so no article is left out.\n"
+    "- Every article must be placed on exactly one page — the total number of "
+    "articles you place must equal the number given.\n"
+    "- For each page, pick articles whose combined word count comes close to "
+    "page_words (between page_words - word_allowance and page_words + word_allowance "
+    "is ideal). It is far better to slightly exceed the allowance on a page than "
+    "to leave articles unplaced or pile them all onto the last page.\n"
+    "- Aim for roughly {articles_per_page_target} articles per page on average "
+    "({total_articles} articles across {total_pages} pages), but let the word "
+    "budget decide the actual count per page; pages with shorter articles can "
+    "hold more, pages with longer ones fewer.\n"
+    "- Mix sources across pages; do not put all articles from one source on the "
+    "same page.\n"
+    "- Prefer placing higher-word-count articles first so big stories are "
+    "secured.\n"
     "- Never exceed total_pages.\n"
-    "- Every article must be placed on exactly one page.\n"
-    "- If an article has 0 words (not scraped), still place it but prioritize scraped ones.\n\n"
+    "- If an article has 0 words (not scraped), still place it but prioritize "
+    "scraped ones.\n\n"
     "Return a JSON object with a single key \"pages\" whose value is an array of "
     "arrays of article IDs. Index 0 = page 1, index 1 = page 2, etc.\n"
     "Example: {\"pages\": [[1, 2], [3, 4, 5], [6]]} means page 1 has articles 1,2; "
     "page 2 has 3,4,5; page 3 has 6.\n"
-    "The total number of pages in your response must equal total_pages."
+    "The total number of pages in your response must equal total_pages, and the "
+    "union of all values in all page arrays must contain every article ID given."
 )
 
 _LAYOUT_RESPONSE_SCHEMA: dict[str, Any] = {
@@ -481,18 +495,19 @@ def build_layout_prompt(
         f"- page_words: {page_words} (target words per page)\n"
         f"- word_allowance: {word_allowance} (slack above/below target)\n"
         f"- articles_per_page_hint: {articles_per_page_hint} "
-        f"(heuristic max articles that typically fit per page given the "
-        f"scraped word counts — do NOT put more than this many articles on "
-        f"any single page)\n\n"
+        f"(heuristic target articles per page given the scraped word counts "
+        f"— a soft guide, not a hard cap; the word budget is what governs "
+        f"each page)\n\n"
         f"Curate this newspaper page by page. For each page, pick the most "
         f"important, newsworthy articles that together come close to "
         f"page_words words (between page_words - word_allowance and "
-        f"page_words + word_allowance is ideal) and do not exceed "
-        f"articles_per_page_hint articles on that page. Mix sources across "
-        f"pages; do not stuff one page with too many articles just because "
-        f"they are short. Every article must be placed on exactly one page, "
-        f"and the total number of pages in your response must equal "
-        f"total_pages."
+        f"page_words + word_allowance is ideal). Every article must be "
+        f"placed on exactly one page, and the total number of pages in your "
+        f"response must equal total_pages. Do not pile the remaining articles "
+        f"onto the last page — spread them across all pages so each page is "
+        f"close to its word budget.\n"
+        f"Mix sources across pages; do not stuff one page with too many "
+        f"articles just because they are short."
     )
 
 
@@ -567,11 +582,10 @@ async def suggest_layout(
 
     article_ids = {aid for aid, _, _, _ in articles}
 
-    # Heuristic ceiling on articles per page: sum of every article's word
-    # count (scraped ones only; unscraped count as 0 for this purpose)
-    # divided by the per-page word budget, rounded up. When nothing is
-    # scraped the hint is 0 and the prompt still works (the words budget
-    # is what governs placement, the hint is only a guardrail).
+    # Heuristic target articles per page, derived from the mean scraped
+    # word count. Presented as a soft guide (not a hard cap) because the
+    # real constraint is the per-page word budget and every article must be
+    # placed somewhere.
     total_words = sum(wc for _, _, __, wc in articles if wc)
     if total_words and page_words:
         mean_wc = total_words / sum(1 for _, _, __, wc in articles if wc)
@@ -579,8 +593,17 @@ async def suggest_layout(
     else:
         articles_per_page_hint = 0
 
+    # Render the system prompt with the concrete article counts so the
+    # model knows what is feasible and does not dump the overflow on the
+    # last page.
+    system_text = _LAYOUT_SYSTEM_PROMPT.format(
+        total_articles=len(articles),
+        total_pages=total_pages,
+        articles_per_page_target=articles_per_page_hint,
+    )
+
     payload = {
-        "systemInstruction": {"parts": [{"text": _LAYOUT_SYSTEM_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": system_text}]},
         "contents": [{"parts": [{"text": build_layout_prompt(
             articles, total_pages, page_words, word_allowance,
             articles_per_page_hint,
