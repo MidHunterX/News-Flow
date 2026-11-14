@@ -441,7 +441,7 @@ _LAYOUT_SYSTEM_PROMPT = (
     "scraped ones.\n\n"
     "Return a JSON object with a single key \"pages\" whose value is an array of "
     "arrays of article IDs. Index 0 = page 1, index 1 = page 2, etc.\n"
-    "Example: {\"pages\": [[1, 2], [3, 4, 5], [6]]} means page 1 has articles 1,2; "
+    "Example: {{'pages': [[1, 2], [3, 4, 5], [6]]}} means page 1 has articles 1,2; "
     "page 2 has 3,4,5; page 3 has 6.\n"
     "The total number of pages in your response must equal total_pages, and the "
     "union of all values in all page arrays must contain every article ID given."
