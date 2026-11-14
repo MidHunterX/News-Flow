@@ -450,7 +450,7 @@ _LAYOUT_RESPONSE_SCHEMA: dict[str, Any] = {
 
 
 def build_layout_prompt(
-    articles: list[tuple[int, str, str, int | None]],
+    articles: list[tuple[int, str, str | None, int | None]],
     total_pages: int,
     page_words: int,
     word_allowance: int,
@@ -458,16 +458,19 @@ def build_layout_prompt(
 ) -> str:
     """User prompt for AI Layout: article list + page settings.
 
-    *articles* holds (id, title, source, word_count) tuples.
+    *articles* holds (id, title, source, word_count) tuples. The source
+    field is accepted for call-site compatibility but is not included in
+    the prompt — it is not important for layout decisions and wastes
+    tokens.
     *articles_per_page_hint* is a heuristically-derived ceiling on how
     many articles typically fit on one page (overall word-count sum ÷
     page_words, rounded), given to the model so it does not overstuff a
     single page.
     """
     lines = []
-    for article_id, title, source, word_count in articles:
+    for article_id, title, _source, word_count in articles:
         wc = word_count if word_count is not None else 0
-        lines.append(f"{article_id}. [{source}] {title} ({wc} words)")
+        lines.append(f"{article_id}. {title} ({wc} words)")
 
     return (
         f"Articles to place ({len(articles)} total):\n"
@@ -540,14 +543,16 @@ def _validate_layout_response(
 
 
 async def suggest_layout(
-    articles: list[tuple[int, str, str, int | None]],
+    articles: list[tuple[int, str, str | None, int | None]],
     total_pages: int,
     page_words: int,
     word_allowance: int,
 ) -> list[list[int]]:
     """Ask Gemini to assign articles to pages for a balanced layout.
 
-    *articles* holds (id, title, source, word_count) tuples.
+    *articles* holds (id, title, source, word_count) tuples. The source
+    field is accepted for call-site compatibility but is not included in
+    the prompt.
     Returns a list of page arrays: index 0 = page 1, etc.
     Each inner array contains article IDs assigned to that page.
 
@@ -566,7 +571,7 @@ async def suggest_layout(
     # divided by the per-page word budget, rounded up. When nothing is
     # scraped the hint is 0 and the prompt still works (the words budget
     # is what governs placement, the hint is only a guardrail).
-    total_words = sum(wc for _, _, _, wc in articles if wc)
+    total_words = sum(wc for _, _, __, wc in articles if wc)
     articles_per_page_hint = (
         int(-(-total_words // page_words)) if page_words and total_words else 0
     )
