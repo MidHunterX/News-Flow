@@ -13,7 +13,7 @@ build at its call site:
 1. The system instruction text.
 2. The full user prompt. Every input is read from the local database first,
    so the rendering matches a real run:
-   * the article (and its heading/body from ``public/articles/<id>.txt``)
+   * the article (and its heading/body from ``public/<db>/articles/<id>.txt``)
      comes from an accepted/completed article when one exists — the same
      content :func:`app.publisher.publish_article` feeds to
      :func:`app.gemini.suggest_categories`;

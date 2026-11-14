@@ -72,14 +72,14 @@ async def enrich_accepted_article(
 
     Shared by the UI's accept endpoint, the AI Publish curator, and the
     publication page's Scrape button so all paths produce identical
-    workspaces: the cover is downloaded to ``public/covers/`` (falling back
-    to the listing thumbnail) and the scraped heading + body are saved to
-    ``public/articles/<id>.txt`` for the article view and the WordPress
-    publisher.
+    workspaces: the cover is downloaded to ``public/<db>/covers/`` (falling
+    back to the listing thumbnail) and the scraped heading + body are saved
+    to ``public/<db>/articles/<id>.txt`` for the article view and the
+    WordPress publisher.
 
     With ``archived=True`` the target is the publication workspace instead —
-    cover to ``public/publication/covers/``, body to
-    ``public/publication/articles/<id>.txt``, and the archived row's
+    cover to ``public/<db>/publication/covers/``, body to
+    ``public/<db>/publication/articles/<id>.txt``, and the archived row's
     ``cover_file`` records the ``/publication/covers/...`` path. The
     caller owns the article's status: nothing here accepts, rejects, or
     clears an article.

@@ -4,7 +4,7 @@ When the ``auto_scrape`` toggle is on, the background loop in ``main.py``
 calls :func:`run_due_auto_scrape` on every tick. Once
 ``auto_scrape_interval`` seconds have passed since the previous scrape, the
 *oldest* article in the curation workspace that has no local content file
-(``public/articles/<id>.txt``) has its page scraped through the very same
+(``public/<db>/articles/<id>.txt``) has its page scraped through the very same
 :func:`app.curator.enrich_accepted_article` the accept flow uses — cover
 downloaded, heading + body saved — without touching the article's status.
 

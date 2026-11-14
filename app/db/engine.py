@@ -1,16 +1,14 @@
 import asyncio
-import os
-from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# Default to <project root>/newsflow.db; override with NEWSFLOW_DB_PATH for
-# tests or alternate environments.
-DB_PATH = Path(
-    os.environ.get("NEWSFLOW_DB_PATH")
-    or Path(__file__).resolve().parent.parent.parent / "newsflow.db"
-)
+from app.config import database_path
+
+# The SQLite file comes from app.config (NEWSFLOW_DB_PATH override, or
+# <project root>/newsflow.db) so the engine and the workspace paths in
+# app.utils — public/<db name>/… — always agree on the active database.
+DB_PATH = database_path()
 
 engine = create_engine(
     f"sqlite:///{DB_PATH}",

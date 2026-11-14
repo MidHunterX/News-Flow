@@ -3,11 +3,11 @@
 Authentication uses a WordPress application password over HTTP Basic auth
 (configured via .env — see .env.example). For each due article:
 
-* the downloaded cover (``public/covers/``) is uploaded to
+* the downloaded cover (``public/<db>/covers/``) is uploaded to
   ``/wp-json/wp/v2/media`` and attached as the post's featured image;
 * the post is created at ``/wp-json/wp/v2/posts`` with status ``publish``,
   using the scraped content saved by the accept endpoint
-  (``public/articles/<id>.txt``) when available.
+  (``public/<db>/articles/<id>.txt``) when available.
 
     Publishing is fail-soft: a failed request is logged and skipped, and the
 article is still marked completed (mirroring how the accept endpoint never
@@ -69,7 +69,7 @@ def _api_url(endpoint: str) -> str:
 
 
 def read_article_content(article_id: int | None) -> tuple[str, str]:
-    """Return (heading, body) from public/articles/<id>.txt.
+    """Return (heading, body) from public/<db>/articles/<id>.txt.
 
     Returns ("", "") when no scraped content was saved for the article.
     """

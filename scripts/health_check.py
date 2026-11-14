@@ -11,7 +11,7 @@ For each active source the script:
 1. Fetches the listing page and parses articles.
 2. Picks the latest (first) article.
 3. Fetches and scrapes the article page for heading, content and cover image.
-4. Downloads the cover image to public/covers/.
+4. Downloads the cover image to public/<db>/covers/.
 """
 
 from __future__ import annotations

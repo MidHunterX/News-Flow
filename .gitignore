@@ -2,6 +2,12 @@ public/articles/
 public/covers/
 # Publication workspace: generated daily copy of the curation workspace.
 public/publication/
+# Per-database workspaces: every workspace dir lives under public/<db name>/
+# (stem of the active NEWSFLOW_DB_PATH), so a temporary test database gets
+# its own tree instead of sharing the default one.
+public/*/articles/
+public/*/covers/
+public/*/publication/
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

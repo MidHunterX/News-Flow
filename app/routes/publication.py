@@ -241,7 +241,7 @@ async def publication_view(
     switch (previous day first and the default), a results header, and the
     same ``article_layout`` branches (grid / rows / compact). The data comes
     from today's curation workspace or the previous day's archive
-    (``publication_articles`` + ``public/publication/`` files). Each card
+    (``publication_articles`` + ``public/<db>/publication/`` files). Each card
     flags whether the article body was scraped locally and, when it was, its
     word count. ``sort`` picks the card order (see :func:`_sort_cards`).
     Nothing is scraped or mutated from here — inspection only.

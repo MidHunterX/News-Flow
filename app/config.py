@@ -58,6 +58,20 @@ WORDPRESS_APP_PASSWORD = _env_str("WORDPRESS_APP_PASSWORD")
 # Optional category ID applied to every published post (empty = site default).
 WORDPRESS_CATEGORY_ID = _env_str("WORDPRESS_CATEGORY_ID")
 
+# --- Active database ---------------------------------------------------------
+# Default to <project root>/newsflow.db; override with NEWSFLOW_DB_PATH for
+# tests or alternate environments. Resolved here (rather than in
+# app.db.engine) so the engine and the per-database workspace paths in
+# app.utils can both read it without importing each other: the workspace is
+# scoped to this file's name, e.g. public/newsflow/ for the default database.
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "newsflow.db"
+
+
+def database_path() -> Path:
+    """Path of the SQLite database file this process is bound to."""
+    return Path(os.environ.get("NEWSFLOW_DB_PATH") or DEFAULT_DB_PATH)
+
+
 # --- Google Gemini (auto-categorization) -------------------------------------
 # When an API key is set, accepted articles are sent to Gemini along with the
 # site's categories/tags and the response marks the categories on the article

@@ -382,7 +382,7 @@ async def article_view(
 
     ``day`` picks the workspace to read from and where the back link
     returns to: ``previous`` reads the archived row and the
-    ``public/publication/`` files (back to ``/publication``), ``today``
+    ``public/<db>/publication/`` files (back to ``/publication``), ``today``
     reads the curation workspace but keeps the publication nav active (back
     to its Today tab), and no ``day`` is the curation feed itself.
     """

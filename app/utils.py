@@ -7,13 +7,24 @@ import httpx
 from fastapi import HTTPException
 from PIL import Image, UnidentifiedImageError
 
+from app.config import database_path
+
 PUBLIC_DIR = Path("public")
-ARTICLES_DIR = PUBLIC_DIR / "articles"
-COVERS_DIR = PUBLIC_DIR / "covers"
+
+# The whole workspace is scoped to the active database: its file name (stem
+# of NEWSFLOW_DB_PATH, "newsflow" for the default database) becomes a
+# directory under public/, so pointing the app at a temporary test database
+# gives it its own articles/covers/publication tree — its startup daily
+# reset can then only ever clear that database's (usually empty) dirs,
+# never another database's scraped content.
+DB_NAME = database_path().stem
+WORKSPACE_DIR = PUBLIC_DIR / DB_NAME
+ARTICLES_DIR = WORKSPACE_DIR / "articles"
+COVERS_DIR = WORKSPACE_DIR / "covers"
 # Publication workspace: the daily reset mirrors the curation workspace here
 # (previous day's scraped-content .txt files + cover images) instead of just
 # deleting it, so /publication can show yesterday's data.
-PUBLICATION_DIR = PUBLIC_DIR / "publication"
+PUBLICATION_DIR = WORKSPACE_DIR / "publication"
 PUBLICATION_ARTICLES_DIR = PUBLICATION_DIR / "articles"
 PUBLICATION_COVERS_DIR = PUBLICATION_DIR / "covers"
 
@@ -130,7 +141,7 @@ async def download_image(url: str, filename: str | None = None,
     If *filename* is given the image is saved under that name (its extension
     is rewritten to ``.jpg``). Otherwise the basename of the URL path is used.
     *dest_dir* overrides the target directory — the publication workspace
-    mirror downloads there instead of ``public/covers/``.
+    mirror downloads there instead of ``public/<db name>/covers/``.
     """
     from app.client import get_client
 

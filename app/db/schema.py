@@ -25,6 +25,10 @@ from app.utils import (
     PUBLICATION_COVERS_DIR,
 )
 
+# The four workspace dirs above are scoped to the active database
+# (public/<db name>/… — see app.utils), so every path this module clears or
+# mirrors belongs to the database the process is running against.
+
 logger = logging.getLogger(__name__)
 
 
@@ -106,8 +110,9 @@ def _migrate() -> None:
 def _clear_dir(path: Path) -> None:
     """Remove everything inside *path*, recreating it as an empty directory.
 
-    Used for the daily clean slate: the whole workspace (``public/articles/``,
-    ``public/covers/``) is wiped, not just files tied to known articles — this
+    Used for the daily clean slate: the whole workspace (the active
+    database's ``articles``/``covers`` dirs under ``public/<db name>/``) is
+    wiped, not just files tied to known articles — this
     also clears orphans whose article rows are already gone. Missing
     directories are created; deletions that fail are logged and skipped.
     """
@@ -155,12 +160,17 @@ def _reset_daily_workspace() -> None:
 
     The daily rollover runs in three steps: the publication workspace (the
     ``publication_articles`` rows plus the files under
-    ``public/publication/``) is cleared, everything currently in the
+    ``public/<db name>/publication/``) is cleared, everything currently in the
     curation workspace is copied over there, and only then is the curation
     workspace cleared. Curation keeps its clean-slate philosophy — nothing
     from the previous day leaks into today's queue — while the previous
     day's data stays available to the print-publication pipeline behind
     ``/publication``.
+
+    Because every dir here is scoped to the active database (see
+    :mod:`app.utils`), a freshly provisioned database — no ``last_run_date``
+    stamp yet, e.g. a temporary DB_PATH pointed at for testing — resets only
+    its own, empty workspace instead of wiping the main database's files.
 
     Order matters for crash safety: the files are copied before any row is
     touched (worst case is duplicated files, never an archived row without

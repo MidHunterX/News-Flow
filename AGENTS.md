@@ -7,8 +7,13 @@ Guidance for coding agents working in this repository.
 **News Flow** — a FastAPI app that scrapes Malayalam news websites (Kerala
 Kaumudi, Mangalam, Madhyamam), caches articles in SQLite (WAL mode), and
 serves a Jinja2 review UI where articles are accepted/rejected/completed.
-Accepted articles get their cover image downloaded to `public/covers/` and
-their scraped content saved to `public/articles/<id>.txt`.
+Accepted articles get their cover image downloaded to `public/<db>/covers/`
+and their scraped content saved to `public/<db>/articles/<id>.txt`, where
+`<db>` is the active database's name (stem of `NEWSFLOW_DB_PATH`, `newsflow`
+for the default `newsflow.db`). Every workspace dir — curation, covers and
+the publication mirror — is scoped that way, so pointing the app at a
+temporary database gives it its own tree: its startup daily reset can only
+ever clear that database's (usually empty) dirs, never the main one's.
 
 - Python **3.14**, managed with **uv** (not pip/npm-style tooling)
 - Pydantic models, **synchronous** SQLAlchemy 2.0 persistence wrapped in
@@ -21,7 +26,7 @@ their scraped content saved to `public/articles/<id>.txt`.
   the browser never triggers refreshes
 - The same background task auto-scrapes article pages while the `auto_scrape`
   toggle is on (default **off**): the oldest article with no
-  `public/articles/<id>.txt` is scraped every `auto_scrape_interval` seconds
+  `public/<db>/articles/<id>.txt` is scraped every `auto_scrape_interval` seconds
   (default 60 s) (`app/autoscraper.py`), status untouched
 - WordPress publishing: categories/tags are synced from the site at startup
   (`app/wordpress.py`, TTL-refreshed) and Gemini picks related categories for
@@ -61,11 +66,13 @@ for findings it can autofix.
 main.py              # FastAPI app, startup/shutdown, completion loop
 app/
   config.py          # SOURCES dict (active sources), TIMEOUT, USER_AGENT,
-                     # MAX_ARTICLES_PER_SOURCE
+                     # MAX_ARTICLES_PER_SOURCE, database_path() (the active
+                     # SQLite file: NEWSFLOW_DB_PATH or <root>/newsflow.db)
   models.py          # NewsItem, ScrapedArticleContent, ScrapeResponse (pydantic)
   client.py          # HttpClient singleton (httpx.AsyncClient)
   utils.py           # fetch_html, download_image, clean_text, resolve_image_url,
-                     # PUBLIC_DIR / ARTICLES_DIR / COVERS_DIR paths and the
+                     # DB-scoped workspace paths: PUBLIC_DIR / DB_NAME /
+                     # ARTICLES_DIR / COVERS_DIR (public/<db>/…) plus the
                      # PUBLICATION_* mirror paths
   browser.py         # fetch_rendered_html (Playwright, for JS-rendered pages)
   scrapers/
@@ -88,7 +95,8 @@ app/
                      # every unseen row read), DELETE ...
   db/                # persistence layer (SQLAlchemy 2.0 + SQLite, WAL mode)
     engine.py        # engine, SessionLocal, Base, run_in_thread, DB_PATH
-                     # (override the DB location with NEWSFLOW_DB_PATH)
+                     # (resolved by app.config.database_path() — override
+                     # the DB location with NEWSFLOW_DB_PATH)
     models.py        # Article, PublicationArticle, WpCategory, Setting ORM models
                      # (Article + PublicationArticle share the _ArticleFields
                      # mixin — the publication table mirrors the curation one)
@@ -121,10 +129,10 @@ scripts/health_check.py
 
 Two workspaces exist side by side:
 
-- **Curation workspace** — `articles` table + `public/articles/` +
-  `public/covers/`; the clean-slate queue the review UI works from.
+- **Curation workspace** — `articles` table + `public/<db>/articles/` +
+  `public/<db>/covers/`; the clean-slate queue the review UI works from.
 - **Publication workspace** — `publication_articles` table +
-  `public/publication/{articles,covers}/`; a verbatim mirror of the
+  `public/<db>/publication/{articles,covers}/`; a verbatim mirror of the
   previous day's curation workspace, filled by the daily reset and read by
   `GET /publication`. The page follows the curation UI: **Previous day**
   and **Today** pill tabs (previous day first and the default, `?day=today`
@@ -154,10 +162,13 @@ Two workspaces exist side by side:
 - **Daily reset:** on a new day (per the `reset_timezone` setting,
   `LAST_RUN_DATE_KEY`) `init_db()` first clears the publication workspace,
   mirrors the curation workspace into it (rows → `publication_articles`,
-  files → `public/publication/`), and only then wipes the curation
+  files → `public/<db>/publication/`), and only then wipes the curation
   workspace. Curation still starts empty each day; the previous day lives
   on for `/publication`. The archive holds exactly one day — each reset
-  replaces it.
+  replaces it. Every dir involved belongs to the active database only, so a
+  freshly provisioned DB (no `last_run_date` yet — e.g. a temporary
+  `NEWSFLOW_DB_PATH` set up for testing) resets its own empty tree instead
+  of wiping the main database's scraped content.
 - **Refresh trimming:** `/api/refresh` and the scheduled background refresh
   both keep at most `MAX_ARTICLES_PER_SOURCE` (10) articles per source.
 - **Down sources:** sources are scraped independently. `scrape_source()`
@@ -170,12 +181,14 @@ Two workspaces exist side by side:
   next refresh rediscovers it, and recovery is automatic.
 - **Accept flow** (`routes/scrape.py`): marks the article accepted → scrapes
   its page (via Playwright when `needs_browser`) → downloads the cover to
-  `public/covers/` → saves heading+content to `public/articles/<id>.txt` and
+  `public/<db>/covers/` → saves heading+content to
+  `public/<db>/articles/<id>.txt` and
   the web path `/covers/<name>` into `article.cover_file`. Scraping failures
   are swallowed — accept never fails because of them. The publication
   page's **Scrape** button runs the very same `enrich_accepted_article()`
-  with `archived=True` for the previous-day tab (cover → `public/publication/covers/`,
-  content → `public/publication/articles/<id>.txt`, cover path → the
+  with `archived=True` for the previous-day tab (cover →
+  `public/<db>/publication/covers/`, content →
+  `public/<db>/publication/articles/<id>.txt`, cover path → the
   `publication_articles` row) but never touches the article's status.
 - **Print-layout sidebar** (`/publication`): the right-hand panel groups
   the shown workspace's articles onto `total_pages` pages via the
@@ -202,7 +215,7 @@ Two workspaces exist side by side:
   hot-retry, fail-soft (logged + notification, never kills the caller's loop).
 - **Auto-scrape** (`app/autoscraper.py`): gated by the `auto_scrape` toggle and
   spaced by `auto_scrape_interval`. Each due tick scrapes *one* article — the
-  oldest in the curation workspace without `public/articles/<id>.txt`, any
+  oldest in the curation workspace without `public/<db>/articles/<id>.txt`, any
   status — through the same `enrich_accepted_article()` as the accept flow, so
   statuses never change. A page that fails is recorded once and remembered in
   a module-level `_FAILED` set (a restart retries it) so it can't block the
@@ -234,7 +247,10 @@ Two workspaces exist side by side:
   `app.utils.fetch_html`; image-download tests patch
   `app.client.get_client`). No source-level `respx`/`responses` dependency.
 - `tests/conftest.py` resets the `HttpClient` singleton around each test —
-  keep that fixture if you add HTTP-dependent tests.
+  keep that fixture if you add HTTP-dependent tests — and its autouse
+  `_isolate_workspace` fixture rebinds every module's workspace dirs to a
+  per-test temp dir, so `init_db()`'s daily reset (and any endpoint that
+  writes content/covers) never touches the real `public/<db>/` workspace.
 - **TDD pattern:** for unimplemented behavior, commit the fixture + test and
   mark it `pytest.xfail(...)` with a reason (see madhyamam article scraping).
   When you implement the feature, remove the xfail.
@@ -263,8 +279,8 @@ Two workspaces exist side by side:
 - All DB access goes through the helpers in `app/db` (blocking calls run in
   a worker thread via `run_in_thread`) — don't bypass them or swap in an
   async engine casually.
-- The UI reads scraped article content from `public/articles/<id>.txt`
-  (written by the accept endpoint) and covers from `public/covers/`.
+- The UI reads scraped article content from `public/<db>/articles/<id>.txt`
+  (written by the accept endpoint) and covers from `public/<db>/covers/`.
 
 ## Conventions
 
@@ -274,6 +290,7 @@ Two workspaces exist side by side:
   type hints everywhere, docstrings on non-obvious functions.
 - Keep changes minimal — edit existing files rather than adding parallel
   helpers; new dependencies need justification.
-- Do not commit `newsflow.db*`, `.venv/`, or `__pycache__/`. `public/articles/`
-  is gitignored, but `public/covers/` is **not** ignored — downloaded cover
-  images are meant to be committed; don't add it to `.gitignore`.
+- Do not commit `newsflow.db*`, `.venv/`, or `__pycache__/`. The whole
+  scraped-data workspace is gitignored: the legacy flat dirs
+  (`public/{articles,covers,publication}/`) and the per-database ones
+  (`public/<db>/{articles,covers,publication}/`) alike — see `.gitignore`.
