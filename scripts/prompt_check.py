@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -393,12 +394,12 @@ async def show_layout() -> None:
         if not layout:
             layout = {"total_pages": 4, "page_words": 300, "word_allowance": 50}
 
-        articles_per_page_hint = (
-            sum(wc for _, _, _, wc in articles if wc) // layout["page_words"]
-            + (1 if sum(wc for _, _, _, wc in articles if wc) % layout["page_words"] else 0)
-            if layout["page_words"] and any(wc for _, _, _, wc in articles if wc)
-            else 0
-        )
+        total_words = sum(wc for _, _, _, wc in articles if wc)
+        if total_words and layout["page_words"]:
+            mean_wc = total_words / sum(1 for _, _, _, wc in articles if wc)
+            articles_per_page_hint = max(1, math.ceil(layout["page_words"] / mean_wc))
+        else:
+            articles_per_page_hint = 0
         user = build_layout_prompt(
             articles,
             layout["total_pages"],

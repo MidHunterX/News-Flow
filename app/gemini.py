@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from typing import Any
 
 import httpx
@@ -572,9 +573,11 @@ async def suggest_layout(
     # scraped the hint is 0 and the prompt still works (the words budget
     # is what governs placement, the hint is only a guardrail).
     total_words = sum(wc for _, _, __, wc in articles if wc)
-    articles_per_page_hint = (
-        int(-(-total_words // page_words)) if page_words and total_words else 0
-    )
+    if total_words and page_words:
+        mean_wc = total_words / sum(1 for _, _, __, wc in articles if wc)
+        articles_per_page_hint = max(1, math.ceil(page_words / mean_wc))
+    else:
+        articles_per_page_hint = 0
 
     payload = {
         "systemInstruction": {"parts": [{"text": _LAYOUT_SYSTEM_PROMPT}]},
