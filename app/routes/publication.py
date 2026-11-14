@@ -23,16 +23,22 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.db import (
+    apply_layout_generation,
     assign_articles_to_page,
     clear_article_page,
+    delete_layout_generation,
     get_article_layout,
     get_items,
+    get_layout_generation,
+    get_layout_generations,
     get_publication_items,
     get_publication_layout,
+    save_layout_generation,
     set_print_published,
     set_publication_layout,
 )
 from app.db.constants import now_iso
+from app.gemini import suggest_layout
 from app.models import NewsItem
 from app.routes.scrape import _archived_cover, _toggle_context
 from app.utils import (
@@ -428,6 +434,119 @@ def _scraped_content(
     return heading, body, len(raw.split())
 
 
+# ---------------------------------------------------------------------------
+# AI layout generation
+# ---------------------------------------------------------------------------
+
+
+class GenerateLayoutIn(BaseModel):
+    """Body of POST /api/publication/generate — AI layout generation."""
+
+
+@router.post("/api/publication/generate")
+async def generate_layout(
+    _: GenerateLayoutIn,
+    day: str | None = Query(
+        None, description="'previous' to generate for the archived workspace"
+    ),
+):
+    """Ask Gemini to assign articles to pages for a balanced layout.
+
+    Uses the current layout settings (total_pages, page_words,
+    word_allowance) and the workspace's articles (with their word counts)
+    to generate a page assignment. The result is saved as a generation
+    history entry and auto-applied to the workspace.
+
+    Returns the generation id and the page assignments.
+    """
+    archived = day == "previous"
+    items = await get_publication_items() if archived else await get_items()
+    layout = await get_publication_layout()
+
+    # Build article tuples: (id, title, source, word_count)
+    articles: list[tuple[int, str, str, int | None]] = []
+    content_dir = PUBLICATION_ARTICLES_DIR if archived else ARTICLES_DIR
+    for item in items:
+        if item.id is None:
+            continue
+        wc = _word_count(content_dir / f"{item.id}.txt")
+        articles.append((item.id, item.title, item.source, wc))
+
+    if not articles:
+        return {"ok": False, "detail": "No articles to layout"}
+
+    page_assignments = await suggest_layout(
+        articles,
+        layout["total_pages"],
+        layout["page_words"],
+        layout["word_allowance"],
+    )
+
+    if not page_assignments:
+        return {
+            "ok": False,
+            "detail": "AI layout generation failed or returned no result",
+        }
+
+    # Save the generation
+    gen_id = await save_layout_generation(page_assignments, day or "today")
+
+    return {
+        "ok": True,
+        "generation_id": gen_id,
+        "pages": page_assignments,
+        "pages_count": len(page_assignments),
+    }
+
+
+@router.get("/api/publication/generations")
+async def list_generations(
+    day: str | None = Query(
+        None, description="'previous' to list generations for the archived workspace"
+    ),
+):
+    """List AI layout generations for a workspace, newest first."""
+    target_day = day or "today"
+    generations = await get_layout_generations(target_day)
+    return {
+        "generations": [
+            {
+                "id": gen.id,
+                "day": gen.day,
+                "page_assignments": gen.page_assignments,
+                "created_at": gen.created_at,
+            }
+            for gen in generations
+        ],
+    }
+
+
+@router.post("/api/publication/generations/{gen_id}/apply")
+async def apply_generation(
+    gen_id: int,
+    day: str | None = Query(
+        None, description="'previous' to apply to the archived workspace"
+    ),
+):
+    """Apply a saved layout generation to the workspace."""
+    target_day = day or "today"
+    success = await apply_layout_generation(gen_id, target_day)
+    if not success:
+        raise HTTPException(404, "Generation not found")
+    return {"ok": True}
+
+
+@router.delete("/api/publication/generations/{gen_id}")
+async def delete_generation(
+    gen_id: int,
+):
+    """Delete a saved layout generation."""
+    success = await delete_layout_generation(gen_id)
+    if not success:
+        raise HTTPException(404, "Generation not found")
+    return {"ok": True}
+
+
 def _export_cover(cover_file: str | None, archived: bool) -> dict | None:
     """Cover of an export article: web URL, on-disk path, and pixel size.
 
@@ -472,6 +591,7 @@ async def export_layout(
     day: str | None = Query(
         None, description="'previous' to export the archived workspace"
     ),
+    generation_id: int | None = None,
 ):
     """Build the layout JSON for the ExtendScript: settings, pages, articles.
 
@@ -480,6 +600,9 @@ async def export_layout(
     and cover (URL, absolute file path, pixel dimensions). Articles that
     aren't placed are counted but not exported — the layout is what the
     script lays out.
+
+    When *generation_id* is given, the stored page assignments from that
+    generation are used instead of the current page_number values.
     """
     archived = day == "previous"
     items = await get_publication_items() if archived else await get_items()
@@ -488,15 +611,34 @@ async def export_layout(
     page_words = layout["page_words"]
     total_pages = layout["total_pages"]
 
+    # Determine which page each article belongs to
+    article_pages: dict[int, int] = {}  # article_id -> page_number
+    if generation_id is not None:
+        # Use stored generation assignments
+        gen = await get_layout_generation(generation_id)
+        if gen is None:
+            raise HTTPException(404, "Generation not found")
+        if gen.day != (day or "today"):
+            raise HTTPException(400, "Generation belongs to a different workspace")
+        for page_num, article_ids in enumerate(gen.page_assignments, start=1):
+            for article_id in article_ids:
+                article_pages[article_id] = page_num
+    else:
+        # Use current page_number values from the DB
+        for item in items:
+            if item.page_number is not None:
+                article_pages[item.id] = item.page_number
+
     grouped: dict[int, list[NewsItem]] = {
         page: [] for page in range(1, total_pages + 1)
     }
     unassigned_count = 0
     for item in items:
-        if item.page_number is None:
+        page = article_pages.get(item.id)
+        if page is None:
             unassigned_count += 1
             continue
-        grouped[min(max(item.page_number, 1), total_pages)].append(item)
+        grouped[min(max(page, 1), total_pages)].append(item)
 
     pages = []
     for page, page_items in grouped.items():

@@ -109,6 +109,25 @@ class Setting(Base):
     value: Mapped[str] = mapped_column(String, nullable=False)
 
 
+class LayoutGeneration(Base):
+    """A saved AI-generated page layout for the publication workspace.
+
+    Each generation records the Gemini response (page assignments) plus
+    metadata so the sidebar can offer a history to revert to.
+    """
+
+    __tablename__ = "layout_generations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    # JSON: {"pages": [[id, id, ...], [id, ...], ...]} — one array per page
+    page_assignments: Mapped[list[list[int]]] = mapped_column(JSON, nullable=False)
+    # Which workspace the generation targets
+    day: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=func.datetime("now")
+    )
+
+
 class Notification(Base):
     """A log entry surfaced in the UI (e.g. Gemini/API failures)."""
 

@@ -51,9 +51,14 @@ from app.db.constants import (
 from app.db.engine import DB_PATH, Base, SessionLocal, engine
 from app.db.layout import (
                              PUBLICATION_LAYOUT_DEFAULTS,
+                             apply_layout_generation,
                              assign_articles_to_page,
                              clear_article_page,
+                             delete_layout_generation,
+                             get_layout_generation,
+                             get_layout_generations,
                              get_publication_layout,
+                             save_layout_generation,
                              set_publication_layout,
 )
 from app.db.models import Article, Notification, PublicationArticle, Setting
@@ -158,6 +163,12 @@ __all__ = [  # noqa: RUF022
     "set_publication_layout",
     "assign_articles_to_page",
     "clear_article_page",
+    # Layout generation history (AI-generated page assignments).
+    "apply_layout_generation",
+    "delete_layout_generation",
+    "get_layout_generation",
+    "get_layout_generations",
+    "save_layout_generation",
     # WordPress terms (categories + tags).
     "get_categories",
     "get_tags",

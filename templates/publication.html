@@ -311,7 +311,8 @@
                   bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden dark:bg-gray-800 dark:border-indigo-900"
            data-day="{{ selected_day }}">
       <!-- Panel header: the gear opens the publication-only settings
-           modal (the app-wide one in base.html stays untouched). -->
+           modal; the wand generates a new AI layout; the history dropdown
+           switches between saved generations (when gte 2 exist). -->
       <div class="px-4 py-3 bg-indigo-50 border-b border-indigo-200 flex items-center justify-between gap-2 shrink-0 dark:bg-indigo-950 dark:border-indigo-900">
         <div class="min-w-0">
           <h3 class="font-bold text-sm text-indigo-800 uppercase tracking-wide dark:text-indigo-300">Page Layout</h3>
@@ -325,6 +326,21 @@
                 class="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full dark:bg-indigo-900 dark:text-indigo-300">
             {{ unassigned|length }} free
           </span>
+          <!-- History selector: appears when gte 2 generations exist -->
+          <div class="relative" id="history-selector-wrap" style="display: none;">
+            <select id="generation-select"
+                    onchange="applyGeneration(this.value)"
+                    class="text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-800 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950">
+              <option value="">Current layout</option>
+            </select>
+          </div>
+          <button type="button" onclick="generateLayout()"
+                  title="Generate AI layout"
+                  class="p-2 rounded-lg text-indigo-600 hover:bg-indigo-100 transition dark:text-indigo-300 dark:hover:bg-indigo-900">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"></path>
+            </svg>
+          </button>
           <button type="button" onclick="openPubSettings()" title="Publication settings"
                   class="p-2 rounded-lg text-indigo-600 hover:bg-indigo-100 transition dark:text-indigo-300 dark:hover:bg-indigo-900">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -1054,9 +1070,14 @@
       document.getElementById("pub-export-modal").classList.remove("hidden");
       button.disabled = true;
       try {
-        const res = await fetch(
-          `/api/publication/export?day=${encodeURIComponent(pubDay)}`
-        );
+        const url = new URL(window.location);
+        url.searchParams.set("day", pubDay);
+        // Include generation_id if a generation is selected
+        const genSelect = document.getElementById("generation-select");
+        if (genSelect && genSelect.value) {
+          url.searchParams.set("generation_id", genSelect.value);
+        }
+        const res = await fetch(url.pathname + url.search);
         if (!res.ok) throw new Error(`export failed: ${res.status}`);
         const data = await res.json();
         exportText = JSON.stringify(data, null, 2);
@@ -1073,5 +1094,93 @@
     function closeExport() {
       document.getElementById("pub-export-modal").classList.add("hidden");
     }
+
+    // ---- AI Layout generation ----
+    let loadingGeneration = false;
+
+    async function generateLayout() {
+      if (loadingGeneration) return;
+      loadingGeneration = true;
+      const btn = document.querySelector('button[onclick="generateLayout()"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = spinnerSVG;
+      }
+      try {
+        const res = await fetch(
+          `/api/publication/generate?day=${encodeURIComponent(pubDay)}`,
+          { method: "POST", headers: { "Content-Type": "application/json" } }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          alert(data.detail || "AI layout generation failed.");
+          return;
+        }
+        // Reload to show the new layout and update history
+        window.location.reload();
+      } catch (err) {
+        alert("AI layout generation failed.");
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML =
+            '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"></path></svg>';
+        }
+        loadingGeneration = false;
+      }
+    }
+
+    async function loadGenerations() {
+      try {
+        const res = await fetch(
+          `/api/publication/generations?day=${encodeURIComponent(pubDay)}`
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const select = document.getElementById("generation-select");
+        const wrap = document.getElementById("history-selector-wrap");
+        if (!select || !wrap) return;
+        // Clear existing options (keep the default)
+        select.innerHTML =
+          '<option value="">Current layout</option>';
+        const gens = data.generations || [];
+        if (gens.length >= 2) {
+          wrap.style.display = "block";
+          // Add newest first (so the dropdown shows most recent at top)
+          for (const gen of gens) {
+            const opt = document.createElement("option");
+            opt.value = gen.id;
+            const date = gen.created_at ? new Date(gen.created_at).toLocaleString() : "";
+            opt.textContent = `Generation ${gen.id} (${date})`;
+            select.appendChild(opt);
+          }
+        } else {
+          wrap.style.display = "none";
+        }
+      } catch (err) {
+        // Silently fail — the selector is non-critical
+      }
+    }
+
+    async function applyGeneration(genId) {
+      if (!genId) return; // Switching back to "Current layout"
+      try {
+        const res = await fetch(
+          `/api/publication/generations/${genId}/apply?day=${encodeURIComponent(pubDay)}`,
+          { method: "POST" }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          alert("Failed to apply generation.");
+          return;
+        }
+        window.location.reload();
+      } catch (err) {
+        alert("Failed to apply generation.");
+      }
+    }
+
+    // Load generations on page load
+    document.addEventListener("DOMContentLoaded", loadGenerations);
   </script>
 {% endblock %}

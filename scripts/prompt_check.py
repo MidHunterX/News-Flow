@@ -42,12 +42,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.gemini import (
+    _LAYOUT_RESPONSE_SCHEMA,
+    _LAYOUT_SYSTEM_PROMPT,
     _PICK_RESPONSE_SCHEMA,
     _PICK_SYSTEM_PROMPT,
     _RESPONSE_SCHEMA,
     _SYSTEM_PROMPT,
     MAX_BODY_CHARS,
     TermTriple,
+    build_layout_prompt,
     build_pick_prompt,
     build_prompt,
 )
@@ -316,6 +319,92 @@ async def show_pick() -> None:
                   _PICK_SYSTEM_PROMPT, user, _PICK_RESPONSE_SCHEMA)
 
 
+async def show_layout() -> None:
+    """Render the AI Layout request as it would be sent to Gemini."""
+    _init_db()
+    if _DB_OK:
+        try:
+            from app.db import get_publication_items, get_publication_layout
+
+            layout = await get_publication_layout()
+            items = await get_publication_items()
+        except Exception as exc:
+            print(
+                f"(db read failed: {type(exc).__name__}: {exc}; "
+                "using sample layout data)"
+            )
+            layout = {"total_pages": 4, "page_words": 300, "word_allowance": 50}
+            items = [
+                NewsItem(id=1, title="Kerala seal thriller against Karnataka",
+                         url=None, image_url=None, description="desc",
+                         published_at="2026-10-31", source="kaumudi"),
+                NewsItem(id=2, title="Union Cabinet approves coastal highway",
+                         url=None, image_url=None, description="desc",
+                         published_at="2026-10-31", source="mangalam"),
+                NewsItem(id=3, title="Heavy rain warning for Idukki district",
+                         url=None, image_url=None, description="desc",
+                         published_at="2026-10-31", source="madhyamam"),
+                NewsItem(id=4, title="Kerala Blasters sign Brazilian striker",
+                         url=None, image_url=None, description="desc",
+                         published_at="2026-10-31", source="kaumudi"),
+                NewsItem(id=5, title="Gold prices hit record high",
+                         url=None, image_url=None, description="desc",
+                         published_at="2026-10-31", source="mangalam"),
+            ]
+
+        # Build article tuples with word counts (from saved content or 0)
+        articles: list[tuple[int, str, str, int | None]] = []
+        for item in items:
+            if item.id is None:
+                continue
+            content_path = None
+            try:
+                from app.utils import ARTICLES_DIR, PUBLICATION_ARTICLES_DIR
+                # Try today's workspace first, then archived
+                for base_dir in (ARTICLES_DIR, PUBLICATION_ARTICLES_DIR):
+                    path = base_dir / f"{item.id}.txt"
+                    if path.exists():
+                        content_path = path
+                        break
+            except Exception:
+                pass
+
+            word_count = None
+            if content_path:
+                try:
+                    word_count = len(content_path.read_text(encoding="utf-8").split())
+                except (OSError, UnicodeError):
+                    pass
+
+            articles.append((item.id, item.title, item.source, word_count))
+
+        if not articles:
+            print("(no articles in DB; using sample article list)")
+            articles = [
+                (1, "Kerala seal thriller against Karnataka", "kaumudi", 280),
+                (2, "Union Cabinet approves coastal highway", "mangalam", 150),
+                (3, "Heavy rain warning for Idukki district", "madhyamam", 95),
+                (4, "Kerala Blasters sign Brazilian striker", "kaumudi", 200),
+                (5, "Gold prices hit record high", "mangalam", 120),
+                (6, "New flight connections for Kannur airport", "kaumudi", 80),
+                (7, "Onam festivals see record attendance", "madhyamam", 110),
+            ]
+
+        if not layout:
+            layout = {"total_pages": 4, "page_words": 300, "word_allowance": 50}
+
+        user = build_layout_prompt(
+            articles,
+            layout["total_pages"],
+            layout["page_words"],
+            layout["word_allowance"],
+        )
+        _print_prompt("AI LAYOUT PROMPT (suggest_layout)",
+                      _LAYOUT_SYSTEM_PROMPT, user, _LAYOUT_RESPONSE_SCHEMA)
+    else:
+        print("(db unavailable; skipping layout prompt)")
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(
         description="Dump the exact Gemini prompts for visual inspection "
@@ -325,13 +414,17 @@ async def main() -> None:
                         help="show only the categorization prompt")
     parser.add_argument("--pick", action="store_true",
                         help="show only the AI Publish prompt")
+    parser.add_argument("--layout", action="store_true",
+                        help="show only the AI Layout prompt")
     args = parser.parse_args()
 
-    show_all = not args.categorize and not args.pick
+    show_all = not args.categorize and not args.pick and not args.layout
     if show_all or args.categorize:
         await show_categorize()
     if show_all or args.pick:
         await show_pick()
+    if show_all or args.layout:
+        await show_layout()
 
 
 if __name__ == "__main__":

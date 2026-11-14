@@ -204,3 +204,105 @@ def _clear_page_sync(article_id: int, archived: bool) -> bool:
 async def clear_article_page(article_id: int, *, archived: bool = False) -> bool:
     """Remove an article from its page, back into the unassigned pool."""
     return await run_in_thread(_clear_page_sync, article_id, archived)
+
+
+# ---------------------------------------------------------------------------
+# Layout generation history (AI-generated page assignments)
+# ---------------------------------------------------------------------------
+
+from app.db.models import LayoutGeneration
+
+
+def _save_generation_sync(
+    page_assignments: list[list[int]], day: str
+) -> int:
+    """Persist a new layout generation; returns its id."""
+    with SessionLocal() as session:
+        gen = LayoutGeneration(page_assignments=page_assignments, day=day)
+        session.add(gen)
+        session.commit()
+        session.refresh(gen)
+        return gen.id
+
+
+async def save_layout_generation(
+    page_assignments: list[list[int]], day: str
+) -> int:
+    """Save a new AI-generated layout; returns the generation id."""
+    return await run_in_thread(_save_generation_sync, page_assignments, day)
+
+
+def _get_generations_sync(day: str) -> list[LayoutGeneration]:
+    """All generations for a workspace, newest first."""
+    with SessionLocal() as session:
+        return list(
+            session.scalars(
+                select(LayoutGeneration)
+                .where(LayoutGeneration.day == day)
+                .order_by(LayoutGeneration.id.desc())
+            ).all()
+        )
+
+
+async def get_layout_generations(day: str) -> list[LayoutGeneration]:
+    """Return layout generations for a workspace (newest first)."""
+    return await run_in_thread(_get_generations_sync, day)
+
+
+def _get_generation_sync(gen_id: int) -> LayoutGeneration | None:
+    with SessionLocal() as session:
+        return session.get(LayoutGeneration, gen_id)
+
+
+async def get_layout_generation(gen_id: int) -> LayoutGeneration | None:
+    """Return a single generation by id, or None."""
+    return await run_in_thread(_get_generation_sync, gen_id)
+
+
+def _apply_generation_sync(gen_id: int, day: str) -> bool:
+    """Apply a saved generation's page assignments to the article table.
+
+    Returns False when the generation doesn't exist or belongs to a
+    different workspace.
+    """
+    gen = _get_generation_sync(gen_id)
+    if gen is None or gen.day != day:
+        return False
+
+    model = PublicationArticle if day == "previous" else Article
+    with SessionLocal() as session:
+        # Clear existing placements first
+        session.execute(update(model).values(page_number=None))
+        # Apply the generation's assignments
+        for page_num, article_ids in enumerate(gen.page_assignments, start=1):
+            for article_id in article_ids:
+                article = session.get(model, article_id)
+                if article is not None:
+                    article.page_number = page_num
+        session.commit()
+    return True
+
+
+async def apply_layout_generation(gen_id: int, day: str) -> bool:
+    """Apply a saved layout generation to the workspace.
+
+    Returns False when the generation doesn't exist or belongs to a
+    different workspace.
+    """
+    return await run_in_thread(_apply_generation_sync, gen_id, day)
+
+
+def _delete_generation_sync(gen_id: int) -> bool:
+    """Delete a generation by id. Returns False when not found."""
+    with SessionLocal() as session:
+        gen = session.get(LayoutGeneration, gen_id)
+        if gen is None:
+            return False
+        session.delete(gen)
+        session.commit()
+    return True
+
+
+async def delete_layout_generation(gen_id: int) -> bool:
+    """Delete a layout generation. Returns False when not found."""
+    return await run_in_thread(_delete_generation_sync, gen_id)

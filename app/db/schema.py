@@ -77,6 +77,18 @@ def _migrate() -> None:
                     text(f"ALTER TABLE {table} ADD COLUMN page_number INTEGER")
                 )
 
+    # Layout generations table (AI-generated page assignments history)
+    if "layout_generations" not in existing_tables:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "CREATE TABLE layout_generations ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "page_assignments JSON NOT NULL,"
+                "day TEXT NOT NULL,"
+                "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+                ")"
+            ))
+
     # The notification log gained its unread flag with the bell badge; rows
     # that predate it land as unread (DEFAULT 0), so they show up once.
     if "notifications" in existing_tables:
