@@ -26,6 +26,7 @@ from app.db import (
     apply_layout_generation,
     assign_articles_to_page,
     clear_article_page,
+    clear_page_layout,
     delete_layout_generation,
     get_article_layout,
     get_items,
@@ -401,6 +402,22 @@ async def unassign_article(
     if not await clear_article_page(article_id, archived=day == "previous"):
         raise HTTPException(404, "Article not found")
     return {"ok": True}
+
+
+@router.post("/api/publication/clear")
+async def clear_layout(
+    day: str | None = Query(
+        None, description="'previous' to clear the archived workspace's layout"
+    ),
+):
+    """Remove every article from its page — reset the whole layout.
+
+    The sidebar picker, the fill bars, and the article cards all update on
+    reload: articles go back to the unassigned pool and every page reads
+    empty.
+    """
+    cleared = await clear_page_layout(archived=day == "previous")
+    return {"ok": True, "cleared": cleared}
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ from app.db.layout import (
                              apply_layout_generation,
                              assign_articles_to_page,
                              clear_article_page,
+                             clear_page_layout,
                              delete_layout_generation,
                              get_layout_generation,
                              get_layout_generations,
@@ -163,6 +164,7 @@ __all__ = [  # noqa: RUF022
     "set_publication_layout",
     "assign_articles_to_page",
     "clear_article_page",
+    "clear_page_layout",
     # Layout generation history (AI-generated page assignments).
     "apply_layout_generation",
     "delete_layout_generation",

@@ -206,6 +206,22 @@ async def clear_article_page(article_id: int, *, archived: bool = False) -> bool
     return await run_in_thread(_clear_page_sync, article_id, archived)
 
 
+def _clear_all_pages_sync(archived: bool) -> int:
+    """Remove every article from its page. Returns the count cleared."""
+    model = PublicationArticle if archived else Article
+    with SessionLocal() as session:
+        rows = session.execute(
+            update(model).where(model.page_number.isnot(None)).values(page_number=None)
+        ).rowcount
+        session.commit()
+    return rows
+
+
+async def clear_page_layout(archived: bool = False) -> int:
+    """Remove every article from its page; returns the number cleared."""
+    return await run_in_thread(_clear_all_pages_sync, archived)
+
+
 # ---------------------------------------------------------------------------
 # Layout generation history (AI-generated page assignments)
 # ---------------------------------------------------------------------------
