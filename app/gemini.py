@@ -454,10 +454,15 @@ def build_layout_prompt(
     total_pages: int,
     page_words: int,
     word_allowance: int,
+    articles_per_page_hint: int,
 ) -> str:
     """User prompt for AI Layout: article list + page settings.
 
     *articles* holds (id, title, source, word_count) tuples.
+    *articles_per_page_hint* is a heuristically-derived ceiling on how
+    many articles typically fit on one page (overall word-count sum ÷
+    page_words, rounded), given to the model so it does not overstuff a
+    single page.
     """
     lines = []
     for article_id, title, source, word_count in articles:
@@ -470,8 +475,20 @@ def build_layout_prompt(
         f"Page layout settings:\n"
         f"- total_pages: {total_pages}\n"
         f"- page_words: {page_words} (target words per page)\n"
-        f"- word_allowance: {word_allowance} (slack above/below target)\n\n"
-        f"Distribute these articles across {total_pages} pages following the preferences above."
+        f"- word_allowance: {word_allowance} (slack above/below target)\n"
+        f"- articles_per_page_hint: {articles_per_page_hint} "
+        f"(heuristic max articles that typically fit per page given the "
+        f"scraped word counts — do NOT put more than this many articles on "
+        f"any single page)\n\n"
+        f"Curate this newspaper page by page. For each page, pick the most "
+        f"important, newsworthy articles that together come close to "
+        f"page_words words (between page_words - word_allowance and "
+        f"page_words + word_allowance is ideal) and do not exceed "
+        f"articles_per_page_hint articles on that page. Mix sources across "
+        f"pages; do not stuff one page with too many articles just because "
+        f"they are short. Every article must be placed on exactly one page, "
+        f"and the total number of pages in your response must equal "
+        f"total_pages."
     )
 
 
@@ -544,10 +561,21 @@ async def suggest_layout(
 
     article_ids = {aid for aid, _, _, _ in articles}
 
+    # Heuristic ceiling on articles per page: sum of every article's word
+    # count (scraped ones only; unscraped count as 0 for this purpose)
+    # divided by the per-page word budget, rounded up. When nothing is
+    # scraped the hint is 0 and the prompt still works (the words budget
+    # is what governs placement, the hint is only a guardrail).
+    total_words = sum(wc for _, _, _, wc in articles if wc)
+    articles_per_page_hint = (
+        int(-(-total_words // page_words)) if page_words and total_words else 0
+    )
+
     payload = {
         "systemInstruction": {"parts": [{"text": _LAYOUT_SYSTEM_PROMPT}]},
         "contents": [{"parts": [{"text": build_layout_prompt(
-            articles, total_pages, page_words, word_allowance
+            articles, total_pages, page_words, word_allowance,
+            articles_per_page_hint,
         )}]}],
         "generationConfig": {
             "responseMimeType": "application/json",
