@@ -314,31 +314,37 @@
            modal; the wand generates a new AI layout; the history dropdown
            switches between saved generations (when gte 2 exist). -->
       <div class="px-4 py-3 bg-indigo-50 border-b border-indigo-200 shrink-0 dark:bg-indigo-950 dark:border-indigo-900">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <h3 class="font-bold text-sm text-indigo-800 uppercase tracking-wide dark:text-indigo-300">Page Layout</h3>
-            <p class="text-[11px] text-indigo-600 dark:text-indigo-400">
-              {{ layout_settings.page_words }} wc/page &plusmn;{{ layout_settings.word_allowance }}
-              &middot; {{ layout_settings.total_pages }} pages
-            </p>
-          </div>
-          <div class="flex items-center gap-1.5 shrink-0">
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <h3 class="font-bold text-sm text-indigo-800 uppercase tracking-wide dark:text-indigo-300">Page Layout</h3>
+              <p class="text-[11px] text-indigo-600 dark:text-indigo-400">
+                {{ layout_settings.page_words }} wc/page &plusmn;{{ layout_settings.word_allowance }}
+                &middot; {{ layout_settings.total_pages }} pages
+              </p>
+            </div>
             <span title="Articles not placed on any page yet"
-                  class="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full dark:bg-indigo-900 dark:text-indigo-300">
+                  class="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full shrink-0 dark:bg-indigo-900 dark:text-indigo-300">
               {{ unassigned|length }} free
             </span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" onclick="openGenerationPicker()"
+                    title="Pick a saved AI layout"
+                    class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-100 rounded-lg hover:bg-indigo-200 transition dark:text-indigo-300 dark:bg-indigo-900 dark:hover:bg-indigo-800">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"/>
+              </svg>
+              Pick layout
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/>
+              </svg>
+            </button>
             <button type="button" onclick="generateLayout()"
                     title="Generate AI layout"
                     class="p-2 rounded-lg text-indigo-600 hover:bg-indigo-100 transition dark:text-indigo-300 dark:hover:bg-indigo-900">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z"></path>
-              </svg>
-            </button>
-            <button type="button" onclick="openPubSettings()" title="Publication settings"
-                    class="p-2 rounded-lg text-indigo-600 hover:bg-indigo-100 transition dark:text-indigo-300 dark:hover:bg-indigo-900">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="3"></circle>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path>
               </svg>
             </button>
             <button type="button" onclick="clearLayout()"
@@ -348,10 +354,17 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
               </svg>
             </button>
+            <button type="button" onclick="openPubSettings()" title="Publication settings"
+                    class="p-2 rounded-lg text-indigo-600 hover:bg-indigo-100 transition dark:text-indigo-300 dark:hover:bg-indigo-900">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path>
+              </svg>
+            </button>
           </div>
         </div>
         <!-- History selector: appears when gte 2 generations exist, on its own row -->
-        <div class="mt-2" id="history-selector-wrap" style="display: none;">
+        <div class="mt-1" id="history-selector-wrap" style="display: none;">
           <select id="generation-select"
                   onchange="applyGeneration(this.value)"
                   class="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-800 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950">
@@ -1184,6 +1197,12 @@
       }
     }
 
+    function generation_select_text() {
+      const select = document.getElementById("generation-select");
+      if (!select || select.options.length <= 1) return "No saved layouts";
+      return "Saved layouts";
+    }
+
     async function applyGeneration(genId) {
       if (!genId) return; // Switching back to "Current layout"
       try {
@@ -1200,6 +1219,18 @@
       } catch (err) {
         alert("Failed to apply generation.");
       }
+    }
+
+    async function openGenerationPicker() {
+      const wrap = document.getElementById("history-selector-wrap");
+      const select = document.getElementById("generation-select");
+      if (!wrap || !select) return;
+      if (select.options.length === 1) {
+        // No saved generations yet — generate one first.
+        generateLayout();
+        return;
+      }
+      wrap.style.display = wrap.style.display === "none" ? "block" : "none";
     }
 
     async function clearLayout() {
