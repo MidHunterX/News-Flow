@@ -414,37 +414,43 @@ async def suggest_categories(
 
 _LAYOUT_SYSTEM_PROMPT = (
     "You are an editor for a Malayalam newspaper's print edition. You are given "
-    "a list of articles (ID, title, source, word count) and the page layout settings: "
-    "total_pages, page_words (target words per page), and word_allowance (slack above/below). "
-    "Your task is to assign articles to pages to create a balanced newspaper layout.\n\n"
-    "Preferences:\n"
-    "- Distribute articles evenly across all pages.\n"
-    "- Try to fill each page close to page_words words (between page_words - word_allowance "
-    "and page_words + word_allowance is ideal).\n"
-    "- Distribute all articles across the pages so no article is left out.\n"
-    "- Every article must be placed on exactly one page — the total number of "
-    "articles you place must equal the number given.\n"
-    "- For each page, pick articles whose combined word count comes close to "
-    "page_words (between page_words - word_allowance and page_words + word_allowance "
-    "is ideal). It is far better to slightly exceed the allowance on a page than "
-    "to leave articles unplaced or pile them all onto the last page.\n"
-    "- Aim for roughly {articles_per_page_target} articles per page on average "
-    "({total_articles} articles across {total_pages} pages), but let the word "
-    "budget decide the actual count per page; pages with shorter articles can "
-    "hold more, pages with longer ones fewer.\n"
-    "- Mix sources across pages; do not put all articles from one source on the "
-    "same page.\n"
-    "- Prefer placing higher-word-count articles first so big stories are "
-    "secured.\n"
-    "- Never exceed total_pages.\n"
-    "- If an article has 0 words (not scraped), still place it but prioritize "
-    "scraped ones.\n\n"
+    "a list of candidate articles (ID, title, word count) and the page layout "
+    "settings: total_pages, page_words (target words per page), and "
+    "word_allowance (slack above/below). Your task is to CURATE the most "
+    "important, newsworthy articles and assign them to pages to create a "
+    "balanced newspaper layout.\n\n"
+    "There are far more candidates than will fit. You do NOT need to place "
+    "every article — dropping lower-priority articles is expected and correct.\n\n"
+    "Selection (curation):\n"
+    "- Keep only the most important, newsworthy articles. The total word budget "
+    "is total_pages * page_words; keep roughly enough articles to fill that "
+    "budget, and discard the rest.\n"
+    "- Prefer higher-impact stories. Use title and word count as signals: "
+    "longer pieces usually indicate major stories; very short items are usually "
+    "filler. Articles with 0 words (not scraped) should be dropped unless they "
+    "are clearly essential.\n"
+    "- Do not keep filler just to reach a count. Fewer, well-chosen articles "
+    "beat cramming in everything.\n\n"
+    "Layout:\n"
+    "- The word budget governs how many articles go on a page. Fill each page "
+    "close to page_words (between page_words - word_allowance and "
+    "page_words + word_allowance is ideal). Pages with shorter articles can "
+    "hold more; pages with longer ones fewer.\n"
+    "- articles_per_page_hint ({articles_per_page_target}) is only a rough "
+    "guide — a soft ceiling on how many articles a page typically holds. It is "
+    "NOT a target or a hard cap; the word budget decides the actual count.\n"
+    "- Spread the kept articles evenly across all {total_pages} pages. Each page "
+    "should get at least one article if enough were kept. Do not pile leftovers "
+    "onto the last page.\n"
+    "- Every article you place must appear on exactly one page — no duplicates.\n"
+    "- Never exceed total_pages.\n\n"
     "Return a JSON object with a single key \"pages\" whose value is an array of "
     "arrays of article IDs. Index 0 = page 1, index 1 = page 2, etc.\n"
     "Example: {{'pages': [[1, 2], [3, 4, 5], [6]]}} means page 1 has articles 1,2; "
     "page 2 has 3,4,5; page 3 has 6.\n"
-    "The total number of pages in your response must equal total_pages, and the "
-    "union of all values in all page arrays must contain every article ID given."
+    "The total number of pages in your response must equal total_pages. Every "
+    "ID you place must come from the candidate list, and no ID may appear more "
+    "than once. IDs you drop simply do not appear."
 )
 
 _LAYOUT_RESPONSE_SCHEMA: dict[str, Any] = {
@@ -471,43 +477,48 @@ def build_layout_prompt(
     word_allowance: int,
     articles_per_page_hint: int,
 ) -> str:
-    """User prompt for AI Layout: article list + page settings.
+    """User prompt for AI Layout: candidate list + page settings.
 
     *articles* holds (id, title, source, word_count) tuples. The source
     field is accepted for call-site compatibility but is not included in
     the prompt — it is not important for layout decisions and wastes
     tokens.
-    *articles_per_page_hint* is a heuristically-derived ceiling on how
-    many articles typically fit on one page (overall word-count sum ÷
-    page_words, rounded), given to the model so it does not overstuff a
-    single page.
+    *articles_per_page_hint* is a heuristically-derived soft ceiling on how
+    many articles typically fit on one page, given to the model only as a
+    rough guide so it does not overstuff a single page. The word budget is
+    what governs the actual count per page. The model is expected to drop
+    lower-priority candidates rather than place them all.
     """
     lines = []
     for article_id, title, _source, word_count in articles:
         wc = word_count if word_count is not None else 0
         lines.append(f"{article_id}. {title} ({wc} words)")
 
+    total_budget = total_pages * page_words
+
     return (
-        f"Articles to place ({len(articles)} total):\n"
+        f"Candidate articles ({len(articles)} total — more than will fit):\n"
         f"{chr(10).join(lines)}\n\n"
         f"Page layout settings:\n"
         f"- total_pages: {total_pages}\n"
         f"- page_words: {page_words} (target words per page)\n"
         f"- word_allowance: {word_allowance} (slack above/below target)\n"
+        f"- total word budget: {total_pages} pages x {page_words} words/page "
+        f"= {total_budget} words\n"
         f"- articles_per_page_hint: {articles_per_page_hint} "
-        f"(heuristic target articles per page given the scraped word counts "
-        f"— a soft guide, not a hard cap; the word budget is what governs "
-        f"each page)\n\n"
-        f"Curate this newspaper page by page. For each page, pick the most "
-        f"important, newsworthy articles that together come close to "
-        f"page_words words (between page_words - word_allowance and "
-        f"page_words + word_allowance is ideal). Every article must be "
-        f"placed on exactly one page, and the total number of pages in your "
-        f"response must equal total_pages. Do not pile the remaining articles "
-        f"onto the last page — spread them across all pages so each page is "
-        f"close to its word budget.\n"
-        f"Mix sources across pages; do not stuff one page with too many "
-        f"articles just because they are short."
+        f"(rough soft ceiling on articles per page — a guide only; the word "
+        f"budget is what governs)\n\n"
+        f"Curate this newspaper edition. Select only the most important, "
+        f"newsworthy articles that fit within the {total_budget}-word budget, "
+        f"and discard the rest — you do not need to place every candidate.\n\n"
+        f"Then lay the kept articles out page by page. For each page, pick "
+        f"articles whose combined word count comes close to page_words "
+        f"(between page_words - word_allowance and page_words + word_allowance "
+        f"is ideal). Spread the kept articles evenly across all {total_pages} "
+        f"pages — do not pile leftovers onto the last page. Every article you "
+        f"place must appear on exactly one page. The total number of pages in "
+        f"your response must equal total_pages, every ID you place must come "
+        f"from the candidate list, and no ID may appear more than once."
     )
 
 
@@ -515,6 +526,11 @@ def _validate_layout_response(
     parsed: dict[str, Any], total_pages: int, article_ids: set[int]
 ) -> list[list[int]]:
     """Validate and normalize the AI layout response.
+
+    The AI curates: it is expected to drop lower-priority candidates, so
+    articles absent from the response are not an error. We still reject
+    malformed responses (wrong page count, non-list pages, unknown or
+    duplicate IDs are dropped silently) and a completely empty layout.
 
     Returns a list of page arrays (one per page). Raises GeminiResponseError
     when the response is malformed.
@@ -548,11 +564,17 @@ def _validate_layout_response(
             validated_page.append(raw_id)
         result.append(validated_page)
 
-    # Check that all articles were placed
-    missing = article_ids - all_assigned
-    if missing:
-        raise GeminiResponseError(
-            f"{len(missing)} articles were not placed: {sorted(missing)[:10]}"
+    if not all_assigned:
+        raise GeminiResponseError("No valid article IDs were placed")
+
+    dropped = article_ids - all_assigned
+    if dropped:
+        # Curation is expected — just record how aggressive it was.
+        logger.info(
+            "AI layout kept %d of %d candidate articles (dropped %d)",
+            len(all_assigned),
+            len(article_ids),
+            len(dropped),
         )
 
     return result
