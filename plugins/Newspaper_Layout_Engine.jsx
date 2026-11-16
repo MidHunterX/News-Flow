@@ -344,10 +344,6 @@
         return style;
     }
 
-    function applyStyle(item, style) {
-        item.applyObjectStyle(style, true);
-    }
-
     // =========================================================
     // FRAME CREATION
     // =========================================================
@@ -443,37 +439,6 @@
         } catch (e) {
             log("Could not apply paragraph style: " + e.message);
         }
-    }
-
-    function createTextFrame(page, bounds, content, objectStyle, paragraphStyle) {
-        var frame = page.textFrames.add();
-        frame.geometricBounds = bounds;
-        applyStyle(frame, objectStyle);
-        frame.contents = content || "";
-        applyParagraphStyle(frame, paragraphStyle);
-        return frame;
-    }
-
-    // IMPORTANT: Do not call fit() or scale the placed graphic.
-    // The Cover Picture object style is responsible for automatic image fitting.
-    // This engine changes only the rectangle's geometric bounds.
-    function createImageFrame(page, bounds, imageFile, objectStyle) {
-        var frame = page.rectangles.add();
-        frame.geometricBounds = bounds;
-        applyStyle(frame, objectStyle);
-        frame.place(imageFile);
-
-        // Ensure that the image displaces the text in the underlying body frame.
-        // The object style may already define wrap options; setting the mode here
-        // makes the intended newspaper behaviour explicit.
-        try {
-            frame.textWrapPreferences.textWrapMode =
-                TextWrapModes.BOUNDING_BOX_TEXT_WRAP;
-            frame.textWrapPreferences.textWrapOffset = [0, 0, 0, 0];
-        } catch (wrapError) {
-            log("Could not set image text wrap: " + wrapError.message);
-        }
-        return frame;
     }
 
     function getPage(pageNumber, doc) {
@@ -632,8 +597,8 @@
     function imageColumnSpan(wordCount, maximumSpan) {
         var span;
         if (wordCount <= 180) span = 4;
-        else if (wordCount <= 350) span = 3;
-        else if (wordCount <= 650) span = 2;
+        else if (wordCount <= 280) span = 3;
+        else if (wordCount <= 380) span = 2;
         else span = 1;
         return Math.min(maximumSpan, Math.max(1, span));
     }
