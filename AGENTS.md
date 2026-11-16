@@ -169,7 +169,9 @@ Two workspaces exist side by side:
   files → `public/<db>/publication/`), and only then wipes the curation
   workspace. Curation still starts empty each day; the previous day lives
   on for `/publication`. The archive holds exactly one day — each reset
-  replaces it. Every dir involved belongs to the active database only, so a
+  replaces it, and the AI layout generation history (`layout_generations`)
+  is dropped with it: a new day starts with no saved layouts. Every dir
+  involved belongs to the active database only, so a
   freshly provisioned DB (no `last_run_date` yet — e.g. a temporary
   `NEWSFLOW_DB_PATH` set up for testing) resets its own empty tree instead
   of wiping the main database's scraped content.

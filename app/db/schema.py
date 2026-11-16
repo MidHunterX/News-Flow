@@ -17,7 +17,13 @@ from app.db.constants import (
 )
 from app.db.engine import Base, SessionLocal, engine
 from app.db.layout import PUBLICATION_LAYOUT_DEFAULTS
-from app.db.models import Article, Notification, PublicationArticle, Setting
+from app.db.models import (
+    Article,
+    LayoutGeneration,
+    Notification,
+    PublicationArticle,
+    Setting,
+)
 from app.utils import (
     ARTICLES_DIR,
     COVERS_DIR,
@@ -165,7 +171,8 @@ def _reset_daily_workspace() -> None:
     workspace cleared. Curation keeps its clean-slate philosophy — nothing
     from the previous day leaks into today's queue — while the previous
     day's data stays available to the print-publication pipeline behind
-    ``/publication``.
+    ``/publication``. The AI layout generation history is dropped along with
+    it: those page assignments belong to a workspace that no longer exists.
 
     Because every dir here is scoped to the active database (see
     :mod:`app.utils`), a freshly provisioned database — no ``last_run_date``
@@ -210,6 +217,12 @@ def _reset_daily_workspace() -> None:
             )
         )
         session.execute(delete(Article))
+        # The AI layout history describes a workspace that is now empty, so
+        # yesterday's generations are meaningless: each new day starts with
+        # no generation history at all (in both the curation and publication
+        # tabs). Cleared in the same transaction as the row move so a crash
+        # can never leave history pointing at articles that no longer exist.
+        session.execute(delete(LayoutGeneration))
         if last_run is None:
             session.add(Setting(key=LAST_RUN_DATE_KEY, value=today))
         else:

@@ -16,7 +16,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import schema
 from app.db.constants import LAST_RUN_DATE_KEY, STATUS_ACCEPTED, STATUS_PUBLISHING
-from app.db.models import Article, Base, PublicationArticle, Setting
+from app.db.models import (
+    Article,
+    Base,
+    LayoutGeneration,
+    PublicationArticle,
+    Setting,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -197,6 +203,40 @@ class TestResetDailyWorkspace:
         assert not (covers_dir / "unrelated.png").exists()
         assert covers_dir.is_dir()  # recreated empty, not removed
         assert articles_dir.is_dir()
+
+    def test_new_day_clears_layout_generation_history(self, reset_env):
+        """Every saved AI layout generation belongs to the day being erased."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            _set_last_run(session, "2000-01-01")
+            _insert_article(session)
+            session.add_all(
+                [
+                    LayoutGeneration(page_assignments=[[1, 2]], day="today"),
+                    LayoutGeneration(page_assignments=[[3]], day="previous"),
+                ]
+            )
+            session.commit()
+
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            assert session.query(LayoutGeneration).count() == 0
+
+    def test_same_day_keeps_layout_generation_history(self, reset_env):
+        """A same-day restart never touches today's saved layouts."""
+        session_factory, _articles_dir, _covers_dir = reset_env
+        with session_factory() as session:
+            _set_last_run(session, _today())
+            generation = LayoutGeneration(page_assignments=[[1, 2]], day="today")
+            session.add(generation)
+            session.commit()
+            generation_id = generation.id
+
+        schema._reset_daily_workspace()
+
+        with session_factory() as session:
+            assert session.get(LayoutGeneration, generation_id) is not None
 
 
 # ---------------------------------------------------------------------------
