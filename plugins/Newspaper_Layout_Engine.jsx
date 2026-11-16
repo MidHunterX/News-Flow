@@ -13,12 +13,8 @@
     var STYLE_COVER = "Cover Picture";
     var STYLE_BODY = "Body 4 Col";
 
-    // Article layout proportions
-    var HEADING_RATIO = 0.16;
-    var COVER_RATIO = 0.25;
-
-    // Space between frames (points)
-    var FRAME_GAP = 4;
+    // Whether to bring each page into view before placing articles
+    var ACTIVATE_PAGE = true;
 
     // HTTP timeout in seconds
     var HTTP_TIMEOUT = 30;
@@ -764,6 +760,19 @@
         return count;
     }
 
+    function activatePage(page) {
+        if (!ACTIVATE_PAGE) return;
+        try {
+            var win = app.activeWindow;
+            if (win && win.constructor.name === "LayoutWindow") {
+                win.activePage = page;
+                app.redraw();   // non-blocking repaint
+            }
+        } catch (e) {
+            log("Could not activate page " + page.name + ": " + e.message);
+        }
+    }
+
     // =========================================================
     // MAIN
     // =========================================================
@@ -800,6 +809,8 @@
 
             var page = getPage(pageNumber, doc);
             var layout = getPageLayout(page);
+            activatePage(page);
+
             var articles = pageData.articles || [];
             if (!articles.length) {
                 log("Page " + pageNumber + " has no articles.");
