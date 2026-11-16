@@ -10,7 +10,7 @@ from app.curator import run_due_selection
 from app.db import get_completion_interval, init_db
 from app.publisher import publish_due_articles
 from app.refresher import run_due_refresh
-from app.routes import notifications, publication, scrape
+from app.routes import notifications, plugins, publication, scrape
 from app.scrapers.init import SCRAPERS
 from app.utils import COVERS_DIR, PUBLICATION_COVERS_DIR
 from app.wordpress import ensure_terms, sync_terms_if_stale
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 app.include_router(scrape.router)
 app.include_router(publication.router)
 app.include_router(notifications.router)
+app.include_router(plugins.router)
 
 # Serve static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -99,5 +100,6 @@ async def root():
             "/": f"Get news from all sources (optional ?source={sources})",
             "/api/scrape": f"Get JSON from all sources (optional ?source={sources})",
             "/api/refresh": "Re-scrape and refresh the cached articles (POST, optional ?source=<source>)",
+            "/plugins": "Browse, preview and download the plugins/ folder (HTML)",
         },
     }

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {# Read-only browser for the plugins/ folder (app/routes/plugins.py).
+     The route passes either a folder listing (entries) or one file (file);
+     both share the breadcrumb trail and the download button. #}
+  {% set file = file|default(none) %}
+  {% set entries = entries|default([]) %}
+  {% set crumbs = crumbs|default([{"label": "plugins", "href": "/plugins"}]) %}
+  {% set current_path = current_path|default("") %}
+  {% set download_href = download_href|default("/plugins/download") %}
+
+  <div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Header: what this page is, plus the current folder/file download. -->
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Plugins</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+          {% if file %}
+            Viewing one file from the <code class="font-mono">plugins/</code> folder.
+          {% else %}
+            Browse, preview and download the files in <code class="font-mono">plugins/</code>.
+          {% endif %}
+        </p>
+      </div>
+      <a href="{{ download_href }}"
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+        </svg>
+        {% if file %}Download file{% else %}Download folder{% endif %}
+      </a>
+    </div>
+
+    <!-- Breadcrumbs: plugins / sub / folder (the last crumb is the page). -->
+    <nav class="flex flex-wrap items-center gap-1 text-sm text-gray-500 dark:text-gray-400" aria-label="Breadcrumb">
+      {% for crumb in crumbs %}
+        {% if crumb.href and not loop.last %}
+          <a href="{{ crumb.href }}" class="font-medium hover:text-indigo-600 dark:hover:text-indigo-400">{{ crumb.label }}</a>
+          <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+          </svg>
+        {% else %}
+          <span class="font-semibold text-gray-800 dark:text-gray-200">{{ crumb.label }}</span>
+          {% if not loop.last %}
+            <svg class="w-3.5 h-3.5 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    </nav>
+
+    {% if file %}
+      <!-- One file: size + timestamp, then the text (or why it isn't shown). -->
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+        <div class="flex flex-wrap items-center gap-2 px-5 py-3 border-b border-gray-200 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+          <span>{{ file.size }}</span>
+          <span class="text-gray-300 dark:text-gray-600">&middot;</span>
+          <span>{{ file.modified }}</span>
+        </div>
+        {% if file.content is not none %}
+          <pre class="p-5 overflow-x-auto text-sm font-mono whitespace-pre-wrap break-words text-gray-800 dark:text-gray-200">{{ file.content }}</pre>
+        {% else %}
+          <p class="px-5 py-10 text-sm text-center text-gray-400 dark:text-gray-500">{{ file.note }}</p>
+        {% endif %}
+      </div>
+    {% else %}
+      {% if entries %}
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+          <table class="w-full text-sm">
+            <thead class="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-700">
+              <tr>
+                <th class="px-4 py-3">Name</th>
+                <th class="px-4 py-3 hidden sm:table-cell">Size</th>
+                <th class="px-4 py-3 hidden sm:table-cell">Modified</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+              {% for entry in entries %}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                  <td class="px-4 py-2.5">
+                    <a href="{{ entry.href }}"
+                       class="inline-flex items-center gap-2 font-medium text-gray-800 hover:text-indigo-600 dark:text-gray-200 dark:hover:text-indigo-400">
+                      {% if entry.is_dir %}
+                        <svg class="w-4 h-4 shrink-0 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                        </svg>
+                      {% else %}
+                        <svg class="w-4 h-4 shrink-0 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                      {% endif %}
+                      {{ entry.name }}
+                    </a>
+                  </td>
+                  <td class="px-4 py-2.5 hidden sm:table-cell text-gray-500 dark:text-gray-400">{{ entry.size or "—" }}</td>
+                  <td class="px-4 py-2.5 hidden sm:table-cell text-gray-500 dark:text-gray-400">{{ entry.modified }}</td>
+                  <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                    <a href="{{ entry.href }}"
+                       class="px-2 py-1 rounded-md text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition dark:text-indigo-400 dark:hover:bg-gray-700">
+                      {% if entry.is_dir %}Open{% else %}View{% endif %}
+                    </a>
+                    <a href="{{ entry.download_href }}"
+                       class="px-2 py-1 rounded-md text-xs font-semibold text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700">
+                      Download
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="bg-white rounded-xl border border-gray-200 p-10 text-center text-sm text-gray-400 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-500">
+          This folder is empty.
+        </div>
+      {% endif %}
+    {% endif %}
+
+    {% if parent_href %}
+      <a href="{{ parent_href }}"
+         class="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+        </svg>
+        Up one level
+      </a>
+    {% endif %}
+  </div>
+{% endblock %}

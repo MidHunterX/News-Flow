@@ -280,6 +280,9 @@ Feature toggles (in the settings modal) can only be switched on when their backi
 | `GET` | `/api/notifications` | The background-event journal, newest first, plus the unread count (info excluded) |
 | `POST` | `/api/notifications/read` | Mark every unseen notification as read (the bell click) |
 | `DELETE` | `/api/notifications` | Clear the journal |
+| `GET` | `/plugins` | Browse the `plugins/` folder (optional `?path=<folder>`) |
+| `GET` | `/plugins/view` | Text preview of one plugins file (`?path=<file>`) |
+| `GET` | `/plugins/download` | Download one plugins file, or a folder as a zip (`?path=<file|folder>`) |
 
 ---
 
@@ -311,6 +314,7 @@ news-flow/
 │   ├── scrapers/               # BaseScraper + one module per source
 │   ├── routes/scrape.py        # API + UI routes, settings
 │   ├── routes/notifications.py # Notification log: list / mark-read / clear
+│   ├── routes/plugins.py       # Plugins browser: list / preview / download
 │   └── db/                     # SQLAlchemy 2.0 (sync, wrapped in to_thread)
 │       ├── engine.py           # SQLite WAL engine + run_in_thread helper
 │       ├── schema.py           # create_all, migrations, daily reset

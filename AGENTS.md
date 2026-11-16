@@ -93,6 +93,10 @@ app/
                      # notification log routes: GET /api/notifications (list
                      # + unread_count, info excluded), POST .../read (marks
                      # every unseen row read), DELETE ...
+  routes/plugins.py  # read-only browser for the plugins/ dir: GET /plugins
+                     # (folder listing), /plugins/view (text preview),
+                     # /plugins/download (file, or a folder as a zip) — every
+                     # path is resolved inside PLUGINS_DIR first
   db/                # persistence layer (SQLAlchemy 2.0 + SQLite, WAL mode)
     engine.py        # engine, SessionLocal, Base, run_in_thread, DB_PATH
                      # (resolved by app.config.database_path() — override
@@ -119,7 +123,7 @@ app/
   gemini.py          # Gemini categorization (article + terms → category IDs)
   source_health.py   # per-source scrape health (ok/down) surfaced in the UI;
                      # a down source is skipped, never fatal
-templates/           # Jinja2 UI (base/index/publication/article.html),
+templates/           # Jinja2 UI (base/index/publication/article/plugins.html),
                      # Tailwind via CDN
 static/              # logo.svg
 tests/
@@ -208,6 +212,16 @@ Two workspaces exist side by side:
   each article's heading/body split on a blank line, whole-file word
   counts, and each cover's URL / absolute path / pixel size — the payload
   the InDesign ExtendScript consumes.
+- **Plugins browser** (`app/routes/plugins.py` + `templates/plugins.html`):
+  a read-only view of the repo's `plugins/` folder, reached from the
+  hamburger menu in `templates/base.html` (the header's secondary-
+  destinations dropdown; `active_nav == "plugins"` highlights the entry).
+  `GET /plugins?path=<folder>` lists a folder (dirs first, with size and
+  modified time), `/plugins/view?path=<file>` previews a text file (binary
+  or >`MAX_PREVIEW_BYTES` renders a note), and `/plugins/download?path=`
+  serves a file as an attachment or a folder as a zip. Every request path
+  is resolved against `PLUGINS_DIR` first — `..`, absolute paths and
+  outward symlinks 404 instead of escaping the folder. Nothing writes.
 - **Scheduled refresh** (`app/refresher.py`): `refresh_sources()` is shared by
   the manual `POST /api/refresh` and the background loop — scrape →
   `save_items` → `trim_articles` → stamp `refresh_last_run`. `run_due_refresh()`

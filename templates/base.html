@@ -48,6 +48,34 @@
         </div>
 
         <div class="flex items-center space-x-4">
+          <!-- Hamburger: secondary destinations that don't need a nav pill
+               of their own — currently the plugins browser. -->
+          <div class="relative">
+            <button
+              id="hamburger-button"
+              onclick="toggleHamburger()"
+              class="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-600"
+              title="Menu"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </button>
+            <div
+              id="hamburger-menu"
+              class="hidden absolute right-0 mt-2 w-48 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-50 dark:border-gray-700 dark:bg-gray-800"
+            >
+              <a href="/plugins"
+                 class="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition {% if active_nav == 'plugins' %}bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300{% else %}text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700{% endif %}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                </svg>
+                Plugins
+              </a>
+            </div>
+          </div>
           <button
             onclick="openNotifications()"
             class="relative p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-600"
@@ -423,6 +451,35 @@
     {% block scripts %}{% endblock %}
 
     <script>
+      // ---- Hamburger menu ----
+      // Secondary destinations (currently the plugins browser) live behind
+      // the hamburger instead of crowding the two nav pills.
+      function setHamburger(open) {
+        const menu = document.getElementById("hamburger-menu");
+        const button = document.getElementById("hamburger-button");
+        if (!menu || !button) return;
+        menu.classList.toggle("hidden", !open);
+        button.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+
+      function toggleHamburger() {
+        const menu = document.getElementById("hamburger-menu");
+        setHamburger(menu ? menu.classList.contains("hidden") : false);
+      }
+
+      // Usual menu manners: a click elsewhere or Escape closes it.
+      document.addEventListener("click", (event) => {
+        const menu = document.getElementById("hamburger-menu");
+        const button = document.getElementById("hamburger-button");
+        if (!menu || !button || menu.classList.contains("hidden")) return;
+        if (!menu.contains(event.target) && !button.contains(event.target)) {
+          setHamburger(false);
+        }
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") setHamburger(false);
+      });
+
       // ---- Settings modal ----
       let selectedLayout = "grid";
       let selectedResetTimezone = "utc";
