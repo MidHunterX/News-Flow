@@ -22,6 +22,12 @@
 
   function log(message) {
     $.writeln("[Publication Import] " + message);
+    /* var logFile = new File(Folder.desktop.fsName + "/InDesign_Debug_Log.txt");
+    logFile.encoding = "UTF-8";
+    if (logFile.open("a")) {
+      logFile.writeln("[" + new Date().toString() + "] " + message);
+      logFile.close();
+    } */
   }
 
   // =========================================================
@@ -179,6 +185,9 @@
     jsonText = jsonText.replace(/^\uFEFF/, "");
     var data;
     try {
+      jsonText = jsonText
+        .replace(/\u200D/g, "\\u200D")
+        .replace(/\u200C/g, "\\u200C");
       data = eval("(" + jsonText + ")");
     } catch (e) {
       throw new Error("Could not parse API JSON:\n" + e.message);
