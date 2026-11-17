@@ -66,6 +66,7 @@
   }
 
   function httpGet(url) {
+    url = encodeURI(url);
     var parsed = parseURL(url);
     var socket = new Socket();
     socket.timeout = HTTP_TIMEOUT;
