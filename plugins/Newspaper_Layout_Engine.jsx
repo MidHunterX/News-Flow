@@ -534,6 +534,36 @@
     return downloadImage(url, article.id || new Date().getTime());
   }
 
+  // Place a heading frame at `top`, spanning `left`..`right`, and return
+  // both the frame and the actual bottom edge after the story recomposes.
+  function placeHeadingAndMeasure(
+    page,
+    top,
+    left,
+    right,
+    text,
+    objectStyle,
+    paragraphStyle,
+  ) {
+    var probeBottom = top + 1; // any height; auto-size will fix it
+    var frame = page.textFrames.add();
+    frame.geometricBounds = [top, left, probeBottom, right];
+    frame.contents = text || "";
+    frame.applyObjectStyle(objectStyle, true);
+    applyParagraphStyle(frame, paragraphStyle);
+    try {
+      frame.parentStory.recompose();
+    } catch (e) {}
+    var b;
+    try {
+      b = frame.visibleBounds;
+    } catch (e) {
+      b = frame.geometricBounds;
+    }
+    // visibleBounds = [y1, x1, y2, x2] in InDesign's ruler coords
+    return { frame: frame, bottom: b[2] };
+  }
+
   function placeSingleArticle(
     page,
     article,
@@ -544,16 +574,16 @@
     index,
   ) {
     var title = article.heading || article.title || "";
-    var h = headingHeight(article, bottom - top);
-    var headingBottom = Math.min(bottom, top + h);
-    var headingFrame = createTextFrame(
+    var heading = placeHeadingAndMeasure(
       page,
-      [top, layout.left, headingBottom - HEADING_GAP, layout.right],
+      top,
+      layout.left,
+      layout.right,
       title,
       styles.headingObject,
       styles.headingParagraph,
     );
-    var bodyTop = Math.min(bottom, headingBottom);
+    var bodyTop = Math.min(bottom, heading.bottom);
     var bodyFrame = createTextFrame(
       page,
       [bodyTop, layout.left, bottom, layout.right],
@@ -565,19 +595,12 @@
     if (article.cover && article.cover.url && bottom - bodyTop > 24) {
       var span = imageColumnSpan(articleWords(article), 4);
       var side = IMAGE_SIDE_ALTERNATES && index % 2 === 1 ? "right" : "left";
-      var startColumn = side === "right" ? 4 - span : 0;
-      var bounds = imageBounds(
-        layout,
-        bodyTop,
-        bottom,
-        startColumn,
-        span,
-        side,
-      );
+      var start = side === "right" ? 4 - span : 0;
+      var bounds = imageBounds(layout, bodyTop, bottom, start, span, side);
       var file = imageFileFor(article);
       imageFrame = createImageFrame(page, bounds, file, styles.cover);
     }
-    return { heading: headingFrame, body: bodyFrame, image: imageFrame };
+    return { heading: heading.frame, body: bodyFrame, image: imageFrame };
   }
 
   function placePairArticle(
@@ -591,16 +614,16 @@
   ) {
     var width = spanWidth(layout, startColumn, 2);
     var left = columnX(layout, startColumn);
-    var h = headingHeight(article, bottom - top);
-    var headingBottom = Math.min(bottom, top + h);
-    var headingFrame = createTextFrame(
+    var heading = placeHeadingAndMeasure(
       page,
-      [top, left, headingBottom - HEADING_GAP, left + width],
+      top,
+      left,
+      left + width,
       article.heading || article.title || "",
       styles.headingObject,
       styles.headingParagraph2,
     );
-    var bodyTop = Math.min(bottom, headingBottom);
+    var bodyTop = Math.min(bottom, heading.bottom);
     var bodyFrame = createTextFrame(
       page,
       [bodyTop, left, bottom, left + width],
@@ -614,7 +637,7 @@
       var file = imageFileFor(article);
       imageFrame = createImageFrame(page, bounds, file, styles.cover);
     }
-    return { heading: headingFrame, body: bodyFrame, image: imageFrame };
+    return { heading: heading.frame, body: bodyFrame, image: imageFrame };
   }
 
   function placePairUnit(page, unit, layout, top, bottom, styles) {
