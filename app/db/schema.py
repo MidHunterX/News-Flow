@@ -86,6 +86,10 @@ def _migrate() -> None:
                 conn.execute(
                     text(f"ALTER TABLE {table} ADD COLUMN page_number INTEGER")
                 )
+            if "page_position" not in columns:
+                conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN page_position INTEGER")
+                )
 
     # Layout generations table (AI-generated page assignments history)
     if "layout_generations" not in existing_tables:

@@ -85,7 +85,8 @@ app/
                      # GET /publication (print-publication inspection page)
                      # + the print-layout API the sidebar drives:
                      # GET/POST /api/publication/settings, POST
-                     # /api/publication/assign, POST
+                     # /api/publication/layout (whole dragged/sorted
+                     # layout save), POST /api/publication/assign, POST
                      # /api/publication/{id}/unassign, GET
                      # /api/publication/export (layout JSON for the
                      # InDesign ExtendScript)
@@ -199,21 +200,28 @@ Two workspaces exist side by side:
 - **Print-layout sidebar** (`/publication`): the right-hand panel groups
   the shown workspace's articles onto `total_pages` pages via the
   `page_number` column (added to both article tables by `_migrate`, copied
-  by the daily reset). The three knobs live in `app/db/layout.py` — plain
-  `settings` rows but with their own API (`/api/publication/settings`);
-  `/api/settings` rejects those keys on purpose. The picker modal
-  carries a live word-count meter: words already on the target page plus
-  the current selection, projected against the quota/upper limit with the
-  same color ramp as the sidebar bars (baseline embedded per page as
-  `pageWordCounts`) — indigo under quota, green at 100%, heating through
-  orange to red at `page_words + word_allowance`. Assigning is
-  all-or-nothing (404 on any unknown id, 400 past `total_pages`), and
-  shrinking `total_pages` un-places the orphans in both workspaces.
-  **Export JSON**
-  (`GET /api/publication/export`) builds settings + limits, pages with
+  by the daily reset) and orders each page with `page_position` (0-based,
+  rewritten by the drag-and-drop save). The three knobs live in
+  `app/db/layout.py` — plain `settings` rows but with their own API
+  (`/api/publication/settings`); `/api/settings` rejects those keys on
+  purpose. The panel is drag-and-drop (Shopify Draggable, loaded from a
+  CDN): the free pool plus every page list is one Sortable group
+  (reorder inside a list, move between lists), each card's grip is a
+  Draggable that places that article on the page it is dropped on, and a
+  chip's × returns it to the free pool. Drops repaint the page word
+  counts/fill bars client-side using the same color ramp as the server
+  (indigo under quota, green at 100%, heating through orange to red at
+  `page_words + word_allowance`); nothing is written until **Save layout**
+  POSTs `/api/publication/layout` with every page in display order. That
+  save is a full replacement — articles missing from the payload return to
+  the free pool — and all-or-nothing (404 on any unknown id; 400 for a
+  duplicated article, a repeated page, or a page past `total_pages`).
+  Shrinking `total_pages` un-places the orphans in both workspaces.
+  The InDesign ExtendScript still reads `GET /api/publication/export`,
+  which builds settings + limits, pages (in `page_position` order) with
   each article's heading/body split on a blank line, whole-file word
-  counts, and each cover's URL / absolute path / pixel size — the payload
-  the InDesign ExtendScript consumes.
+  counts, and each cover's URL / absolute path / pixel size; it is no
+  longer driven by a page button.
 - **Plugins browser** (`app/routes/plugins.py` + `templates/plugins.html`):
   a read-only view of the repo's `plugins/` folder, reached from the
   hamburger menu in `templates/base.html` (the header's secondary-

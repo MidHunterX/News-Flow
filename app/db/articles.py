@@ -50,6 +50,7 @@ def _article_to_item(article: Article | PublicationArticle) -> NewsItem:
         wp_category_ids=article.wp_category_ids,
         is_print_published=bool(article.is_print_published),
         page_number=article.page_number,
+        page_position=article.page_position,
     )
 
 

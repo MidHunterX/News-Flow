@@ -50,6 +50,11 @@ class _ArticleFields:
     # survives inside the archive while today starts unplaced.
     page_number: Mapped[int | None] = mapped_column(Integer)
 
+    # Order of the article inside its page (0-based, rewritten by the
+    # sidebar's drag-and-drop save); NULL means "keep the workspace order"
+    # for rows that were grouped before ordering existed.
+    page_position: Mapped[int | None] = mapped_column(Integer)
+
 
 class Article(_ArticleFields, Base):
     __tablename__ = "articles"

@@ -60,6 +60,7 @@ from app.db.layout import (
                              get_layout_generations,
                              get_publication_layout,
                              save_layout_generation,
+                             save_page_layout,
                              set_publication_layout,
 )
 from app.db.models import Article, Notification, PublicationArticle, Setting
@@ -163,6 +164,7 @@ __all__ = [  # noqa: RUF022
     "get_publication_layout",
     "set_publication_layout",
     "assign_articles_to_page",
+    "save_page_layout",
     "clear_article_page",
     "clear_page_layout",
     # Layout generation history (AI-generated page assignments).

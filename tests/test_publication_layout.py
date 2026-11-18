@@ -1,17 +1,15 @@
 """Offline tests for the print-layout sidebar (publication page).
 
 Covers the publication-specific settings in ``app/db/layout.py`` (their own
-module on purpose — kept out of the app-wide settings), the grouping
-endpoints the sidebar's picker and remove buttons call, the view context the
-sidebar renders from (pages, fill feedback, the picker's dataset), and the
-JSON export an ExtendScript consumes. Everything runs against the throwaway
-SQLite database conftest provisions — never the real ``newsflow.db`` and
-never the network.
+module on purpose — kept out of the app-wide settings), the whole-layout
+save behind the sidebar's drag-and-drop (page assignments + per-page order),
+the view context the sidebar renders from (pages, fill feedback, the free
+pool, the drag handles), and the JSON export the InDesign ExtendScript
+consumes. Everything runs against the throwaway SQLite database conftest
+provisions — never the real ``newsflow.db`` and never the network.
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 from fastapi import HTTPException
@@ -97,6 +95,14 @@ def _page_of(article_id: int, *, archived: bool) -> int | None:
     model = PublicationArticle if archived else Article
     with db_pkg.SessionLocal() as session:
         return session.get(model, article_id).page_number
+
+
+def _placement(article_id: int, *, archived: bool) -> tuple[int | None, int | None]:
+    """The stored ``(page_number, page_position)`` of a row."""
+    model = PublicationArticle if archived else Article
+    with db_pkg.SessionLocal() as session:
+        row = session.get(model, article_id)
+        return row.page_number, row.page_position
 
 
 async def _view(**kwargs):
@@ -226,7 +232,7 @@ class TestLayoutSettingsEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# Grouping endpoints (the picker's Add and the card's remove button)
+# Grouping endpoints (legacy per-page assign/unassign API)
 # ---------------------------------------------------------------------------
 
 
@@ -323,7 +329,151 @@ class TestAssignEndpoints:
 
 
 # ---------------------------------------------------------------------------
-# Sidebar view context (pages, fill feedback, the picker's dataset)
+# Whole-layout save (the sidebar's drag-and-drop)
+# ---------------------------------------------------------------------------
+
+
+class TestSaveLayout:
+    """POST /api/publication/layout replaces every page in one write."""
+
+    async def test_saves_pages_and_the_order_inside_each(self):
+        first, second, third = _insert("A"), _insert("B"), _insert("C")
+
+        result = await pub_routes.save_layout(
+            pub_routes.PageLayoutIn(
+                pages=[
+                    pub_routes.PageLayoutPageIn(
+                        page=2, article_ids=[third, first]
+                    ),
+                    pub_routes.PageLayoutPageIn(page=5, article_ids=[second]),
+                ]
+            ),
+            day="previous",
+        )
+
+        assert result == {"ok": True, "pages": 2, "placed": 3}
+        assert _placement(third, archived=True) == (2, 0)
+        assert _placement(first, archived=True) == (2, 1)
+        assert _placement(second, archived=True) == (5, 0)
+
+    async def test_is_a_full_replacement(self):
+        """Articles missing from the payload (dragged to the free pool)
+        return to unassigned, and earlier positions are cleared."""
+        kept, dropped = _insert("Kept"), _insert("Dropped")
+        await db_pkg.assign_articles_to_page([kept, dropped], 1, archived=True)
+
+        await pub_routes.save_layout(
+            pub_routes.PageLayoutIn(
+                pages=[
+                    pub_routes.PageLayoutPageIn(page=3, article_ids=[kept])
+                ]
+            ),
+            day="previous",
+        )
+
+        assert _placement(kept, archived=True) == (3, 0)
+        assert _placement(dropped, archived=True) == (None, None)
+
+    async def test_empty_layout_clears_every_page(self):
+        article_id = _insert("A")
+        await db_pkg.assign_articles_to_page([article_id], 1, archived=True)
+
+        result = await pub_routes.save_layout(
+            pub_routes.PageLayoutIn(pages=[]), day="previous"
+        )
+
+        assert result == {"ok": True, "pages": 0, "placed": 0}
+        assert _placement(article_id, archived=True) == (None, None)
+
+    async def test_saves_todays_workspace_when_day_is_not_previous(self):
+        article_id = _insert_curation("Today article")
+
+        await pub_routes.save_layout(
+            pub_routes.PageLayoutIn(
+                pages=[
+                    pub_routes.PageLayoutPageIn(page=1, article_ids=[article_id])
+                ]
+            )
+        )
+
+        assert _placement(article_id, archived=False) == (1, 0)
+
+    async def test_unknown_ids_404_and_write_nothing(self):
+        real = _insert("Real")
+
+        with pytest.raises(HTTPException) as excinfo:
+            await pub_routes.save_layout(
+                pub_routes.PageLayoutIn(
+                    pages=[
+                        pub_routes.PageLayoutPageIn(
+                            page=1, article_ids=[real, 999_999]
+                        )
+                    ]
+                ),
+                day="previous",
+            )
+
+        assert excinfo.value.status_code == 404
+        assert "999999" in str(excinfo.value.detail)
+        assert _placement(real, archived=True) == (None, None)
+
+    async def test_duplicate_articles_are_rejected(self):
+        article_id = _insert("A")
+
+        with pytest.raises(HTTPException) as excinfo:
+            await pub_routes.save_layout(
+                pub_routes.PageLayoutIn(
+                    pages=[
+                        pub_routes.PageLayoutPageIn(page=1, article_ids=[article_id]),
+                        pub_routes.PageLayoutPageIn(page=2, article_ids=[article_id]),
+                    ]
+                ),
+                day="previous",
+            )
+
+        assert excinfo.value.status_code == 400
+        assert "only be placed on one page" in str(excinfo.value.detail)
+        assert _placement(article_id, archived=True) == (None, None)
+
+    async def test_same_page_twice_is_rejected(self):
+        first, second = _insert("A"), _insert("B")
+
+        with pytest.raises(HTTPException) as excinfo:
+            await pub_routes.save_layout(
+                pub_routes.PageLayoutIn(
+                    pages=[
+                        pub_routes.PageLayoutPageIn(page=1, article_ids=[first]),
+                        pub_routes.PageLayoutPageIn(page=1, article_ids=[second]),
+                    ]
+                ),
+                day="previous",
+            )
+
+        assert excinfo.value.status_code == 400
+        assert "only appear once" in str(excinfo.value.detail)
+        assert _placement(first, archived=True) == (None, None)
+
+    async def test_page_outside_the_layout_is_rejected(self):
+        article_id = _insert("A")
+
+        with pytest.raises(HTTPException) as excinfo:
+            await pub_routes.save_layout(
+                pub_routes.PageLayoutIn(
+                    pages=[
+                        pub_routes.PageLayoutPageIn(
+                            page=999, article_ids=[article_id]
+                        )
+                    ]
+                ),
+                day="previous",
+            )
+
+        assert excinfo.value.status_code == 400
+        assert _placement(article_id, archived=True) == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# Sidebar view context (pages, fill feedback, the free pool)
 # ---------------------------------------------------------------------------
 
 
@@ -369,8 +519,8 @@ class TestSidebarView:
         response = await _view(day=None, sort="id")
         unassigned = response.context["unassigned"]
 
-        assert [entry["id"] for entry in unassigned] == [free]
-        assert unassigned[0]["title"] == "Free"
+        assert [entry["item"].id for entry in unassigned] == [free]
+        assert unassigned[0]["item"].title == "Free"
         assert unassigned[0]["word_count"] is None  # never scraped
 
     async def test_card_list_marks_placed_articles_with_their_page(
@@ -385,31 +535,69 @@ class TestSidebarView:
         assert "#p5" in html
         assert 'title="Placed on page 5 of the print layout"' in html
 
-    async def test_picker_dataset_excludes_placed_articles(self, pub_workspace):
-        """The picker only ever adds: assigned articles sit beside their
-        page in the sidebar and never appear in the searchable list."""
+    async def test_card_list_carries_a_drag_handle_for_every_card(
+        self, pub_workspace
+    ):
+        """Dragging the grip on a card is how an article is placed without
+        the old picker modal: the handle carries the chip's payload."""
+        article_id = _insert("Draggable")
+
+        response = await _view(day=None, sort="id")
+        html = response.body.decode()
+
+        assert "data-pub-drag" in html
+        assert f'data-article-id="{article_id}"' in html
+        assert 'data-article-title="Draggable"' in html
+
+    async def test_free_pool_lists_only_unplaced_articles(self, pub_workspace):
+        """The free pool is the drag source: placed articles sit beside
+        their page instead of appearing there."""
         placed, free = _insert("Placed"), _insert("Free")
         await db_pkg.assign_articles_to_page([placed], 1, archived=True)
 
         response = await _view(day=None, sort="id")
         html = response.body.decode()
-        raw = html.split(
-            '<script id="pub-unassigned" type="application/json">', 1
-        )[1].split("</script>", 1)[0]
+        pool = html.split('data-pub-list="free"', 1)[1].split("</ul>", 1)[0]
 
-        assert [entry["id"] for entry in json.loads(raw)] == [free]
+        assert f'data-article-id="{free}"' in pool
+        assert f'data-article-id="{placed}"' not in pool
 
-    async def test_sidebar_offers_the_gear_picker_and_export(self, pub_workspace):
+    async def test_pages_render_in_the_saved_drag_order(self, pub_workspace):
+        """The view follows ``page_position`` (set by Save layout), not the
+        workspace's default newest-id-first order."""
+        first, second = _insert("First"), _insert("Second")
+        await pub_routes.save_layout(
+            pub_routes.PageLayoutIn(
+                pages=[
+                    pub_routes.PageLayoutPageIn(
+                        page=1, article_ids=[first, second]
+                    )
+                ]
+            ),
+            day="previous",
+        )
+
+        response = await _view(day=None, sort="id")
+        titles = [card["item"].title for card in response.context["pages"][0]["cards"]]
+
+        assert titles == ["First", "Second"]
+
+    async def test_sidebar_offers_settings_drag_and_save(self, pub_workspace):
         response = await _view(day=None, sort="id")
         html = response.body.decode()
 
         assert 'onclick="openPubSettings()"' in html  # gear → settings modal
         assert 'id="pub-settings-modal"' in html
         assert 'id="pub-slider"' in html  # quota slider + allowance ring
-        assert 'id="pub-picker-modal"' in html
-        assert 'id="pub-export-modal"' in html
-        assert 'id="export-button"' in html
-        assert "Export JSON" in html
+        assert 'id="save-layout-button"' in html
+        assert "Save layout" in html
+        assert "@shopify/draggable" in html  # the DnD bundle
+        assert 'data-pub-list="free"' in html  # the free pool
+        assert "data-pub-page-drop" in html
+        # The plus-button picker and the Export JSON button are gone.
+        assert 'id="pub-picker-modal"' not in html
+        assert 'id="pub-export-modal"' not in html
+        assert "Export JSON" not in html
         assert "300 wc/page" in html  # header echoes the layout settings
         assert "8 pages" in html
         assert "0 free" in html  # nothing placed yet
@@ -616,82 +804,25 @@ class TestBareRender:
 
 
 # ---------------------------------------------------------------------------
-# Picker meter: the live word-count usage inside the "Add articles" modal
+# Drag-and-drop wiring (static checks — there is no JS runtime offline)
 # ---------------------------------------------------------------------------
 
 
-class TestPickerMeter:
-    """Static checks on the modal's live meter (no JS runtime offline).
-
-    The meter projects the target page's fill — words already on it plus
-    the selection — against the quota and upper limit, using the same
-    geometry and color ramp as the sidebar's fill bars.
-    """
-
-    async def test_meter_sits_between_the_list_and_the_footer(self, pub_workspace):
-        response = await _view(day=None, sort="id")
-        html = response.body.decode()
-
-        assert 'id="picker-meter"' in html
-        assert 'id="picker-meter-fill"' in html
-        assert 'id="picker-meter-tick"' in html
-        assert 'id="picker-meter-text"' in html
-        # Inside the picker modal, above its action footer.
-        assert (
-            html.index('id="picker-list"')
-            < html.index('id="picker-meter"')
-            < html.index('id="picker-add"')
-        )
-
-    async def test_page_word_counts_are_embedded_as_the_baseline(
-        self, pub_workspace
-    ):
-        """The projection starts from the words already on the page —
-        embedded per page (index = page - 1) from the sidebar's rows."""
-        article_id = _insert("Placed")
-        await db_pkg.assign_articles_to_page([article_id], 2, archived=True)
-        _write_body(pub_workspace, article_id, 120)
-
-        response = await _view(day=None, sort="id")
-        html = response.body.decode()
-        raw = html.split("const pageWordCounts = ", 1)[1].split(";", 1)[0]
-
-        assert json.loads(raw) == [0, 120, 0, 0, 0, 0, 0, 0]
-
-    def test_bare_render_defaults_the_baseline_to_nothing(self):
-        """The scripts block repeats the ``pages`` default like the other
-        sidebar context, so a minimal render never sees an Undefined."""
+class TestDragAndDropWiring:
+    def test_uses_the_draggable_bundle_sortable_and_draggable(self):
         html = _render_bare()
-        assert "const pageWordCounts = [];" in html
-        assert "Undefined" not in html
+        assert "new Draggable.Sortable(" in html  # pool + page lists
+        assert "new Draggable.Draggable(" in html  # card grips
+        # The settled DOM (source for mirror) only exists after this event.
+        assert '"drag:stopped"' in html
+        assert '"sortable:stop"' not in html
+        assert 'data-pub-list' in html  # the sortable containers
 
-    def test_meter_recomputes_on_every_selection_change(self):
-        """renderPicker (every toggle and keystroke in the search) →
-        updatePickerFooter → the meter, so the numbers move live."""
+    def test_save_posts_every_page_in_display_order(self):
         html = _render_bare()
-        picker = html.split("function renderPicker()", 1)[1].split(
-            "function updatePickerFooter()", 1
-        )[0]
-        assert "updatePickerFooter();" in picker
-        footer = html.split("function updatePickerFooter()", 1)[1].split(
-            "async function addPicked()", 1
-        )[0]
-        assert "updatePickerMeter()" in footer
+        assert "/api/publication/layout?day=" in html
+        assert 'document.querySelectorAll("[data-sidebar-page]")' in html
+        assert "article_ids:" in html
 
-    def test_meter_projects_the_selection_against_the_quota(self):
-        html = _render_bare()
-        meter = html.split("function updatePickerMeter()", 1)[1].split(
-            "function updatePickerFooter()", 1
-        )[0]
-
-        # Baseline + selection, and the same bar geometry as the sidebar.
-        assert "const current = pageWordCounts[pickerPage - 1] || 0;" in meter
-        assert "const upper = quota + pubLayout.word_allowance;" in meter
-        assert "added ? ` (+${added})`" in meter  # shows what's about to land
-        assert "quota / upper" in meter  # quota hairline position
-
-    def test_meter_color_mirrors_the_sidebar_ramp(self):
-        html = _render_bare()
-        fn = html.split("function meterColor(", 1)[1].split("\n    }", 1)[0]
-        for color in ("#6366f1", "#22c55e", "#f97316", "#ef4444"):
-            assert color in fn
+    def test_unsaved_layout_guards_against_reload(self):
+        assert 'window.addEventListener("beforeunload"' in _render_bare()

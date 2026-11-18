@@ -177,7 +177,11 @@ def _assign_sync(
         if missing:
             return missing  # nothing written: the batch is all-or-nothing
         for article_id in ids:
-            session.get(model, article_id).page_number = page
+            article = session.get(model, article_id)
+            article.page_number = page
+            # A batch place appends in workspace order; a stale position
+            # from an earlier drag layout would otherwise reorder it.
+            article.page_position = None
         session.commit()
     return []
 
@@ -189,6 +193,53 @@ async def assign_articles_to_page(
     return await run_in_thread(_assign_sync, article_ids, page, archived)
 
 
+def _save_page_layout_sync(
+    pages: list[tuple[int, list[int]]], archived: bool
+) -> list[int]:
+    """Replace a workspace's whole page layout with *pages*.
+
+    Each ``(page, article_ids)`` pair places those articles on that page in
+    the given order — the sidebar's drag-and-drop save sends every page, so
+    articles missing from *pages* return to the unassigned pool. All-or-
+    nothing: an unknown article id, a duplicate id, or a page outside the
+    configured layout leaves every placement untouched. Returns the ids
+    that don't exist (empty means saved).
+    """
+    layout = _get_layout_sync()
+    for page, _ in pages:
+        if not 1 <= page <= layout["total_pages"]:
+            raise ValueError(
+                f"page must be between 1 and {layout['total_pages']} "
+                "(total_pages in the layout settings)"
+            )
+    ids = [article_id for _, page_ids in pages for article_id in page_ids]
+    if len(ids) != len(set(ids)):
+        raise ValueError("each article can only be placed on one page")
+    model = PublicationArticle if archived else Article
+    with SessionLocal() as session:
+        # One small query instead of an IN() list that could outgrow
+        # SQLite's bound parameters on a big layout.
+        found = set(session.scalars(select(model.id)))
+        missing = [article_id for article_id in ids if article_id not in found]
+        if missing:
+            return missing  # nothing written: the save is all-or-nothing
+        session.execute(update(model).values(page_number=None, page_position=None))
+        for page, page_ids in pages:
+            for position, article_id in enumerate(page_ids):
+                article = session.get(model, article_id)
+                article.page_number = page
+                article.page_position = position
+        session.commit()
+    return []
+
+
+async def save_page_layout(
+    pages: list[tuple[int, list[int]]], *, archived: bool = False
+) -> list[int]:
+    """Save the dragged page assignments/order; returns the ids not found."""
+    return await run_in_thread(_save_page_layout_sync, pages, archived)
+
+
 def _clear_page_sync(article_id: int, archived: bool) -> bool:
     """Take an article off its page. False when the row doesn't exist."""
     model = PublicationArticle if archived else Article
@@ -197,6 +248,7 @@ def _clear_page_sync(article_id: int, archived: bool) -> bool:
         if article is None:
             return False
         article.page_number = None
+        article.page_position = None
         session.commit()
     return True
 
@@ -211,7 +263,9 @@ def _clear_all_pages_sync(archived: bool) -> int:
     model = PublicationArticle if archived else Article
     with SessionLocal() as session:
         rows = session.execute(
-            update(model).where(model.page_number.isnot(None)).values(page_number=None)
+            update(model)
+            .where(model.page_number.isnot(None))
+            .values(page_number=None, page_position=None)
         ).rowcount
         session.commit()
     return rows
@@ -288,13 +342,14 @@ def _apply_generation_sync(gen_id: int, day: str) -> bool:
     model = PublicationArticle if day == "previous" else Article
     with SessionLocal() as session:
         # Clear existing placements first
-        session.execute(update(model).values(page_number=None))
-        # Apply the generation's assignments
+        session.execute(update(model).values(page_number=None, page_position=None))
+        # Apply the generation's assignments, keeping each page's order
         for page_num, article_ids in enumerate(gen.page_assignments, start=1):
-            for article_id in article_ids:
+            for position, article_id in enumerate(article_ids):
                 article = session.get(model, article_id)
                 if article is not None:
                     article.page_number = page_num
+                    article.page_position = position
         session.commit()
     return True
 

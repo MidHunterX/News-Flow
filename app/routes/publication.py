@@ -35,6 +35,7 @@ from app.db import (
     get_publication_items,
     get_publication_layout,
     save_layout_generation,
+    save_page_layout,
     set_print_published,
     set_publication_layout,
 )
@@ -72,6 +73,19 @@ class PageAssignIn(BaseModel):
 
     page: int
     article_ids: list[int]
+
+
+class PageLayoutPageIn(BaseModel):
+    """One page of the dragged layout: its number and ordered articles."""
+
+    page: int
+    article_ids: list[int]
+
+
+class PageLayoutIn(BaseModel):
+    """Body of POST /api/publication/layout — the whole dragged layout."""
+
+    pages: list[PageLayoutPageIn]
 
 
 def _word_count(path: Path) -> int | None:
@@ -186,6 +200,15 @@ def _build_pages(cards: list[dict], layout: dict[str, int]) -> list[dict]:
 
     pages = []
     for page, page_cards in grouped.items():
+        # Drag-and-drop order within the page; rows grouped before ordering
+        # existed (position NULL) keep the workspace order, at the end.
+        page_cards = sorted(
+            page_cards,
+            key=lambda card: (
+                card["item"].page_position is None,
+                card["item"].page_position or 0,
+            ),
+        )
         words = sum(card["word_count"] or 0 for card in page_cards)
         percent = words / page_words * 100
         pages.append(
@@ -205,23 +228,12 @@ def _build_pages(cards: list[dict], layout: dict[str, int]) -> list[dict]:
 
 
 def _unassigned_cards(cards: list[dict]) -> list[dict]:
-    """Picker payload: cards not grouped onto any page yet.
+    """The sidebar's free pool: cards not grouped onto any page yet.
 
-    Assigned articles are deliberately absent — the sidebar already
-    shows them beside their page, and the picker only ever adds.
+    Assigned articles are deliberately absent — they already sit in their
+    page's list — so the pool is exactly the articles a drag can place.
     """
-    return [
-        {
-            "id": card["item"].id,
-            "title": card["item"].title,
-            "source": card["item"].source,
-            "image": card["cover"] or card["item"].image_url,
-            "word_count": card["word_count"],
-            "status": card["item"].status,
-        }
-        for card in cards
-        if card["item"].page_number is None
-    ]
+    return [card for card in cards if card["item"].page_number is None]
 
 
 @router.get("/publication", response_class=HTMLResponse)
@@ -249,8 +261,8 @@ async def publication_view(
 
     The right-hand sidebar adds the print-layout tooling: the configured
     pages with their grouped articles and fill feedback
-    (``layout_settings`` + ``pages``) and the unassigned cards the
-    picker modal offers (``unassigned``).
+    (``layout_settings`` + ``pages``), and the free pool of unplaced cards
+    (``unassigned``) that drag-and-drop places onto those pages.
     """
     if sort not in PUBLICATION_SORTS:
         raise HTTPException(400, f"sort must be one of: {', '.join(PUBLICATION_SORTS)}")
@@ -388,6 +400,43 @@ async def assign_articles(
         "ok": True,
         "page": payload.page,
         "assigned": len(set(payload.article_ids)),
+    }
+
+
+@router.post("/api/publication/layout")
+async def save_layout(
+    payload: PageLayoutIn,
+    day: str | None = Query(
+        None, description="'previous' to save the archived workspace's layout"
+    ),
+):
+    """Save the dragged-and-sorted layout for the whole workspace.
+
+    The sidebar sends every page with its articles in display order; it is
+    a full replacement, so articles missing from the payload (dragged into
+    the free pool) go back to unassigned. All-or-nothing: an unknown id, a
+    duplicated article, a page outside the configured layout, or the same
+    page listed twice answers 400/404 and writes nothing.
+    """
+    seen_pages = [entry.page for entry in payload.pages]
+    if len(seen_pages) != len(set(seen_pages)):
+        raise HTTPException(400, "each page may only appear once")
+    try:
+        missing = await save_page_layout(
+            [(entry.page, entry.article_ids) for entry in payload.pages],
+            archived=day == "previous",
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if missing:
+        raise HTTPException(
+            404,
+            "Articles not found: " + ", ".join(str(i) for i in missing),
+        )
+    return {
+        "ok": True,
+        "pages": len(payload.pages),
+        "placed": sum(len(entry.article_ids) for entry in payload.pages),
     }
 
 
@@ -628,8 +677,10 @@ async def export_layout(
     page_words = layout["page_words"]
     total_pages = layout["total_pages"]
 
-    # Determine which page each article belongs to
+    # Determine which page each article belongs to, and where it sits in
+    # that page's drag-and-drop order.
     article_pages: dict[int, int] = {}  # article_id -> page_number
+    article_order: dict[int, int | None] = {}  # article_id -> page_position
     if generation_id is not None:
         # Use stored generation assignments
         gen = await get_layout_generation(generation_id)
@@ -638,13 +689,15 @@ async def export_layout(
         if gen.day != (day or "today"):
             raise HTTPException(400, "Generation belongs to a different workspace")
         for page_num, article_ids in enumerate(gen.page_assignments, start=1):
-            for article_id in article_ids:
+            for position, article_id in enumerate(article_ids):
                 article_pages[article_id] = page_num
+                article_order[article_id] = position
     else:
         # Use current page_number values from the DB
         for item in items:
             if item.page_number is not None:
                 article_pages[item.id] = item.page_number
+                article_order[item.id] = item.page_position
 
     grouped: dict[int, list[NewsItem]] = {
         page: [] for page in range(1, total_pages + 1)
@@ -659,6 +712,15 @@ async def export_layout(
 
     pages = []
     for page, page_items in grouped.items():
+        # Same order as the sidebar: the saved drag order, with rows that
+        # predate ordering (position NULL) last.
+        page_items = sorted(
+            page_items,
+            key=lambda item: (
+                article_order.get(item.id) is None,
+                article_order.get(item.id) or 0,
+            ),
+        )
         articles = [
             _export_article(item, content_dir, archived) for item in page_items
         ]

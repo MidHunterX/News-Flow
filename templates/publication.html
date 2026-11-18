@@ -43,6 +43,7 @@
           #p{{ card.item.page_number }}
       </span>
     {% endif %}
+    {{ drag_handle(card) }}
     </div>
   {% endmacro %}
 
@@ -80,6 +81,64 @@
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6h18M3 12h12M3 18h6"></path>
     </svg>
+  {% endmacro %}
+
+  {% macro grip_icon() %}
+    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="9" cy="6" r="1.5"></circle><circle cx="15" cy="6" r="1.5"></circle>
+      <circle cx="9" cy="12" r="1.5"></circle><circle cx="15" cy="12" r="1.5"></circle>
+      <circle cx="9" cy="18" r="1.5"></circle><circle cx="15" cy="18" r="1.5"></circle>
+    </svg>
+  {% endmacro %}
+
+  {# Drag source for the print-layout sidebar: dragging this grip places
+     the article on a page (or moves it between pages). The data-* payload
+     is what the drop handler turns into a sidebar chip. #}
+  {% macro drag_handle(card) %}
+    <span data-pub-drag
+          data-article-id="{{ card.item.id }}"
+          data-article-title="{{ card.item.title }}"
+          data-article-source="{{ card.item.source }}"
+          data-article-words="{{ card.word_count if card.word_count is not none else 0 }}"
+          data-article-image="{{ card.cover or card.item.image_url or '' }}"
+          title="Drag onto a page in the Page Layout panel"
+          class="ml-auto inline-flex items-center justify-center p-1.5 rounded-lg bg-indigo-50 text-indigo-600 cursor-grab active:cursor-grabbing hover:bg-indigo-600 hover:text-white transition shrink-0 dark:bg-indigo-950 dark:text-indigo-300 dark:hover:bg-indigo-500 dark:hover:text-white">
+      {{ grip_icon() }}
+    </span>
+  {% endmacro %}
+
+  {# One article in the layout sidebar: a sortable chip that travels between
+     the free pool and the page lists (kept in step by the JS below). #}
+  {% macro layout_chip(card, removable=True) %}
+    {% set image = card.cover or card.item.image_url %}
+    <li data-article-chip
+        data-article-id="{{ card.item.id }}"
+        data-article-title="{{ card.item.title }}"
+        data-article-source="{{ card.item.source }}"
+        data-article-image="{{ image or '' }}"
+        data-word-count="{{ card.word_count if card.word_count is not none else 0 }}"
+        class="flex items-center gap-2 group rounded-lg px-1.5 py-1 -mx-1.5 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 cursor-grab active:cursor-grabbing select-none">
+      {% if image %}
+        <img src="{{ image }}" alt="" class="w-8 h-8 rounded object-cover shrink-0 bg-gray-100 pointer-events-none dark:bg-gray-700">
+      {% else %}
+        <span class="w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-[10px] font-bold uppercase pointer-events-none dark:bg-indigo-950 dark:text-indigo-400">{{ card.item.source[:2] }}</span>
+      {% endif %}
+      <div class="min-w-0 flex-1 pointer-events-none">
+        <p class="text-xs text-gray-700 truncate leading-4 dark:text-gray-300">{{ card.item.title }}</p>
+        <p class="text-[10px] text-gray-400 dark:text-gray-500">
+          {% if card.word_count is not none %}{{ card.word_count }} wc{% else %}not scraped{% endif %}
+        </p>
+      </div>
+      {% if removable %}
+      <button type="button" data-chip-remove
+              title="Remove from this page"
+              class="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition opacity-70 group-hover:opacity-100 cursor-pointer dark:hover:bg-red-950 dark:hover:text-red-400">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+      {% endif %}
+    </li>
   {% endmacro %}
 
   {% macro preview_button(card, compact=False) %}
@@ -139,6 +198,18 @@
     {% endif %}
   {% endmacro %}
 
+  <style>
+    /* Drag-and-drop affordances (Shopify Draggable's lifecycle classes). */
+    .draggable-source--is-dragging { opacity: .35; }
+    .draggable-mirror { z-index: 100; }
+    .pub-drop-active {
+      background: rgba(99, 102, 241, .07);
+      outline: 2px dashed rgba(99, 102, 241, .7);
+      outline-offset: -4px;
+      border-radius: .5rem;
+    }
+  </style>
+
   <!-- Two-pane workspace: the article cards on the left, the print-layout
        sidebar pinned to the right edge (mirrors the curation page's
        review + status panel). -->
@@ -188,7 +259,7 @@
     {% if section.cards %}
       {% if article_layout == 'rows' %}
         <!-- ==================== ROWS layout ==================== -->
-        <div class="grid grid-cols-1 gap-4">
+        <div class="grid grid-cols-1 gap-4" data-pub-cards>
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
             {% set published = card.item.is_print_published %}
@@ -227,7 +298,7 @@
         </div>
       {% elif article_layout == 'compact' %}
         <!-- ==================== COMPACT layout ==================== -->
-        <div class="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden dark:bg-gray-800 dark:border-gray-700 dark:divide-gray-700">
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden dark:bg-gray-800 dark:border-gray-700 dark:divide-gray-700" data-pub-cards>
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
             <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition group dark:hover:bg-gray-700">
@@ -256,7 +327,7 @@
         </div>
       {% else %}
         <!-- ==================== GRID layout (default) ==================== -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-pub-cards>
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
             <article class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col dark:bg-gray-800 dark:border-gray-700">
@@ -323,7 +394,7 @@
             </p>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <span title="Articles not placed on any page yet"
+            <span id="pub-free-count" title="Articles not placed on any page yet"
                   class="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full dark:bg-indigo-900 dark:text-indigo-300">
               {{ unassigned|length }} free
             </span>
@@ -360,27 +431,33 @@
         </div>
       </div>
 
-      <!-- Scrollable page list: one block per configured page, with the
-           page's articles beside it (thumbnail + title), the fill bar
-           (quota tick included), and the Add button. -->
-      <div class="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0 dark:divide-gray-700">
+      <!-- Scrollable page list: the free pool first, then one block per
+           configured page. Every list is a Sortable container in one shared
+           group, so chips can be reordered inside a page and dragged
+           between pages (or back to the pool). Dropping a card's grip from
+           the left list onto a page places that article. -->
+      <div id="pub-layout-root"
+           class="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0 dark:divide-gray-700">
+        <section class="p-3" data-pub-page-drop="free">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">Unplaced</span>
+            <span class="text-[10px] font-semibold text-gray-400 dark:text-gray-500">drag out of a page</span>
+          </div>
+          <ul data-pub-list="free" class="mt-2 space-y-1 min-h-[40px] rounded-lg">
+            {% for card in unassigned %}{{ layout_chip(card, removable=False) }}{% endfor %}
+          </ul>
+          <p data-page-empty class="mt-2 text-[11px] text-gray-400 dark:text-gray-500 {% if unassigned %}hidden{% endif %}">
+            Nothing free — every article is on a page.
+          </p>
+        </section>
         {% for row in pages %}
-        <section class="p-3" data-sidebar-page="{{ row.page }}">
+        <section class="p-3" data-sidebar-page="{{ row.page }}" data-pub-page-drop>
           <div class="flex items-center justify-between gap-2 mb-1.5">
             <span class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">Page {{ row.page }}</span>
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold tabular-nums" style="color: {{ row.color }}"
-                    title="Filled against the page's word quota">
-                {{ row.words }}/{{ layout_settings.page_words }} wc &middot; {{ row.percent }}%
-              </span>
-              <button type="button" onclick="openPicker({{ row.page }})"
-                      title="Add articles to page {{ row.page }}"
-                      class="p-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white transition dark:bg-indigo-950 dark:text-indigo-300 dark:hover:bg-indigo-500 dark:hover:text-white">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path>
-                </svg>
-              </button>
-            </div>
+            <span data-page-stats class="text-xs font-bold tabular-nums" style="color: {{ row.color }}"
+                  title="Filled against the page's word quota">
+              {{ row.words }}/{{ layout_settings.page_words }} wc &middot; {{ row.percent }}%
+            </span>
           </div>
 
           <!-- Fill bar: the track's end is the upper limit, the hairline
@@ -388,43 +465,16 @@
                the allowance gives. 100% renders green, heating through
                orange to red at the upper limit. -->
           <div class="relative h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
-            <div class="h-full rounded-full" style="width: {{ "%.1f"|format(row.fill) }}%; background-color: {{ row.color }}"></div>
+            <div data-page-fill class="h-full rounded-full" style="width: {{ "%.1f"|format(row.fill) }}%; background-color: {{ row.color }}"></div>
             <span class="absolute inset-y-0 w-px bg-gray-500/70 dark:bg-gray-400/70" style="left: {{ "%.1f"|format(row.tick) }}%" aria-hidden="true"></span>
           </div>
 
-          {% if row.cards %}
-          <ul class="mt-2 space-y-1">
-            {% for card in row.cards %}
-            <li class="flex items-center gap-2 group">
-              {% set image = card.cover or card.item.image_url %}
-              {% if image %}
-                <img src="{{ image }}" alt="" class="w-8 h-8 rounded object-cover shrink-0 bg-gray-100 dark:bg-gray-700">
-              {% else %}
-                <span class="w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-[10px] font-bold uppercase dark:bg-indigo-950 dark:text-indigo-400">{{ card.item.source[:2] }}</span>
-              {% endif %}
-              <div class="min-w-0 flex-1">
-                {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
-                <a href="{{ preview_href }}">
-                  <p class="text-xs text-gray-700 truncate leading-4 dark:text-gray-300 hover:text-indigo-600 transition dark:hover:text-indigo-400">{{ card.item.title }}</p>
-                </a>
-                <p class="text-[10px] text-gray-400 dark:text-gray-500">
-                  {% if card.word_count is not none %}{{ card.word_count }} wc{% else %}not scraped{% endif %}
-                </p>
-              </div>
-              <button type="button"
-                      onclick="postAction('/api/publication/{{ card.item.id }}/unassign?day={{ selected_day }}', event, 'Removing the article failed — nothing was saved.')"
-                      title="Remove from page {{ row.page }}"
-                      class="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition opacity-70 group-hover:opacity-100 dark:hover:bg-red-950 dark:hover:text-red-400">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
-              </button>
-            </li>
-            {% endfor %}
+          <ul data-pub-list="{{ row.page }}" class="mt-2 space-y-1 min-h-[40px] rounded-lg">
+            {% for card in row.cards %}{{ layout_chip(card) }}{% endfor %}
           </ul>
-          {% else %}
-          <p class="mt-2 text-[11px] text-gray-400 dark:text-gray-500">Empty — press + to place articles.</p>
-          {% endif %}
+          <p data-page-empty class="mt-2 text-[11px] text-gray-400 dark:text-gray-500 {% if row.cards %}hidden{% endif %}">
+            Empty — drag an article here.
+          </p>
         </section>
         {% else %}
         <p class="px-4 py-6 text-sm text-gray-500 text-center dark:text-gray-400">
@@ -433,67 +483,21 @@
         {% endfor %}
       </div>
 
-      <!-- Pinned footer: generate the JSON and copy it for the script. -->
+      <!-- Pinned footer: persist the dragged/sorted layout. The button only
+           lights up once the DOM differs from what was saved. -->
       <div class="p-3 border-t border-indigo-100 shrink-0 dark:border-indigo-900">
-        <button type="button" id="export-button" onclick="exportLayout()"
-                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition shadow-sm hover:shadow-md">
+        <button type="button" id="save-layout-button" onclick="saveDraggedLayout()" disabled
+                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-indigo-600">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l-6-6 6-6M14 4l6 6-6 6"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V7l-4-4zM7 3v4h7V3M7 21v-8h10v8"></path>
           </svg>
-          Export JSON
+          Save layout
         </button>
-        <p class="mt-1.5 text-[11px] text-gray-400 text-center dark:text-gray-500">
-          Generates the layout and copies it to the clipboard for InDesign.
+        <p id="save-layout-hint" class="mt-1.5 text-[11px] text-gray-400 text-center dark:text-gray-500">
+          Drag articles onto pages, reorder them, then save.
         </p>
       </div>
     </aside>
-  </div>
-
-  <!-- Picker modal: the unassigned articles (assigned ones never show
-       here — they sit beside their page). The list can run into the
-       hundreds, so it is searched client-side and rendered on demand. -->
-  <div id="pub-picker-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur bg-black/40 p-4">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden dark:bg-gray-800">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 dark:border-gray-700">
-        <h3 id="picker-title" class="text-lg font-bold text-gray-900 dark:text-gray-100">Add articles</h3>
-        <button onclick="closePicker()" class="text-gray-400 hover:text-gray-600 transition dark:hover:text-gray-200" title="Close">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </button>
-      </div>
-      <div class="px-6 py-3 border-b border-gray-200 shrink-0 dark:border-gray-700">
-        <input id="picker-search" type="search" oninput="renderPicker()"
-               placeholder="Search by title or source…"
-               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100" />
-      </div>
-      <div id="picker-list" class="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0 dark:divide-gray-700"></div>
-
-      <!-- Live word-count meter: the target page's usage as the selection
-           grows. Same geometry and colors as the sidebar's fill bars —
-           the track's end is the upper limit, the hairline the quota. -->
-      <div id="picker-meter" class="px-6 py-3 border-t border-gray-200 shrink-0 dark:border-gray-700">
-        <div class="flex items-center justify-between gap-2 mb-1.5">
-          <span class="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            Page <span id="picker-meter-page">1</span> fill
-          </span>
-          <span id="picker-meter-text" class="text-xs font-bold tabular-nums"
-                title="Words on the page after adding the selection">
-          </span>
-        </div>
-        <div class="relative h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
-          <div id="picker-meter-fill" class="h-full rounded-full" style="width: 0%; background-color: #6366f1"></div>
-          <span id="picker-meter-tick" class="absolute inset-y-0 w-px bg-gray-500/70 dark:bg-gray-400/70" aria-hidden="true"></span>
-        </div>
-      </div>
-      <div class="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0 dark:border-gray-700 dark:bg-gray-900">
-        <span id="picker-count" class="text-xs font-semibold text-gray-500 dark:text-gray-400">0 selected</span>
-        <button type="button" id="picker-add" onclick="addPicked()" disabled
-                class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white shadow-sm transition enabled:hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
-          Add to page
-        </button>
-      </div>
-    </div>
   </div>
 
   <!-- Publication settings modal: the three print-layout knobs, kept
@@ -561,31 +565,6 @@
     </div>
   </div>
 
-  <!-- Export modal: the generated layout JSON, shown and copied. -->
-  <div id="pub-export-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-    <div class="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden dark:bg-gray-800">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0 dark:border-gray-700">
-        <h3 class="text-lg font-bold text-gray-900 dark:text-gray-100">Layout JSON</h3>
-        <button onclick="closeExport()" class="text-gray-400 hover:text-gray-600 transition dark:hover:text-gray-200" title="Close">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-          </svg>
-        </button>
-      </div>
-      <pre id="export-json" tabindex="0" class="overflow-auto px-6 py-4 text-xs leading-relaxed font-mono text-gray-800 whitespace-pre-wrap break-words flex-1 min-h-0 dark:text-gray-200">Generating…</pre>
-      <div class="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0 dark:border-gray-700 dark:bg-gray-900">
-        <span id="export-status" class="text-xs font-semibold text-gray-500 dark:text-gray-400"></span>
-        <button type="button" onclick="copyExport()"
-                class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition">
-          Copy again
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- The picker's dataset: every article not on a page yet, embedded as
-       HTML-safe JSON (tojson escapes markup) and filtered client-side. -->
-  <script id="pub-unassigned" type="application/json">{{ unassigned|tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
@@ -593,7 +572,11 @@
      content block computes, so bare renders (tests) never see Undefined. #}
   {% set selected_day = selected_day|default("previous") %}
   {% set layout_settings = layout_settings|default({"total_pages": 8, "page_words": 300, "word_allowance": 100}) %}
-  {% set pages = pages|default([]) %}
+
+  <!-- Shopify Draggable: the UMD bundle exposes Draggable, Sortable and
+       Droppable on `window.Draggable`; loaded only on this page. -->
+  <script src="https://cdn.jsdelivr.net/npm/@shopify/draggable@1.2.1/build/umd/index.min.js"></script>
+
   <script>
     // Action buttons (Scrape, Mark published): POST the article's endpoint,
     // then reload so the card's badges/word count pick up the change.
@@ -636,17 +619,326 @@
 
   <script>
     // =====================================================================
-    // Print-layout sidebar: settings modal, article picker, JSON export.
-    // Everything is per-tab: day picks the workspace, same as the cards.
+    // Print-layout sidebar: settings, AI generations, and the drag-and-drop
+    // page layout. Everything is per-tab: day picks the workspace.
     // =====================================================================
     const pubDay = {{ selected_day|tojson }};
     const pubLayout = {{ layout_settings|tojson }};
-    const unassignedData = JSON.parse(
-      document.getElementById("pub-unassigned").textContent
-    );
-    // Words already on each sidebar page (index = page - 1): the picker
-    // meter's baseline, so the projection starts from the real fill.
-    const pageWordCounts = {{ pages|map(attribute='words')|list|tojson }};
+
+    // ---- Drag-and-drop page layout (Shopify Draggable) ------------------
+    // Sortable owns the free pool and every page list as one shared group
+    // (reorder inside a list, move between lists); Draggable owns the grip
+    // on each article card, and a drop hit-tests the page section under the
+    // pointer and appends the article there. The DOM is the draft: nothing
+    // is written until Save layout posts every page in display order.
+    const layoutRoot = document.getElementById("pub-layout-root");
+    const freeList = document.querySelector('[data-pub-list="free"]');
+    let layoutDirty = false;
+    let activeDropzone = null;
+
+    function markLayoutDirty() {
+      if (layoutDirty) return;
+      layoutDirty = true;
+      const button = document.getElementById("save-layout-button");
+      const hint = document.getElementById("save-layout-hint");
+      if (button) button.disabled = false;
+      if (hint) hint.textContent = "Unsaved changes — save to keep this layout.";
+    }
+
+    // Same color ramp as the server (app/routes/publication.py): indigo
+    // under quota, green at 100%, heating through orange to red at the
+    // upper limit.
+    function lerpHex(start, end, t) {
+      const lo = [1, 3, 5].map((i) => parseInt(start.slice(i, i + 2), 16));
+      const hi = [1, 3, 5].map((i) => parseInt(end.slice(i, i + 2), 16));
+      return (
+        "#" +
+        lo
+          .map((a, i) => Math.round(a + (hi[i] - a) * t))
+          .map((v) => v.toString(16).padStart(2, "0"))
+          .join("")
+      );
+    }
+
+    function meterColor(percent) {
+      if (percent < 100) return "#6366f1";
+      const span = (pubLayout.word_allowance / pubLayout.page_words) * 100;
+      if (span <= 0 || percent >= 100 + span) return "#ef4444";
+      const t = (percent - 100) / span;
+      if (t < 0.5) return lerpHex("#22c55e", "#f97316", t * 2);
+      return lerpHex("#f97316", "#ef4444", (t - 0.5) * 2);
+    }
+
+    function chipWords(chip) {
+      return parseInt(chip.dataset.wordCount, 10) || 0;
+    }
+
+    // Chips in the free pool carry no × (they are already unplaced); chips
+    // on a page do. The server-rendered markup already matches, but a chip
+    // dragged between the pool and a page keeps whatever button it was
+    // built with, so repair every list after each move.
+    function syncChipControls() {
+      document.querySelectorAll("[data-pub-list]").forEach((list) => {
+        const isFree = list === freeList;
+        list.querySelectorAll("[data-article-chip]").forEach((chip) => {
+          const button = chip.querySelector("[data-chip-remove]");
+          if (isFree && button) button.remove();
+          if (!isFree && !button) chip.appendChild(chipRemoveButton());
+        });
+      });
+    }
+
+    // Repaint every page's word count, fill bar and empty hint from the
+    // chips currently in its list — called after each drag/remove.
+    function refreshLayoutUI() {
+      syncChipControls();
+      const quota = pubLayout.page_words || 1;
+      const upper = quota + pubLayout.word_allowance;
+      document.querySelectorAll("[data-sidebar-page]").forEach((section) => {
+        const list = section.querySelector("[data-pub-list]");
+        const chips = Array.from(list.querySelectorAll("[data-article-chip]"));
+        const words = chips.reduce((sum, chip) => sum + chipWords(chip), 0);
+        const percent = (words / quota) * 100;
+        const color = meterColor(percent);
+        const stats = section.querySelector("[data-page-stats]");
+        stats.textContent = `${words}/${quota} wc · ${Math.round(percent)}%`;
+        stats.style.color = color;
+        const fill = section.querySelector("[data-page-fill]");
+        fill.style.width = `${Math.min((words / upper) * 100, 100).toFixed(1)}%`;
+        fill.style.backgroundColor = color;
+        const empty = section.querySelector("[data-page-empty]");
+        if (empty) empty.classList.toggle("hidden", chips.length > 0);
+      });
+      if (freeList) {
+        const freeChips = freeList.querySelectorAll("[data-article-chip]");
+        const freeEmpty = freeList.parentElement.querySelector("[data-page-empty]");
+        if (freeEmpty) freeEmpty.classList.toggle("hidden", freeChips.length > 0);
+        const count = document.getElementById("pub-free-count");
+        if (count) count.textContent = `${freeChips.length} free`;
+      }
+    }
+
+    function setDropzone(zone) {
+      if (activeDropzone === zone) return;
+      if (activeDropzone) activeDropzone.classList.remove("pub-drop-active");
+      activeDropzone = zone;
+      if (zone) zone.classList.add("pub-drop-active");
+    }
+
+    // Page section under a pointer position (the mirror has
+    // pointer-events: none, so it never answers the hit test).
+    function dropzoneAt(point) {
+      const under = point
+        ? document.elementFromPoint(point.x, point.y)
+        : null;
+      return under ? under.closest("[data-pub-page-drop]") : null;
+    }
+
+    function chipRemoveButton() {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.chipRemove = "";
+      button.title = "Remove from this page";
+      button.className =
+        "p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition " +
+        "opacity-70 group-hover:opacity-100 cursor-pointer dark:hover:bg-red-950 dark:hover:text-red-400";
+      button.innerHTML =
+        '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>';
+      return button;
+    }
+
+    // Mirrors the layout_chip macro in the markup block above.
+    function makeChip(article, removable) {
+      const chip = document.createElement("li");
+      chip.dataset.articleChip = "";
+      chip.dataset.articleId = article.id;
+      chip.dataset.articleTitle = article.title;
+      chip.dataset.articleSource = article.source;
+      chip.dataset.articleImage = article.image || "";
+      chip.dataset.wordCount = String(article.words || 0);
+      chip.className =
+        "flex items-center gap-2 group rounded-lg px-1.5 py-1 -mx-1.5 " +
+        "hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 " +
+        "cursor-grab active:cursor-grabbing select-none";
+
+      if (article.image) {
+        const thumb = document.createElement("img");
+        thumb.src = article.image;
+        thumb.alt = "";
+        thumb.className =
+          "w-8 h-8 rounded object-cover shrink-0 bg-gray-100 pointer-events-none dark:bg-gray-700";
+        chip.appendChild(thumb);
+      } else {
+        const thumb = document.createElement("span");
+        thumb.className =
+          "w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center " +
+          "justify-center shrink-0 text-[10px] font-bold uppercase " +
+          "pointer-events-none dark:bg-indigo-950 dark:text-indigo-400";
+        thumb.textContent = (article.source || "?").slice(0, 2);
+        chip.appendChild(thumb);
+      }
+
+      const body = document.createElement("div");
+      body.className = "min-w-0 flex-1 pointer-events-none";
+      const title = document.createElement("p");
+      title.className =
+        "text-xs text-gray-700 truncate leading-4 dark:text-gray-300";
+      title.textContent = article.title || "(untitled)";
+      const meta = document.createElement("p");
+      meta.className = "text-[10px] text-gray-400 dark:text-gray-500";
+      meta.textContent = article.words ? `${article.words} wc` : "not scraped";
+      body.append(title, meta);
+      chip.appendChild(body);
+      if (removable) chip.appendChild(chipRemoveButton());
+      return chip;
+    }
+
+    function articleFromSource(source) {
+      return {
+        id: source.dataset.articleId,
+        title: source.dataset.articleTitle || "",
+        source: source.dataset.articleSource || "",
+        image: source.dataset.articleImage || "",
+        words: parseInt(source.dataset.articleWords, 10) || 0,
+      };
+    }
+
+    // Put the article at the end of *targetList*, first removing any chip it
+    // already has elsewhere (a card stays on the left after being placed).
+    function placeArticle(article, targetList) {
+      if (!article.id) return;
+      const existing = document.querySelector(
+        `[data-article-chip][data-article-id="${article.id}"]`
+      );
+      if (existing) existing.remove();
+      targetList.appendChild(makeChip(article, targetList !== freeList));
+      refreshLayoutUI();
+      markLayoutDirty();
+    }
+
+    // The library's drag:stop carries no sensor event in 1.2.1, so the
+    // pointer position comes from the last drag:move.
+    let lastDragPoint = null;
+
+    if (window.Draggable) {
+      // Page lists + free pool: one Sortable in one shared group.
+      const sortable = new Draggable.Sortable(
+        Array.from(document.querySelectorAll("[data-pub-list]")),
+        {
+          draggable: "[data-article-chip]",
+          appendTo: "body",
+          distance: 5,
+          mirror: { constrainDimensions: true, cursorOffsetX: 8, cursorOffsetY: 8 },
+        }
+      );
+      // drag:stopped (not sortable:stop) is the settled DOM: the library
+      // swaps its mirror for the real chip only after drag:stop returns,
+      // so refreshing earlier would read the chip in its old list.
+      sortable.on("drag:stopped", () => {
+        refreshLayoutUI();
+        markLayoutDirty();
+      });
+
+      // The grip on each article card: drag it onto a page section.
+      const cards = new Draggable.Draggable(
+        document.querySelectorAll("[data-pub-cards]"),
+        { draggable: "[data-pub-drag]", appendTo: "body", distance: 4 }
+      );
+
+      cards.on("drag:start", (event) => {
+        lastDragPoint = null;
+        const mirror = event.data.mirror;
+        if (!mirror) return;
+        mirror.textContent = event.source.dataset.articleTitle || "Article";
+        mirror.classList.add(
+          "px-3", "py-1.5", "text-sm", "font-semibold", "bg-white",
+          "text-gray-800", "rounded-lg", "shadow-lg", "border",
+          "border-indigo-300", "dark:bg-gray-800", "dark:text-gray-100",
+          "dark:border-indigo-700"
+        );
+      });
+
+      cards.on("drag:move", (event) => {
+        const sensor = event.sensorEvent;
+        if (sensor) lastDragPoint = { x: sensor.clientX, y: sensor.clientY };
+        setDropzone(dropzoneAt(lastDragPoint));
+      });
+
+      cards.on("drag:stop", (event) => {
+        const zone = dropzoneAt(lastDragPoint);
+        setDropzone(null);
+        const targetList = zone ? zone.querySelector("[data-pub-list]") : null;
+        if (!targetList) return;
+        placeArticle(articleFromSource(event.originalSource), targetList);
+      });
+    }
+
+    // The chip's ×: back to the free pool (persisted on the next save).
+    if (layoutRoot) {
+      layoutRoot.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-chip-remove]");
+        const chip = button ? button.closest("[data-article-chip]") : null;
+        if (!chip || !freeList) return;
+        button.remove(); // the pool's chips carry no remove button
+        freeList.appendChild(chip);
+        refreshLayoutUI();
+        markLayoutDirty();
+      });
+    }
+
+    async function saveDraggedLayout() {
+      const pages = Array.from(
+        document.querySelectorAll("[data-sidebar-page]")
+      ).map((section) => ({
+        page: parseInt(section.dataset.sidebarPage, 10),
+        article_ids: Array.from(
+          section.querySelectorAll("[data-article-chip]")
+        )
+          .map((chip) => parseInt(chip.dataset.articleId, 10))
+          .filter((id) => !Number.isNaN(id)),
+      }));
+      const button = document.getElementById("save-layout-button");
+      const originalHTML = button ? button.innerHTML : "";
+      if (button) {
+        button.disabled = true;
+        button.innerHTML = spinnerSVG;
+      }
+      try {
+        const res = await fetch(
+          `/api/publication/layout?day=${encodeURIComponent(pubDay)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pages }),
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) {
+          alert(data.detail || "Saving the layout failed — nothing was saved.");
+          if (button) {
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+          }
+          return;
+        }
+      } catch (err) {
+        alert("Saving the layout failed — nothing was saved.");
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = originalHTML;
+        }
+        return;
+      }
+      layoutDirty = false;
+      window.location.reload();
+    }
+
+    // A reload (or any navigation) must not silently drop a dragged layout.
+    window.addEventListener("beforeunload", (event) => {
+      if (!layoutDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
 
     // ---- Publication settings modal + slider widget ----
     // Geometry of the SVG: a number line from 0 to an auto-scaled maximum
@@ -808,300 +1100,6 @@
         return;
       }
       window.location.reload(); // the sidebar re-renders against the new layout
-    }
-
-    // ---- Article picker modal ----
-    let pickerPage = 1;
-    const picked = new Set();
-
-    function openPicker(page) {
-      pickerPage = page;
-      picked.clear();
-      document.getElementById("picker-title").textContent =
-        `Add articles to page ${page}`;
-      document.getElementById("picker-search").value = "";
-      renderPicker();
-      document.getElementById("pub-picker-modal").classList.remove("hidden");
-    }
-
-    function closePicker() {
-      document.getElementById("pub-picker-modal").classList.add("hidden");
-    }
-
-    function pickerRow(article) {
-      const selected = picked.has(article.id);
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className =
-        "w-full flex items-center gap-3 px-4 py-2.5 text-left transition " +
-        "hover:bg-gray-50 dark:hover:bg-gray-700" +
-        (selected ? " bg-indigo-50 dark:bg-indigo-950" : "");
-      row.onclick = () => {
-        if (picked.has(article.id)) picked.delete(article.id);
-        else picked.add(article.id);
-        renderPicker();
-      };
-
-      if (article.image) {
-        const thumb = document.createElement("img");
-        thumb.src = article.image;
-        thumb.alt = "";
-        thumb.className =
-          "w-10 h-10 rounded object-cover shrink-0 bg-gray-100 dark:bg-gray-700";
-        row.appendChild(thumb);
-      } else {
-        const thumb = document.createElement("span");
-        thumb.className =
-          "w-10 h-10 rounded bg-indigo-50 text-indigo-600 flex items-center " +
-          "justify-center shrink-0 text-xs font-bold uppercase dark:bg-indigo-950 dark:text-indigo-400";
-        thumb.textContent = (article.source || "?").slice(0, 2);
-        row.appendChild(thumb);
-      }
-
-      const body = document.createElement("div");
-      body.className = "min-w-0 flex-1";
-      const title = document.createElement("p");
-      title.className =
-        "text-sm font-semibold text-gray-900 truncate dark:text-gray-100";
-      title.textContent = article.title || "(untitled)";
-      const meta = document.createElement("p");
-      meta.className = "text-xs text-gray-400 uppercase font-semibold";
-      meta.textContent = article.source || "";
-      body.append(title, meta);
-      row.appendChild(body);
-
-      // Mirror the main card list: completed means WordPress-published,
-      // so the picker rows carry the same #wp chip as the cards.
-      if (article.status === "completed") {
-        const wp = document.createElement("span");
-        wp.className =
-          "shrink-0 text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-900 dark:text-indigo-300 dark:border-indigo-800 px-2 py-0.5 rounded-full";
-        wp.textContent = "#wp";
-        wp.title = "Published to WordPress by the pipeline";
-        row.appendChild(wp);
-      }
-
-      const words = document.createElement("span");
-      words.className = "text-xs tabular-nums text-gray-400 shrink-0";
-      words.textContent =
-        article.word_count == null ? "not scraped" : `${article.word_count} wc`;
-      row.appendChild(words);
-
-      const check = document.createElement("span");
-      check.className =
-        "shrink-0 w-5 h-5 rounded-full border flex items-center justify-center " +
-        (selected
-          ? "bg-indigo-600 border-indigo-600 text-white"
-          : "border-gray-300 dark:border-gray-600");
-      if (selected) {
-        check.innerHTML =
-          '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>';
-      }
-      row.appendChild(check);
-      return row;
-    }
-
-    function renderPicker() {
-      const list = document.getElementById("picker-list");
-      const query = document
-        .getElementById("picker-search")
-        .value.trim()
-        .toLowerCase();
-      const items = unassignedData.filter(
-        (article) =>
-          !query ||
-          (article.title || "").toLowerCase().includes(query) ||
-          (article.source || "").toLowerCase().includes(query)
-      );        list.replaceChildren();
-        if (!items.length) {
-          const empty = document.createElement("p");
-          empty.className = "px-6 py-8 text-sm text-gray-400 text-center";
-          empty.textContent = unassignedData.length
-            ? "No unassigned article matches that search."
-            : "Every article is already placed on a page.";
-          list.appendChild(empty);
-        } else {
-          const fragment = document.createDocumentFragment();
-          items.forEach((article) => {
-            const row = pickerRow(article);
-            fragment.appendChild(row);
-          });
-          list.appendChild(fragment);
-      }
-      updatePickerFooter();
-    }
-
-    // ---- Picker meter: the page's word-count usage as it's filled ----
-    // Mirrors the sidebar's fill bars: the track's end is the upper limit
-    // (quota + allowance), the hairline the quota, and the color heats
-    // indigo → green → orange → red with the percentage — so the modal
-    // agrees with the page section it's about to update.
-    const wordsById = new Map(
-      unassignedData.map((article) => [
-        article.id,
-        article.word_count == null ? 0 : article.word_count,
-      ])
-    );
-
-    function lerpHex(start, end, t) {
-      const lo = [1, 3, 5].map((i) => parseInt(start.slice(i, i + 2), 16));
-      const hi = [1, 3, 5].map((i) => parseInt(end.slice(i, i + 2), 16));
-      return (
-        "#" +
-        lo
-          .map((a, i) => Math.round(a + (hi[i] - a) * t))
-          .map((v) => v.toString(16).padStart(2, "0"))
-          .join("")
-      );
-    }
-
-    function meterColor(percent) {
-      if (percent < 100) return "#6366f1";
-      const span = (pubLayout.word_allowance / pubLayout.page_words) * 100;
-      if (span <= 0 || percent >= 100 + span) return "#ef4444";
-      const t = (percent - 100) / span;
-      if (t < 0.5) return lerpHex("#22c55e", "#f97316", t * 2);
-      return lerpHex("#f97316", "#ef4444", (t - 0.5) * 2);
-    }
-
-    function updatePickerMeter() {
-      const quota = pubLayout.page_words;
-      const upper = quota + pubLayout.word_allowance;
-      const current = pageWordCounts[pickerPage - 1] || 0;
-      let added = 0;
-      picked.forEach((id) => {
-        added += wordsById.get(id) || 0; // unscraped counts as zero words
-      });
-      const total = current + added;
-      const percent = (total / quota) * 100;
-      const color = meterColor(percent);
-
-      document.getElementById("picker-meter-page").textContent =
-        String(pickerPage);
-      const text = document.getElementById("picker-meter-text");
-      text.textContent =
-        `${total} / ${quota} wc · ${Math.round(percent)}%` +
-        (added ? ` (+${added})` : ""); // what the selection is about to add
-      text.style.color = color;
-      const fill = document.getElementById("picker-meter-fill");
-      fill.style.width =
-        `${Math.min((total / upper) * 100, 100).toFixed(1)}%`;
-      fill.style.backgroundColor = color;
-      document.getElementById("picker-meter-tick").style.left =
-        `${((quota / upper) * 100).toFixed(1)}%`;
-    }
-
-    function updatePickerFooter() {
-      document.getElementById("picker-count").textContent =
-        `${picked.size} selected`;
-      const add = document.getElementById("picker-add");
-      add.textContent = `Add to page ${pickerPage}`;
-      add.disabled = picked.size === 0;
-      updatePickerMeter(); // every selection/search change lands here
-    }
-
-    async function addPicked() {
-      if (!picked.size) return;
-      try {
-        const res = await fetch(
-          `/api/publication/assign?day=${encodeURIComponent(pubDay)}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              page: pickerPage,
-              article_ids: [...picked],
-            }),
-          }
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || data.ok === false) {
-          alert(data.detail || "Adding the articles failed — nothing was saved.");
-          return;
-        }
-      } catch (err) {
-        alert("Adding the articles failed — nothing was saved.");
-        return;
-      }
-      window.location.reload();
-    }
-
-    // ---- Export: generate, show, copy ----
-    let exportText = "";
-
-    async function copyToClipboard(text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch (err) {
-        // Fallback where the async clipboard API is unavailable (non-secure
-        // context): a hidden textarea + the legacy copy command.
-        try {
-          const area = document.createElement("textarea");
-          area.value = text;
-          area.style.position = "fixed";
-          area.style.opacity = "0";
-          document.body.appendChild(area);
-          area.select();
-          const ok = document.execCommand("copy");
-          area.remove();
-          return ok;
-        } catch (err2) {
-          return false;
-        }
-      }
-    }
-
-    function setExportStatus(message, ok) {
-      const status = document.getElementById("export-status");
-      status.textContent = message;
-      status.className =
-        "text-xs font-semibold " +
-        (ok ? "text-green-600 dark:text-green-400"
-            : "text-amber-600 dark:text-amber-400");
-    }
-
-    async function copyExport() {
-      if (!exportText) return;
-      const copied = await copyToClipboard(exportText);
-      setExportStatus(
-        copied ? "Copied to clipboard." : "Copy failed — select the JSON and copy it manually.",
-        copied
-      );
-    }
-
-    async function exportLayout() {
-      const button = document.getElementById("export-button");
-      const pre = document.getElementById("export-json");
-      pre.textContent = "Generating…";
-      exportText = "";
-      setExportStatus("", true);
-      document.getElementById("pub-export-modal").classList.remove("hidden");
-      button.disabled = true;
-      try {
-        const url = new URL(window.location);
-        url.searchParams.set("day", pubDay);
-        // Include generation_id if a generation is selected
-        const genSelect = document.getElementById("generation-select");
-        if (genSelect && genSelect.value) {
-          url.searchParams.set("generation_id", genSelect.value);
-        }
-        const res = await fetch(url.pathname + url.search);
-        if (!res.ok) throw new Error(`export failed: ${res.status}`);
-        const data = await res.json();
-        exportText = JSON.stringify(data, null, 2);
-        pre.textContent = exportText;
-        await copyExport(); // generate + copy in one go, per the workflow
-      } catch (err) {
-        pre.textContent = "Generating the JSON failed — nothing was exported.";
-        setExportStatus("", true);
-      } finally {
-        button.disabled = false;
-      }
-    }
-
-    function closeExport() {
-      document.getElementById("pub-export-modal").classList.add("hidden");
     }
 
     // ---- AI Layout generation ----

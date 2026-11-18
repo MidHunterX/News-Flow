@@ -29,6 +29,9 @@ class NewsItem(BaseModel):
     # Print layout: page (1-based) this article is grouped onto from the
     # publication sidebar; None until placed.
     page_number: int | None = None
+    # Order inside that page (0-based); None for rows grouped before the
+    # sidebar could sort a page's articles.
+    page_position: int | None = None
 
 
 class ScrapeResponse(BaseModel):
