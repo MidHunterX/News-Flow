@@ -227,15 +227,6 @@ def _build_pages(cards: list[dict], layout: dict[str, int]) -> list[dict]:
     return pages
 
 
-def _unassigned_cards(cards: list[dict]) -> list[dict]:
-    """The sidebar's free pool: cards not grouped onto any page yet.
-
-    Assigned articles are deliberately absent — they already sit in their
-    page's list — so the pool is exactly the articles a drag can place.
-    """
-    return [card for card in cards if card["item"].page_number is None]
-
-
 @router.get("/publication", response_class=HTMLResponse)
 async def publication_view(
     request: Request,
@@ -260,9 +251,10 @@ async def publication_view(
     Nothing is scraped or mutated from here — inspection only.
 
     The right-hand sidebar adds the print-layout tooling: the configured
-    pages with their grouped articles and fill feedback
-    (``layout_settings`` + ``pages``), and the free pool of unplaced cards
-    (``unassigned``) that drag-and-drop places onto those pages.
+    pages with their grouped articles and fill feedback (``layout_settings``
+    + ``pages``). Articles are placed by dragging a card's image onto a page
+    and unplaced by dragging its chip back onto the card list, so the view
+    carries no separate unplaced pool.
     """
     if sort not in PUBLICATION_SORTS:
         raise HTTPException(400, f"sort must be one of: {', '.join(PUBLICATION_SORTS)}")
@@ -297,11 +289,10 @@ async def publication_view(
             "section": {**section, "cards": cards},
             "count": len(cards),
             "article_layout": await get_article_layout(),
-            # Sidebar: the layout knobs, the grouped pages, and the cards
-            # still waiting to be placed (the picker modal's list).
+            # Sidebar: the layout knobs and the grouped pages. Cards that
+            # aren't placed simply have no chip in any page's list.
             "layout_settings": layout,
             "pages": _build_pages(cards, layout),
-            "unassigned": _unassigned_cards(cards),
             **await _toggle_context(),
         },
     )

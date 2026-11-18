@@ -205,16 +205,18 @@ Two workspaces exist side by side:
   `app/db/layout.py` — plain `settings` rows but with their own API
   (`/api/publication/settings`); `/api/settings` rejects those keys on
   purpose. The panel is drag-and-drop (Shopify Draggable, loaded from a
-  CDN): the free pool plus every page list is one Sortable group
-  (reorder inside a list, move between lists), each card's grip is a
-  Draggable that places that article on the page it is dropped on, and a
-  chip's × returns it to the free pool. Drops repaint the page word
-  counts/fill bars client-side using the same color ramp as the server
-  (indigo under quota, green at 100%, heating through orange to red at
+  CDN): every page list is one Sortable group (reorder inside a list,
+  move between lists), each card's cover image — or its small grip when
+  the card has no cover, which keeps the heading's preview link clickable —
+  is a Draggable that places that article on the page it is dropped on,
+  and a chip's × or dragging the chip back onto the article card list
+  takes it off the page. Drops repaint the page word counts/fill bars
+  client-side using the same color ramp as the server (indigo under quota,
+  green at 100%, heating through orange to red at
   `page_words + word_allowance`); nothing is written until **Save layout**
   POSTs `/api/publication/layout` with every page in display order. That
-  save is a full replacement — articles missing from the payload return to
-  the free pool — and all-or-nothing (404 on any unknown id; 400 for a
+  save is a full replacement — articles missing from the payload are
+  unplaced — and all-or-nothing (404 on any unknown id; 400 for a
   duplicated article, a repeated page, or a page past `total_pages`).
   Shrinking `total_pages` un-places the orphans in both workspaces.
   The InDesign ExtendScript still reads `GET /api/publication/export`,

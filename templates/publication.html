@@ -17,7 +17,6 @@
   {% set selected_day = selected_day|default("previous") %}
   {% set layout_settings = layout_settings|default({"total_pages": 8, "page_words": 300, "word_allowance": 100}) %}
   {% set pages = pages|default([]) %}
-  {% set unassigned = unassigned|default([]) %}
 
   {% macro scrape_badge(card) %}
     <div class="flex items-center gap-1.5">
@@ -43,7 +42,9 @@
           #p{{ card.item.page_number }}
       </span>
     {% endif %}
-    {{ drag_handle(card) }}
+    {# Cards without a cover keep the small grip; cards with one are dragged
+       by the image itself (see drag_attrs), so this only appears then. #}
+    {% if not (card.cover or card.item.image_url) %}{{ drag_handle(card) }}{% endif %}
     </div>
   {% endmacro %}
 
@@ -91,25 +92,32 @@
     </svg>
   {% endmacro %}
 
-  {# Drag source for the print-layout sidebar: dragging this grip places
-     the article on a page (or moves it between pages). The data-* payload
-     is what the drop handler turns into a sidebar chip. #}
+  {# Drag payload for a card, shared by the cover image (the usual handle)
+     and the fallback grip. Keeping the handle off the heading and body is
+     what lets the heading's preview link stay clickable. #}
+  {% macro drag_attrs(card) %}
+    data-pub-drag
+    data-article-id="{{ card.item.id }}"
+    data-article-title="{{ card.item.title }}"
+    data-article-source="{{ card.item.source }}"
+    data-article-words="{{ card.word_count if card.word_count is not none else 0 }}"
+    data-article-image="{{ card.cover or card.item.image_url or '' }}"
+  {% endmacro %}
+
+  {# Fallback drag handle for cards without a cover image: dragging it home
+     in the Page Layout panel places the article on a page. #}
   {% macro drag_handle(card) %}
-    <span data-pub-drag
-          data-article-id="{{ card.item.id }}"
-          data-article-title="{{ card.item.title }}"
-          data-article-source="{{ card.item.source }}"
-          data-article-words="{{ card.word_count if card.word_count is not none else 0 }}"
-          data-article-image="{{ card.cover or card.item.image_url or '' }}"
+    <span {{ drag_attrs(card) }}
           title="Drag onto a page in the Page Layout panel"
           class="ml-auto inline-flex items-center justify-center p-1.5 rounded-lg bg-indigo-50 text-indigo-600 cursor-grab active:cursor-grabbing hover:bg-indigo-600 hover:text-white transition shrink-0 dark:bg-indigo-950 dark:text-indigo-300 dark:hover:bg-indigo-500 dark:hover:text-white">
       {{ grip_icon() }}
     </span>
   {% endmacro %}
 
-  {# One article in the layout sidebar: a sortable chip that travels between
-     the free pool and the page lists (kept in step by the JS below). #}
-  {% macro layout_chip(card, removable=True) %}
+  {# One article in the layout sidebar: a sortable chip that can be reordered
+     inside its page or dragged to another one. Dropping it back on the
+     article cards removes it from the layout. #}
+  {% macro layout_chip(card) %}
     {% set image = card.cover or card.item.image_url %}
     <li data-article-chip
         data-article-id="{{ card.item.id }}"
@@ -129,7 +137,6 @@
           {% if card.word_count is not none %}{{ card.word_count }} wc{% else %}not scraped{% endif %}
         </p>
       </div>
-      {% if removable %}
       <button type="button" data-chip-remove
               title="Remove from this page"
               class="p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition opacity-70 group-hover:opacity-100 cursor-pointer dark:hover:bg-red-950 dark:hover:text-red-400">
@@ -137,7 +144,6 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </button>
-      {% endif %}
     </li>
   {% endmacro %}
 
@@ -208,6 +214,12 @@
       outline-offset: -4px;
       border-radius: .5rem;
     }
+    /* The card list is the drop target that takes an article off a page. */
+    .pub-card-drop-active {
+      outline: 2px dashed rgba(99, 102, 241, .7);
+      outline-offset: 8px;
+      border-radius: .75rem;
+    }
   </style>
 
   <!-- Two-pane workspace: the article cards on the left, the print-layout
@@ -266,8 +278,9 @@
             <article class="{% if published or card.item.page_number %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
-                <div class="w-44 sm:w-56 shrink-0 bg-gray-100 relative dark:bg-gray-700">
-                  <img src="{{ image }}" alt="{{ card.item.title }}" class="absolute inset-0 w-full h-full object-cover">
+                <div {{ drag_attrs(card) }} title="Drag onto a page in the Page Layout panel"
+                     class="w-44 sm:w-56 shrink-0 bg-gray-100 relative cursor-grab active:cursor-grabbing dark:bg-gray-700">
+                  <img src="{{ image }}" alt="{{ card.item.title }}" draggable="false" class="absolute inset-0 w-full h-full object-cover">
                   <!-- Smooth fade to transparent on the right -->
                   <div class="absolute inset-y-0 right-0 w-48 bg-gradient-to-l from-white to-transparent pointer-events-none dark:from-gray-800"></div>
                 </div>
@@ -304,7 +317,9 @@
             <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition group dark:hover:bg-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
-                <img src="{{ image }}" alt="" class="w-10 h-10 rounded object-cover shrink-0 bg-gray-100 dark:bg-gray-700">
+                <img {{ drag_attrs(card) }} src="{{ image }}" alt="" draggable="false"
+                     title="Drag onto a page in the Page Layout panel"
+                     class="w-10 h-10 rounded object-cover shrink-0 cursor-grab active:cursor-grabbing bg-gray-100 dark:bg-gray-700">
               {% else %}
                 <span class="w-10 h-10 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-xs font-bold uppercase dark:bg-indigo-950 dark:text-indigo-400">{{ card.item.source[:2] }}</span>
               {% endif %}
@@ -333,8 +348,9 @@
             <article class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col dark:bg-gray-800 dark:border-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
-                <div class="h-40 overflow-hidden bg-gray-100 relative dark:bg-gray-700">
-                  <img src="{{ image }}" alt="{{ card.item.title }}" class="w-full h-full object-cover">
+                <div {{ drag_attrs(card) }} title="Drag onto a page in the Page Layout panel"
+                     class="h-40 overflow-hidden bg-gray-100 relative cursor-grab active:cursor-grabbing dark:bg-gray-700">
+                  <img src="{{ image }}" alt="{{ card.item.title }}" draggable="false" class="w-full h-full object-cover">
                   <span class="absolute top-3 left-3 bg-black/60 text-white text-xs uppercase px-2 py-1 rounded font-bold backdrop-blur-sm">
                     {{ card.item.source }}
                   </span>
@@ -371,7 +387,8 @@
         </div>
       {% endif %}
     {% else %}
-      <div class="bg-white rounded-xl border border-gray-200 p-12 text-center dark:bg-gray-800 dark:border-gray-700">
+      <div data-pub-cards
+           class="bg-white rounded-xl border border-gray-200 p-12 text-center dark:bg-gray-800 dark:border-gray-700">
         <p class="text-gray-500 text-lg dark:text-gray-400">{{ section.empty }}</p>
       </div>
     {% endif %}
@@ -394,10 +411,6 @@
             </p>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
-            <span id="pub-free-count" title="Articles not placed on any page yet"
-                  class="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full dark:bg-indigo-900 dark:text-indigo-300">
-              {{ unassigned|length }} free
-            </span>
             <button type="button" onclick="generateLayout()"
                     title="Generate AI layout"
                     class="p-2 rounded-lg text-indigo-600 hover:bg-indigo-100 transition dark:text-indigo-300 dark:hover:bg-indigo-900">
@@ -431,25 +444,13 @@
         </div>
       </div>
 
-      <!-- Scrollable page list: the free pool first, then one block per
-           configured page. Every list is a Sortable container in one shared
-           group, so chips can be reordered inside a page and dragged
-           between pages (or back to the pool). Dropping a card's grip from
-           the left list onto a page places that article. -->
+      <!-- Scrollable page list: one block per configured page. Every list is
+           a Sortable container in one shared group, so chips can be
+           reordered inside a page and dragged between pages. Dropping a
+           card's image (or grip) from the left list onto a page places that
+           article; dragging a chip back onto the card list unplaces it. -->
       <div id="pub-layout-root"
            class="overflow-y-auto divide-y divide-gray-100 flex-1 min-h-0 dark:divide-gray-700">
-        <section class="p-3" data-pub-page-drop="free">
-          <div class="flex items-center justify-between gap-2 mb-1.5">
-            <span class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">Unplaced</span>
-            <span class="text-[10px] font-semibold text-gray-400 dark:text-gray-500">drag out of a page</span>
-          </div>
-          <ul data-pub-list="free" class="mt-2 space-y-1 min-h-[40px] rounded-lg">
-            {% for card in unassigned %}{{ layout_chip(card, removable=False) }}{% endfor %}
-          </ul>
-          <p data-page-empty class="mt-2 text-[11px] text-gray-400 dark:text-gray-500 {% if unassigned %}hidden{% endif %}">
-            Nothing free — every article is on a page.
-          </p>
-        </section>
         {% for row in pages %}
         <section class="p-3" data-sidebar-page="{{ row.page }}" data-pub-page-drop>
           <div class="flex items-center justify-between gap-2 mb-1.5">
@@ -494,7 +495,8 @@
           Save layout
         </button>
         <p id="save-layout-hint" class="mt-1.5 text-[11px] text-gray-400 text-center dark:text-gray-500">
-          Drag articles onto pages, reorder them, then save.
+          Drag a card's image onto a page; drag a page entry back to the
+          cards to unplace it. Save to keep the layout.
         </p>
       </div>
     </aside>
@@ -626,15 +628,17 @@
     const pubLayout = {{ layout_settings|tojson }};
 
     // ---- Drag-and-drop page layout (Shopify Draggable) ------------------
-    // Sortable owns the free pool and every page list as one shared group
-    // (reorder inside a list, move between lists); Draggable owns the grip
-    // on each article card, and a drop hit-tests the page section under the
-    // pointer and appends the article there. The DOM is the draft: nothing
-    // is written until Save layout posts every page in display order.
+    // Sortable owns every page list as one shared group (reorder inside a
+    // list, move between lists); Draggable owns each card's cover image (or
+    // its grip when there is no cover), and a drop hit-tests the page
+    // section under the pointer and appends the article there. Dragging a
+    // page chip back onto the card list takes it off the page. The DOM is
+    // the draft: nothing is written until Save layout posts every page in
+    // display order.
     const layoutRoot = document.getElementById("pub-layout-root");
-    const freeList = document.querySelector('[data-pub-list="free"]');
     let layoutDirty = false;
     let activeDropzone = null;
+    let activeCardList = null;
 
     function markLayoutDirty() {
       if (layoutDirty) return;
@@ -673,25 +677,9 @@
       return parseInt(chip.dataset.wordCount, 10) || 0;
     }
 
-    // Chips in the free pool carry no × (they are already unplaced); chips
-    // on a page do. The server-rendered markup already matches, but a chip
-    // dragged between the pool and a page keeps whatever button it was
-    // built with, so repair every list after each move.
-    function syncChipControls() {
-      document.querySelectorAll("[data-pub-list]").forEach((list) => {
-        const isFree = list === freeList;
-        list.querySelectorAll("[data-article-chip]").forEach((chip) => {
-          const button = chip.querySelector("[data-chip-remove]");
-          if (isFree && button) button.remove();
-          if (!isFree && !button) chip.appendChild(chipRemoveButton());
-        });
-      });
-    }
-
     // Repaint every page's word count, fill bar and empty hint from the
     // chips currently in its list — called after each drag/remove.
     function refreshLayoutUI() {
-      syncChipControls();
       const quota = pubLayout.page_words || 1;
       const upper = quota + pubLayout.word_allowance;
       document.querySelectorAll("[data-sidebar-page]").forEach((section) => {
@@ -709,13 +697,6 @@
         const empty = section.querySelector("[data-page-empty]");
         if (empty) empty.classList.toggle("hidden", chips.length > 0);
       });
-      if (freeList) {
-        const freeChips = freeList.querySelectorAll("[data-article-chip]");
-        const freeEmpty = freeList.parentElement.querySelector("[data-page-empty]");
-        if (freeEmpty) freeEmpty.classList.toggle("hidden", freeChips.length > 0);
-        const count = document.getElementById("pub-free-count");
-        if (count) count.textContent = `${freeChips.length} free`;
-      }
     }
 
     function setDropzone(zone) {
@@ -734,6 +715,21 @@
       return under ? under.closest("[data-pub-page-drop]") : null;
     }
 
+    // The article cards on the left: dropping a page chip here unplaces it.
+    function cardListAt(point) {
+      const under = point
+        ? document.elementFromPoint(point.x, point.y)
+        : null;
+      return under ? under.closest("[data-pub-cards]") : null;
+    }
+
+    function setCardListTarget(target) {
+      if (activeCardList === target) return;
+      if (activeCardList) activeCardList.classList.remove("pub-card-drop-active");
+      activeCardList = target;
+      if (target) target.classList.add("pub-card-drop-active");
+    }
+
     function chipRemoveButton() {
       const button = document.createElement("button");
       button.type = "button";
@@ -748,7 +744,7 @@
     }
 
     // Mirrors the layout_chip macro in the markup block above.
-    function makeChip(article, removable) {
+    function makeChip(article) {
       const chip = document.createElement("li");
       chip.dataset.articleChip = "";
       chip.dataset.articleId = article.id;
@@ -789,7 +785,7 @@
       meta.textContent = article.words ? `${article.words} wc` : "not scraped";
       body.append(title, meta);
       chip.appendChild(body);
-      if (removable) chip.appendChild(chipRemoveButton());
+      chip.appendChild(chipRemoveButton());
       return chip;
     }
 
@@ -811,7 +807,7 @@
         `[data-article-chip][data-article-id="${article.id}"]`
       );
       if (existing) existing.remove();
-      targetList.appendChild(makeChip(article, targetList !== freeList));
+      targetList.appendChild(makeChip(article));
       refreshLayoutUI();
       markLayoutDirty();
     }
@@ -819,9 +815,10 @@
     // The library's drag:stop carries no sensor event in 1.2.1, so the
     // pointer position comes from the last drag:move.
     let lastDragPoint = null;
+    let lastChipPoint = null;
 
     if (window.Draggable) {
-      // Page lists + free pool: one Sortable in one shared group.
+      // Every page list is one Sortable in one shared group.
       const sortable = new Draggable.Sortable(
         Array.from(document.querySelectorAll("[data-pub-list]")),
         {
@@ -831,10 +828,22 @@
           mirror: { constrainDimensions: true, cursorOffsetX: 8, cursorOffsetY: 8 },
         }
       );
+      sortable.on("drag:start", () => {
+        lastChipPoint = null;
+      });
+      sortable.on("drag:move", (event) => {
+        const sensor = event.sensorEvent;
+        if (sensor) lastChipPoint = { x: sensor.clientX, y: sensor.clientY };
+        setCardListTarget(cardListAt(lastChipPoint));
+      });
       // drag:stopped (not sortable:stop) is the settled DOM: the library
-      // swaps its mirror for the real chip only after drag:stop returns,
-      // so refreshing earlier would read the chip in its old list.
-      sortable.on("drag:stopped", () => {
+      // swaps its mirror for the real chip only after drag:stop returns, so
+      // refreshing earlier would read the chip in its old list. A chip
+      // dropped on the cards is removed from the layout entirely.
+      sortable.on("drag:stopped", (event) => {
+        const overCards = Boolean(cardListAt(lastChipPoint));
+        setCardListTarget(null);
+        if (overCards) event.originalSource.remove();
         refreshLayoutUI();
         markLayoutDirty();
       });
@@ -873,14 +882,13 @@
       });
     }
 
-    // The chip's ×: back to the free pool (persisted on the next save).
+    // The chip's ×: take it off the page (persisted on the next save).
     if (layoutRoot) {
       layoutRoot.addEventListener("click", (event) => {
         const button = event.target.closest("[data-chip-remove]");
         const chip = button ? button.closest("[data-article-chip]") : null;
-        if (!chip || !freeList) return;
-        button.remove(); // the pool's chips carry no remove button
-        freeList.appendChild(chip);
+        if (!chip) return;
+        chip.remove();
         refreshLayoutUI();
         markLayoutDirty();
       });

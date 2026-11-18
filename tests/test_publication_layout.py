@@ -3,13 +3,15 @@
 Covers the publication-specific settings in ``app/db/layout.py`` (their own
 module on purpose — kept out of the app-wide settings), the whole-layout
 save behind the sidebar's drag-and-drop (page assignments + per-page order),
-the view context the sidebar renders from (pages, fill feedback, the free
-pool, the drag handles), and the JSON export the InDesign ExtendScript
-consumes. Everything runs against the throwaway SQLite database conftest
+the view context the sidebar renders from (pages, fill feedback, the drag
+handles and the card list's unplace drop target), and the JSON export the
+InDesign ExtendScript consumes. Everything runs against the throwaway SQLite database conftest
 provisions — never the real ``newsflow.db`` and never the network.
 """
 
 from __future__ import annotations
+
+import re
 
 import pytest
 from fastapi import HTTPException
@@ -55,7 +57,6 @@ def _insert(title: str, **overrides) -> int:
         row = PublicationArticle(
             title=title,
             url=f"https://example.com/{title}",
-            image_url=None,
             description="desc",
             published_at="2026-10-31",
             source="kaumudi",
@@ -72,7 +73,6 @@ def _insert_curation(title: str, **overrides) -> int:
         row = Article(
             title=title,
             url=f"https://example.com/{title}",
-            image_url=None,
             description="desc",
             published_at="2026-10-31",
             source="kaumudi",
@@ -512,16 +512,18 @@ class TestSidebarView:
         assert page_two["percent"] == 0
         assert page_two["color"] == "#6366f1"  # still filling up → indigo
 
-    async def test_unassigned_context_lists_only_free_cards(self, pub_workspace):
-        placed, free = _insert("Placed"), _insert("Free")
-        await db_pkg.assign_articles_to_page([placed], 1, archived=True)
+    async def test_sidebar_has_no_unplaced_pool(self, pub_workspace):
+        """Unplacing happens by dropping a chip on the card list, so the
+        sidebar has no free-pool section and no context for one."""
+        _insert("Placed")
 
         response = await _view(day=None, sort="id")
-        unassigned = response.context["unassigned"]
+        html = response.body.decode()
 
-        assert [entry["item"].id for entry in unassigned] == [free]
-        assert unassigned[0]["item"].title == "Free"
-        assert unassigned[0]["word_count"] is None  # never scraped
+        assert "unassigned" not in response.context
+        assert "Unplaced" not in html
+        assert 'data-pub-list="free"' not in html
+        assert 'id="pub-free-count"' not in html
 
     async def test_card_list_marks_placed_articles_with_their_page(
         self, pub_workspace
@@ -535,32 +537,41 @@ class TestSidebarView:
         assert "#p5" in html
         assert 'title="Placed on page 5 of the print layout"' in html
 
-    async def test_card_list_carries_a_drag_handle_for_every_card(
-        self, pub_workspace
-    ):
-        """Dragging the grip on a card is how an article is placed without
-        the old picker modal: the handle carries the chip's payload."""
-        article_id = _insert("Draggable")
+    async def test_cover_image_is_the_drag_handle(self, pub_workspace):
+        """Cards are dragged by their image, not the whole card, so the
+        heading's preview link stays clickable."""
+        article_id = _insert(
+            "Draggable", image_url="https://example.com/cover.jpg"
+        )
 
         response = await _view(day=None, sort="id")
         html = response.body.decode()
 
-        assert "data-pub-drag" in html
+        # The drag payload rides on the image container, which is grabbable.
+        match = re.search(
+            r"<div\s+data-pub-drag[^>]*cursor-grab[^>]*>", html, re.DOTALL
+        )
+        assert match is not None
+        block = match.group(0)
+        assert f'data-article-id="{article_id}"' in block
+        assert 'data-article-title="Draggable"' in block
+        assert 'data-article-image="https://example.com/cover.jpg"' in block
+        # The fallback grip is not rendered when there is an image.
+        assert not re.search(r"<span\s+data-pub-drag", html)
+        # The heading is still a plain link, outside the drag handle.
+        assert f'<a href="/article/{article_id}?day=previous"' in html
+
+    async def test_image_less_cards_keep_a_grip_handle(self, pub_workspace):
+        """Without a cover there is nothing to grab, so a small grip stands
+        in — every article stays placeable."""
+        article_id = _insert("No cover")
+
+        response = await _view(day=None, sort="id")
+        html = response.body.decode()
+
+        assert re.search(r"<span\s+data-pub-drag", html)
         assert f'data-article-id="{article_id}"' in html
-        assert 'data-article-title="Draggable"' in html
-
-    async def test_free_pool_lists_only_unplaced_articles(self, pub_workspace):
-        """The free pool is the drag source: placed articles sit beside
-        their page instead of appearing there."""
-        placed, free = _insert("Placed"), _insert("Free")
-        await db_pkg.assign_articles_to_page([placed], 1, archived=True)
-
-        response = await _view(day=None, sort="id")
-        html = response.body.decode()
-        pool = html.split('data-pub-list="free"', 1)[1].split("</ul>", 1)[0]
-
-        assert f'data-article-id="{free}"' in pool
-        assert f'data-article-id="{placed}"' not in pool
+        assert 'data-article-title="No cover"' in html
 
     async def test_pages_render_in_the_saved_drag_order(self, pub_workspace):
         """The view follows ``page_position`` (set by Save layout), not the
@@ -592,15 +603,17 @@ class TestSidebarView:
         assert 'id="save-layout-button"' in html
         assert "Save layout" in html
         assert "@shopify/draggable" in html  # the DnD bundle
-        assert 'data-pub-list="free"' in html  # the free pool
-        assert "data-pub-page-drop" in html
-        # The plus-button picker and the Export JSON button are gone.
+        assert 'data-pub-list="1"' in html  # a page's sortable list
+        assert "data-pub-page-drop" in html  # a card's drop target
+        assert "data-pub-cards" in html  # the unplace drop target
+        # The plus-button picker, the Export JSON button and the old
+        # unplaced pool are gone.
         assert 'id="pub-picker-modal"' not in html
         assert 'id="pub-export-modal"' not in html
         assert "Export JSON" not in html
+        assert "Unplaced" not in html
         assert "300 wc/page" in html  # header echoes the layout settings
         assert "8 pages" in html
-        assert "0 free" in html  # nothing placed yet
 
 
 # ---------------------------------------------------------------------------
@@ -817,6 +830,9 @@ class TestDragAndDropWiring:
         assert '"drag:stopped"' in html
         assert '"sortable:stop"' not in html
         assert 'data-pub-list' in html  # the sortable containers
+        assert 'data-pub-list="free"' not in html  # no unplaced pool
+        assert "cardListAt(lastChipPoint)" in html  # drop back on the cards
+        assert 'event.originalSource.remove()' in html  # …which unplaces it
 
     def test_save_posts_every_page_in_display_order(self):
         html = _render_bare()
