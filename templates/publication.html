@@ -344,7 +344,7 @@
           </div>
         </div>
         <!-- History selector: appears when gte 2 generations exist, on its own row -->
-        <div class="mt-2 gap-2 items-center" id="history-selector-wrap" style="display: none;">
+        <div class="mt-2 flex gap-2 items-center" id="history-selector-wrap">
           <select id="generation-select"
                   onchange="applyGeneration(this.value)"
                   class="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1 bg-white text-indigo-700 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-gray-800 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950">
@@ -1167,7 +1167,6 @@
           '<option value="">Current layout</option>';
         const gens = data.generations || [];
         if (gens.length >= 2) {
-          wrap.style.display = "flex";
           // Add newest first (so the dropdown shows most recent at top)
           for (const gen of gens) {
             const opt = document.createElement("option");
@@ -1176,8 +1175,6 @@
             opt.textContent = `Generation ${gen.id} (${date})`;
             select.appendChild(opt);
           }
-        } else {
-          wrap.style.display = "none";
         }
       } catch (err) {
         // Silently fail — the selector is non-critical
