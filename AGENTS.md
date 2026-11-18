@@ -147,11 +147,13 @@ Two workspaces exist side by side:
   `?sort=word` ranks by scraped word count with unscraped articles last),
   the same results header, and the same
   `article_layout` grid/rows/compact branches. Each card carries its
-  local-scrape status and word count plus two actions: **Preview** opens
-  `GET /article/<id>?day=<previous|today>` (the same `article.html`, with
-  its back link pointing at the tab it came from) — only for articles that
-  have a local copy, since there is nothing to open otherwise — and
-  **Scrape** POSTs `/api/articles/<id>/scrape?day=...`, which saves the
+  local-scrape status and word count. The heading links to the local
+  desk, `GET /article/<id>?day=<previous|today>` (the same `article.html`,
+  with its back link pointing at the tab it came from; it opens before
+  the first scrape and then shows the "no content scraped" state).
+  **Preview** is the external-link icon to the story's source site — the
+  curation page's Preview button is the local desk instead. **Scrape**
+  POSTs `/api/articles/<id>/scrape?day=...`, which saves the
   page into the selected workspace *without* changing the article's status.
   **Mark published** is a toggle button (the card's print state lives on
   the button itself, not a badge): it POSTs
