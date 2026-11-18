@@ -646,6 +646,7 @@
     const SAVE_HINT = "Drag a card's image onto a page; drag a page entry back " +
       "to the cards to unplace it. Save to keep the layout.";
     let layoutDirty = false;
+    let layoutSaved = false; // a confirmed save: leave without the guard
     let activeDropzone = null;
     let activeCardList = null;
 
@@ -957,6 +958,32 @@
       });
     }
 
+    // Read the layout back from the server, so a "saved" state is only
+    // reported after the stored page order matches what the sidebar sent.
+    async function fetchSavedLayout() {
+      const res = await fetch(
+        `/api/publication/layout?day=${encodeURIComponent(pubDay)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return null;
+      return res.json().catch(() => null);
+    }
+
+    function savedLayoutMatches(stored, sent) {
+      if (!stored || !Array.isArray(stored.pages)) return false;
+      const normalize = (pages) =>
+        JSON.stringify(
+          pages
+            .map((entry) => ({
+              page: Number(entry.page),
+              ids: (entry.article_ids || []).map(Number),
+            }))
+            .filter((entry) => entry.ids.length)
+            .sort((a, b) => a.page - b.page)
+        );
+      return normalize(stored.pages) === normalize(sent);
+    }
+
     async function saveDraggedLayout() {
       const pages = Array.from(
         document.querySelectorAll("[data-sidebar-page]")
@@ -970,10 +997,20 @@
       }));
       const button = document.getElementById("save-layout-button");
       const originalHTML = button ? button.innerHTML : "";
+      const fail = (message) => {
+        alert(message);
+        if (button) {
+          button.disabled = false;
+          button.innerHTML = originalHTML;
+        }
+        refreshDirty();
+      };
       if (button) {
         button.disabled = true;
         button.innerHTML = spinnerSVG;
       }
+
+      let stored = null;
       try {
         const res = await fetch(
           `/api/publication/layout?day=${encodeURIComponent(pubDay)}`,
@@ -985,28 +1022,39 @@
         );
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.ok === false) {
-          alert(data.detail || "Saving the layout failed — nothing was saved.");
-          if (button) {
-            button.disabled = false;
-            button.innerHTML = originalHTML;
-          }
+          fail(data.detail || "Saving the layout failed — nothing was saved.");
           return;
         }
+        stored = await fetchSavedLayout();
       } catch (err) {
-        alert("Saving the layout failed — nothing was saved.");
-        if (button) {
-          button.disabled = false;
-          button.innerHTML = originalHTML;
-        }
+        fail("Saving the layout failed — nothing was saved.");
         return;
       }
+
+      // Only leave the page once the server reports the layout it kept is
+      // the one that was sent — otherwise the button would sit on its
+      // spinner with no way to tell whether the save landed.
+      if (!savedLayoutMatches(stored, pages)) {
+        fail("The layout was sent but could not be confirmed — try saving again.");
+        return;
+      }
+
+      layoutSaved = true;
       layoutDirty = false;
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Saved";
+      }
       window.location.reload();
+      // Some embedded browsers swallow a script-initiated reload; navigating
+      // to the same URL is the fallback (a no-op if the reload already ran).
+      setTimeout(() => window.location.replace(window.location.href), 1500);
     }
 
-    // A reload (or any navigation) must not silently drop a dragged layout.
+    // A reload (or any navigation) must not silently drop a dragged layout;
+    // a confirmed save has already been written, so it may leave freely.
     window.addEventListener("beforeunload", (event) => {
-      if (!layoutDirty) return;
+      if (!layoutDirty || layoutSaved) return;
       event.preventDefault();
       event.returnValue = "";
     });

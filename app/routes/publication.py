@@ -404,8 +404,8 @@ async def save_layout(
     """Save the dragged-and-sorted layout for the whole workspace.
 
     The sidebar sends every page with its articles in display order; it is
-    a full replacement, so articles missing from the payload (dragged into
-    the free pool) go back to unassigned. All-or-nothing: an unknown id, a
+    a full replacement, so articles missing from the payload (dragged back
+    onto the card list) are unplaced. All-or-nothing: an unknown id, a
     duplicated article, a page outside the configured layout, or the same
     page listed twice answers 400/404 and writes nothing.
     """
@@ -428,6 +428,52 @@ async def save_layout(
         "ok": True,
         "pages": len(payload.pages),
         "placed": sum(len(entry.article_ids) for entry in payload.pages),
+    }
+
+
+@router.get("/api/publication/layout")
+async def get_saved_layout(
+    day: str | None = Query(
+        None, description="'previous' to read the archived workspace's layout"
+    ),
+):
+    """Read back the saved page layout, as the sidebar just wrote it.
+
+    Called right after **Save layout** to confirm the write landed before
+    the page reloads: each configured page comes back with its articles in
+    ``page_position`` order (unplaced rows are absent, empty pages are
+    listed empty).
+    """
+    archived = day == "previous"
+    items = await get_publication_items() if archived else await get_items()
+    layout = await get_publication_layout()
+    grouped: dict[int, list[NewsItem]] = {
+        page: [] for page in range(1, layout["total_pages"] + 1)
+    }
+    for item in items:
+        if item.id is None or item.page_number is None:
+            continue
+        if item.page_number in grouped:
+            grouped[item.page_number].append(item)
+    return {
+        "ok": True,
+        "day": "previous" if archived else "today",
+        "pages": [
+            {
+                "page": page,
+                "article_ids": [
+                    item.id
+                    for item in sorted(
+                        page_items,
+                        key=lambda item: (
+                            item.page_position is None,
+                            item.page_position or 0,
+                        ),
+                    )
+                ],
+            }
+            for page, page_items in grouped.items()
+        ],
     }
 
 

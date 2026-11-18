@@ -472,8 +472,54 @@ class TestSaveLayout:
         assert _placement(article_id, archived=True) == (None, None)
 
 
+class TestSavedLayoutReadback:
+    """GET /api/publication/layout — the sidebar's post-save confirmation."""
+
+    async def test_reports_every_page_and_its_order(self):
+        first, second = _insert("A"), _insert("B")
+        await pub_routes.save_layout(
+            pub_routes.PageLayoutIn(
+                pages=[
+                    pub_routes.PageLayoutPageIn(
+                        page=2, article_ids=[second, first]
+                    )
+                ]
+            ),
+            day="previous",
+        )
+
+        payload = await pub_routes.get_saved_layout(day="previous")
+        pages = {entry["page"]: entry["article_ids"] for entry in payload["pages"]}
+
+        assert payload["ok"] is True
+        assert payload["day"] == "previous"
+        assert pages[2] == [second, first]  # the saved drag order
+        assert pages[1] == []  # every configured page is listed
+        assert len(pages) == DEFAULTS["total_pages"]
+
+    async def test_unplaced_articles_are_absent(self):
+        kept, free = _insert("Kept"), _insert("Free")
+        await db_pkg.assign_articles_to_page([kept], 1, archived=True)
+
+        payload = await pub_routes.get_saved_layout(day="previous")
+        ids = [i for entry in payload["pages"] for i in entry["article_ids"]]
+
+        assert ids == [kept]
+        assert free not in ids
+
+    async def test_reads_todays_workspace_by_default(self):
+        article_id = _insert_curation("Today")
+        await db_pkg.assign_articles_to_page([article_id], 3, archived=False)
+
+        payload = await pub_routes.get_saved_layout()
+        pages = {entry["page"]: entry["article_ids"] for entry in payload["pages"]}
+
+        assert payload["day"] == "today"
+        assert pages[3] == [article_id]
+
+
 # ---------------------------------------------------------------------------
-# Sidebar view context (pages, fill feedback, the free pool)
+# Sidebar view context (pages, fill feedback, the card drag handles)
 # ---------------------------------------------------------------------------
 
 
@@ -875,3 +921,11 @@ class TestDragAndDropWiring:
 
     def test_unsaved_layout_guards_against_reload(self):
         assert 'window.addEventListener("beforeunload"' in _render_bare()
+
+    def test_save_confirms_the_stored_layout_before_reloading(self):
+        html = _render_bare()
+        assert "async function fetchSavedLayout()" in html  # read-back
+        assert "savedLayoutMatches(stored, pages)" in html  # compare
+        assert "could not be confirmed" in html  # never spin silently
+        assert "window.location.reload();" in html
+        assert "window.location.replace(window.location.href)" in html  # fallback

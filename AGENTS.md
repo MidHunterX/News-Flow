@@ -86,7 +86,9 @@ app/
                      # + the print-layout API the sidebar drives:
                      # GET/POST /api/publication/settings, POST
                      # /api/publication/layout (whole dragged/sorted
-                     # layout save), POST /api/publication/assign, POST
+                     # layout save) and GET .../layout (the read-back the
+                     # sidebar confirms before reloading), POST
+                     # /api/publication/assign, POST
                      # /api/publication/{id}/unassign, GET
                      # /api/publication/export (layout JSON for the
                      # InDesign ExtendScript)
@@ -220,7 +222,10 @@ Two workspaces exist side by side:
   to full opacity without one. Nothing is written until **Save layout**
   POSTs `/api/publication/layout` with every page in display order; the
   button is enabled only while the DOM's page→order snapshot differs from
-  the one the server rendered. That save is a full replacement — articles
+  the one the server rendered. After a successful POST the sidebar reads
+  the saved layout back (`GET /api/publication/layout`) and only reloads
+  once it matches what was sent, so a save can never leave the button on
+  its spinner; a failed read-back restores the button and says so. That save is a full replacement — articles
   missing from the payload are unplaced — and all-or-nothing (404 on any
   unknown id; 400 for a duplicated article, a repeated page, or a page
   past `total_pages`). Shrinking `total_pages` un-places the orphans in
