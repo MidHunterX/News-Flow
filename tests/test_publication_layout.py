@@ -929,3 +929,15 @@ class TestDragAndDropWiring:
         assert "could not be confirmed" in html  # never spin silently
         assert "window.location.reload();" in html
         assert "window.location.replace(window.location.href)" in html  # fallback
+
+    def test_applying_a_history_layout_reloads_through_the_helper(self):
+        """The dropdown must leave the page so the applied page order shows;
+        a dirty draft gets a confirmation instead of a silent discard."""
+        html = _render_bare()
+        apply_fn = html.split("async function applyGeneration(", 1)[1].split(
+            "\n    }", 1
+        )[0]
+
+        assert "reloadPage();" in apply_fn
+        assert "window.location.reload()" not in apply_fn
+        assert "discards your unsaved changes" in apply_fn

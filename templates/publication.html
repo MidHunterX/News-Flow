@@ -402,7 +402,7 @@
     </div>
 
     <!-- ============ RIGHT: print-layout sidebar (edge-docked) ============ -->
-    <aside class="w-80 xl:w-96 shrink-0 sticky top-6 max-h-[calc(100vh-3rem)] flex flex-col
+    <aside class="w-80 xl:w-96 shrink-0 sticky top-6 max-h-[calc(100vh-8rem)] flex flex-col
                   bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden dark:bg-gray-800 dark:border-indigo-900"
            data-day="{{ selected_day }}">
       <!-- Panel header: the gear opens the publication-only settings
@@ -675,6 +675,17 @@
       if (hint) {
         hint.textContent = layoutDirty ? "Unsaved changes — save to keep this layout." : SAVE_HINT;
       }
+    }
+
+    // Every flow that commits a layout ends here: the draft is moot, so let
+    // the beforeunload guard stand down and reload. The timeout covers
+    // browsers that ignore a script-initiated reload (a real reload tears
+    // the timer down first).
+    function reloadPage() {
+      layoutSaved = true;
+      layoutDirty = false;
+      window.location.reload();
+      setTimeout(() => window.location.replace(window.location.href), 1500);
     }
 
     // Placed cards fade and show their #pN tag; unplaced ones come back to
@@ -1039,16 +1050,11 @@
         return;
       }
 
-      layoutSaved = true;
-      layoutDirty = false;
       if (button) {
         button.disabled = true;
         button.textContent = "Saved";
       }
-      window.location.reload();
-      // Some embedded browsers swallow a script-initiated reload; navigating
-      // to the same URL is the fallback (a no-op if the reload already ran).
-      setTimeout(() => window.location.replace(window.location.href), 1500);
+      reloadPage();
     }
 
     // A reload (or any navigation) must not silently drop a dragged layout;
@@ -1218,7 +1224,7 @@
         alert("Saving the publication settings failed — nothing was saved.");
         return;
       }
-      window.location.reload(); // the sidebar re-renders against the new layout
+      reloadPage(); // the sidebar re-renders against the new layout
     }
 
     // ---- AI Layout generation ----
@@ -1256,7 +1262,7 @@
             return;
           }
         }
-        window.location.reload();
+        reloadPage();
       } catch (err) {
         alert("AI layout generation failed.");
       } finally {
@@ -1300,6 +1306,16 @@
 
     async function applyGeneration(genId) {
       if (!genId) return; // Switching back to "Current layout"
+      // Applying replaces the draft, so a dirty page asks before dropping it
+      // (and the select falls back to "Current layout" when it doesn't).
+      if (
+        layoutDirty &&
+        !confirm("Applying this layout discards your unsaved changes. Continue?")
+      ) {
+        const select = document.getElementById("generation-select");
+        if (select) select.value = "";
+        return;
+      }
       try {
         const res = await fetch(
           `/api/publication/generations/${genId}/apply?day=${encodeURIComponent(pubDay)}`,
@@ -1310,7 +1326,9 @@
           alert("Failed to apply generation.");
           return;
         }
-        window.location.reload();
+        // The backend has the new page assignments: leave the page so the
+        // sidebar re-renders them.
+        reloadPage();
       } catch (err) {
         alert("Failed to apply generation.");
       }
@@ -1328,7 +1346,7 @@
           alert("Clearing the layout failed.");
           return;
         }
-        window.location.reload();
+        reloadPage();
       } catch (err) {
         alert("Clearing the layout failed.");
       }

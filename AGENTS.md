@@ -225,8 +225,12 @@ Two workspaces exist side by side:
   the one the server rendered. After a successful POST the sidebar reads
   the saved layout back (`GET /api/publication/layout`) and only reloads
   once it matches what was sent, so a save can never leave the button on
-  its spinner; a failed read-back restores the button and says so. That save is a full replacement — articles
-  missing from the payload are unplaced — and all-or-nothing (404 on any
+  its spinner; a failed read-back restores the button and says so.
+  Every committed-layout flow (settings, AI generate/apply, clear) reloads
+  through the same helper, which also navigates as a fallback when a
+  script reload is ignored; choosing a history generation first confirms
+  if a draft is dirty. That save is a full replacement — articles missing
+  from the payload are unplaced — and all-or-nothing (404 on any
   unknown id; 400 for a duplicated article, a repeated page, or a page
   past `total_pages`). Shrinking `total_pages` un-places the orphans in
   both workspaces.
