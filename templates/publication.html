@@ -37,11 +37,10 @@
           #wp
       </span>
     {% endif %}
-    {% if card.item.page_number %}
-      <span title="Placed on page {{ card.item.page_number }} of the print layout" class="inline-flex items-center gap-1.5 text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-900 dark:text-teal-300 dark:border-teal-800 px-2.5 py-1 rounded-full">
-          #p{{ card.item.page_number }}
-      </span>
-    {% endif %}
+    {# Always rendered so a drag can add/remove/retarget the page tag in
+       place (see syncCardState); hidden while the article is unplaced. #}
+    <span data-card-page title="{% if card.item.page_number %}Placed on page {{ card.item.page_number }} of the print layout{% endif %}"
+          class="inline-flex items-center gap-1.5 text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-900 dark:text-teal-300 dark:border-teal-800 px-2.5 py-1 rounded-full {% if not card.item.page_number %}hidden{% endif %}">{% if card.item.page_number %}#p{{ card.item.page_number }}{% endif %}</span>
     {# Cards without a cover keep the small grip; cards with one are dragged
        by the image itself (see drag_attrs), so this only appears then. #}
     {% if not (card.cover or card.item.image_url) %}{{ drag_handle(card) }}{% endif %}
@@ -125,14 +124,17 @@
         data-article-source="{{ card.item.source }}"
         data-article-image="{{ image or '' }}"
         data-word-count="{{ card.word_count if card.word_count is not none else 0 }}"
-        class="flex items-center gap-2 group rounded-lg px-1.5 py-1 -mx-1.5 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 cursor-grab active:cursor-grabbing select-none">
+        class="flex items-center gap-2 group rounded-lg px-1.5 py-1 -mx-1.5 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 select-none">
+      {# Only the thumbnail is a drag handle (Sortable's `handle`), so the
+         title link and the × stay clickable. #}
       {% if image %}
-        <img src="{{ image }}" alt="" class="w-8 h-8 rounded object-cover shrink-0 bg-gray-100 pointer-events-none dark:bg-gray-700">
+        <img data-chip-thumb src="{{ image }}" alt="" draggable="false" class="w-8 h-8 rounded object-cover shrink-0 bg-gray-100 cursor-grab active:cursor-grabbing dark:bg-gray-700">
       {% else %}
-        <span class="w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-[10px] font-bold uppercase pointer-events-none dark:bg-indigo-950 dark:text-indigo-400">{{ card.item.source[:2] }}</span>
+        <span data-chip-thumb class="w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 text-[10px] font-bold uppercase cursor-grab active:cursor-grabbing dark:bg-indigo-950 dark:text-indigo-400">{{ card.item.source[:2] }}</span>
       {% endif %}
-      <div class="min-w-0 flex-1 pointer-events-none">
-        <p class="text-xs text-gray-700 truncate leading-4 dark:text-gray-300">{{ card.item.title }}</p>
+      <div class="min-w-0 flex-1">
+        <a href="/article/{{ card.item.id }}?day={{ selected_day }}"
+           class="block text-xs text-gray-700 truncate leading-4 hover:text-indigo-600 dark:text-gray-300 dark:hover:text-indigo-400">{{ card.item.title }}</a>
         <p class="text-[10px] text-gray-400 dark:text-gray-500">
           {% if card.word_count is not none %}{{ card.word_count }} wc{% else %}not scraped{% endif %}
         </p>
@@ -275,7 +277,8 @@
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
             {% set published = card.item.is_print_published %}
-            <article class="{% if published or card.item.page_number %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
+            <article data-pub-card-id="{{ card.item.id }}"
+                     class="{% if published or card.item.page_number %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex overflow-hidden dark:bg-gray-800 dark:border-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
                 <div {{ drag_attrs(card) }} title="Drag onto a page in the Page Layout panel"
@@ -314,7 +317,9 @@
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-100 overflow-hidden dark:bg-gray-800 dark:border-gray-700 dark:divide-gray-700" data-pub-cards>
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
-            <div class="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition group dark:hover:bg-gray-700">
+            {% set published = card.item.is_print_published %}
+            <div data-pub-card-id="{{ card.item.id }}"
+                 class="{% if published or card.item.page_number %}opacity-25{% endif %} flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition group dark:hover:bg-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
                 <img {{ drag_attrs(card) }} src="{{ image }}" alt="" draggable="false"
@@ -345,7 +350,9 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" data-pub-cards>
           {% for card in section.cards %}
             {% set preview_href = "/article/" ~ card.item.id ~ "?day=" ~ selected_day %}
-            <article class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col dark:bg-gray-800 dark:border-gray-700">
+            {% set published = card.item.is_print_published %}
+            <article data-pub-card-id="{{ card.item.id }}"
+                     class="{% if published or card.item.page_number %}opacity-25{% endif %} bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col dark:bg-gray-800 dark:border-gray-700">
               {% set image = card.cover or card.item.image_url %}
               {% if image %}
                 <div {{ drag_attrs(card) }} title="Drag onto a page in the Page Layout panel"
@@ -636,17 +643,60 @@
     // the draft: nothing is written until Save layout posts every page in
     // display order.
     const layoutRoot = document.getElementById("pub-layout-root");
+    const SAVE_HINT = "Drag a card's image onto a page; drag a page entry back " +
+      "to the cards to unplace it. Save to keep the layout.";
     let layoutDirty = false;
     let activeDropzone = null;
     let activeCardList = null;
 
-    function markLayoutDirty() {
-      if (layoutDirty) return;
-      layoutDirty = true;
+    // The layout as the server rendered it (page → ordered article ids).
+    // Comparing against it is what keeps Save disabled when a drag ends
+    // where it started or an article is moved and moved back.
+    function layoutSnapshot() {
+      return JSON.stringify(
+        Array.from(document.querySelectorAll("[data-sidebar-page]")).map(
+          (section) => ({
+            page: section.dataset.sidebarPage,
+            ids: Array.from(section.querySelectorAll("[data-article-chip]")).map(
+              (chip) => chip.dataset.articleId
+            ),
+          })
+        )
+      );
+    }
+    const savedLayout = layoutSnapshot();
+
+    function refreshDirty() {
+      layoutDirty = layoutSnapshot() !== savedLayout;
       const button = document.getElementById("save-layout-button");
       const hint = document.getElementById("save-layout-hint");
-      if (button) button.disabled = false;
-      if (hint) hint.textContent = "Unsaved changes — save to keep this layout.";
+      if (button) button.disabled = !layoutDirty;
+      if (hint) {
+        hint.textContent = layoutDirty ? "Unsaved changes — save to keep this layout." : SAVE_HINT;
+      }
+    }
+
+    // Placed cards fade and show their #pN tag; unplaced ones come back to
+    // full opacity with no tag — kept in step with the sidebar drags.
+    function syncCardState(articleId, page) {
+      const card = document.querySelector(`[data-pub-card-id="${articleId}"]`);
+      if (!card) return;
+      card.classList.toggle("opacity-25", Boolean(page));
+      const badge = card.querySelector("[data-card-page]");
+      if (!badge) return;
+      badge.classList.toggle("hidden", !page);
+      if (page) {
+        badge.textContent = `#p${page}`;
+        badge.title = `Placed on page ${page} of the print layout`;
+      } else {
+        badge.textContent = "";
+        badge.title = "";
+      }
+    }
+
+    function pageOfList(list) {
+      const section = list ? list.closest("[data-sidebar-page]") : null;
+      return section ? section.dataset.sidebarPage : null;
     }
 
     // Same color ramp as the server (app/routes/publication.py): indigo
@@ -754,31 +804,35 @@
       chip.dataset.wordCount = String(article.words || 0);
       chip.className =
         "flex items-center gap-2 group rounded-lg px-1.5 py-1 -mx-1.5 " +
-        "hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 " +
-        "cursor-grab active:cursor-grabbing select-none";
+        "hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40 select-none";
 
       if (article.image) {
         const thumb = document.createElement("img");
+        thumb.dataset.chipThumb = "";
         thumb.src = article.image;
         thumb.alt = "";
+        thumb.draggable = false;
         thumb.className =
-          "w-8 h-8 rounded object-cover shrink-0 bg-gray-100 pointer-events-none dark:bg-gray-700";
+          "w-8 h-8 rounded object-cover shrink-0 bg-gray-100 cursor-grab active:cursor-grabbing dark:bg-gray-700";
         chip.appendChild(thumb);
       } else {
         const thumb = document.createElement("span");
+        thumb.dataset.chipThumb = "";
         thumb.className =
           "w-8 h-8 rounded bg-indigo-50 text-indigo-600 flex items-center " +
           "justify-center shrink-0 text-[10px] font-bold uppercase " +
-          "pointer-events-none dark:bg-indigo-950 dark:text-indigo-400";
+          "cursor-grab active:cursor-grabbing dark:bg-indigo-950 dark:text-indigo-400";
         thumb.textContent = (article.source || "?").slice(0, 2);
         chip.appendChild(thumb);
       }
 
       const body = document.createElement("div");
-      body.className = "min-w-0 flex-1 pointer-events-none";
-      const title = document.createElement("p");
+      body.className = "min-w-0 flex-1";
+      const title = document.createElement("a");
+      title.href = `/article/${article.id}?day=${encodeURIComponent(pubDay)}`;
       title.className =
-        "text-xs text-gray-700 truncate leading-4 dark:text-gray-300";
+        "block text-xs text-gray-700 truncate leading-4 hover:text-indigo-600 " +
+        "dark:text-gray-300 dark:hover:text-indigo-400";
       title.textContent = article.title || "(untitled)";
       const meta = document.createElement("p");
       meta.className = "text-[10px] text-gray-400 dark:text-gray-500";
@@ -808,8 +862,9 @@
       );
       if (existing) existing.remove();
       targetList.appendChild(makeChip(article));
+      syncCardState(article.id, pageOfList(targetList));
       refreshLayoutUI();
-      markLayoutDirty();
+      refreshDirty();
     }
 
     // The library's drag:stop carries no sensor event in 1.2.1, so the
@@ -823,6 +878,9 @@
         Array.from(document.querySelectorAll("[data-pub-list]")),
         {
           draggable: "[data-article-chip]",
+          // Chips are grabbed by their thumbnail; the title link and the ×
+          // stay ordinary clicks.
+          handle: "[data-chip-thumb]",
           appendTo: "body",
           distance: 5,
           mirror: { constrainDimensions: true, cursorOffsetX: 8, cursorOffsetY: 8 },
@@ -841,11 +899,15 @@
       // refreshing earlier would read the chip in its old list. A chip
       // dropped on the cards is removed from the layout entirely.
       sortable.on("drag:stopped", (event) => {
+        const chip = event.originalSource;
         const overCards = Boolean(cardListAt(lastChipPoint));
         setCardListTarget(null);
-        if (overCards) event.originalSource.remove();
+        const articleId = chip.dataset.articleId;
+        const page = overCards ? null : pageOfList(chip.closest("[data-pub-list]"));
+        if (overCards) chip.remove();
+        syncCardState(articleId, page);
         refreshLayoutUI();
-        markLayoutDirty();
+        refreshDirty();
       });
 
       // The grip on each article card: drag it onto a page section.
@@ -889,8 +951,9 @@
         const chip = button ? button.closest("[data-article-chip]") : null;
         if (!chip) return;
         chip.remove();
+        syncCardState(chip.dataset.articleId, null);
         refreshLayoutUI();
-        markLayoutDirty();
+        refreshDirty();
       });
     }
 

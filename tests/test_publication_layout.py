@@ -536,6 +536,25 @@ class TestSidebarView:
 
         assert "#p5" in html
         assert 'title="Placed on page 5 of the print layout"' in html
+        # The tag lives in the card (not only in the sidebar) so a drag can
+        # retarget it in place.
+        assert f'data-pub-card-id="{placed}"' in html
+        assert "data-card-page" in html
+
+    async def test_sidebar_chips_link_their_headings_and_drag_by_thumb(
+        self, pub_workspace
+    ):
+        """Chips drag from the thumbnail only, leaving the heading free to
+        open the article preview."""
+        article_id = _insert("Linked")
+        await db_pkg.assign_articles_to_page([article_id], 1, archived=True)
+
+        response = await _view(day=None, sort="id")
+        html = response.body.decode()
+        pool = html.split('data-pub-list="1"', 1)[1].split("</ul>", 1)[0]
+
+        assert f'<a href="/article/{article_id}?day=previous"' in pool
+        assert "data-chip-thumb" in pool
 
     async def test_cover_image_is_the_drag_handle(self, pub_workspace):
         """Cards are dragged by their image, not the whole card, so the
@@ -832,7 +851,21 @@ class TestDragAndDropWiring:
         assert 'data-pub-list' in html  # the sortable containers
         assert 'data-pub-list="free"' not in html  # no unplaced pool
         assert "cardListAt(lastChipPoint)" in html  # drop back on the cards
-        assert 'event.originalSource.remove()' in html  # …which unplaces it
+        assert "chip.remove()" in html  # …which unplaces it
+        assert 'handle: "[data-chip-thumb]"' in html  # chips drag by image
+
+    def test_save_is_enabled_only_when_the_layout_changes(self):
+        html = _render_bare()
+        assert "const savedLayout = layoutSnapshot();" in html
+        assert "layoutSnapshot() !== savedLayout" in html
+        assert "button.disabled = !layoutDirty;" in html
+
+    def test_moved_cards_sync_opacity_and_page_tag(self):
+        html = _render_bare()
+        assert "syncCardState(article.id, pageOfList(targetList))" in html
+        assert "syncCardState(articleId, page)" in html
+        assert 'card.classList.toggle("opacity-25", Boolean(page))' in html
+        assert 'badge.textContent = `#p${page}`' in html
 
     def test_save_posts_every_page_in_display_order(self):
         html = _render_bare()
