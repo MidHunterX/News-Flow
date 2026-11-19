@@ -476,7 +476,7 @@
                the allowance gives. 100% renders green, heating through
                orange to red at the upper limit. -->
           <div class="relative h-1.5 bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
-            <div data-page-fill class="h-full rounded-full" style="width: {{ "%.1f"|format(row.fill) }}%; background-color: {{ row.color }}"></div>
+            <div data-page-fill class="h-full rounded-full transition-all duration-500 ease-out" style="width: {{ "%.1f"|format(row.fill) }}%; background-color: {{ row.color }}"></div>
             <span class="absolute inset-y-0 w-px bg-gray-500/70 dark:bg-gray-400/70" style="left: {{ "%.1f"|format(row.tick) }}%" aria-hidden="true"></span>
           </div>
 
