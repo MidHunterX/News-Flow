@@ -210,6 +210,9 @@
     /* Drag-and-drop affordances (Shopify Draggable's lifecycle classes). */
     .draggable-source--is-dragging { opacity: .35; }
     .draggable-mirror { z-index: 100; }
+    /* A card's drag preview is a sidebar chip, so it is always a block
+       box — the handle it was cloned from may be a <span> grip. */
+    .pub-drag-mirror { display: block !important; }
     .pub-drop-active {
       background: rgba(99, 102, 241, .07);
       outline: 2px dashed rgba(99, 102, 241, .7);
@@ -865,6 +868,24 @@
       };
     }
 
+    // A card's drag mirror wears the sidebar chip it becomes on a page:
+    // thumbnail, title and word count — so the drag already reads as the
+    // layout entry instead of a floating caption. It is a preview only, so
+    // it carries no [data-article-chip] (which would otherwise show up in
+    // the layout snapshot and the duplicate-chip lookup).
+    function makeDragMirror(article) {
+      const chip = makeChip(article);
+      // Wrap in a plain div: an <li> dropped inside the (possibly span)
+      // mirror clone has no list to belong to.
+      const preview = document.createElement("div");
+      while (chip.firstChild) preview.appendChild(chip.firstChild);
+      preview.className =
+        "flex items-center gap-2 rounded-lg bg-white px-1.5 py-1 text-sm " +
+        "shadow-xl border border-indigo-300 " +
+        "dark:bg-gray-800 dark:border-indigo-700";
+      return preview;
+    }
+
     // Put the article at the end of *targetList*, first removing any chip it
     // already has elsewhere (a card stays on the left after being placed).
     function placeArticle(article, targetList) {
@@ -925,20 +946,36 @@
       // The grip on each article card: drag it onto a page section.
       const cards = new Draggable.Draggable(
         document.querySelectorAll("[data-pub-cards]"),
-        { draggable: "[data-pub-drag]", appendTo: "body", distance: 4 }
+        {
+          draggable: "[data-pub-drag]",
+          appendTo: "body",
+          distance: 4,
+          mirror: { constrainDimensions: false, cursorOffsetX: 8, cursorOffsetY: 8 },
+        }
       );
 
-      cards.on("drag:start", (event) => {
+      cards.on("drag:start", () => {
         lastDragPoint = null;
-        const mirror = event.data.mirror;
+      });
+
+      // The library builds the mirror *after* drag:start (that event's data
+      // carries no mirror at all), so the preview has to be assembled on
+      // mirror:created. The mirror is a clone of the source (a cover block
+      // or the grip), so strip that styling and let the chip inside paint
+      // the card; keep the library's own class for its stacking rule.
+      cards.on("mirror:created", (event) => {
+        const mirror = event.mirror;
         if (!mirror) return;
-        mirror.textContent = event.source.dataset.articleTitle || "Article";
-        mirror.classList.add(
-          "px-3", "py-1.5", "text-sm", "font-semibold", "bg-white",
-          "text-gray-800", "rounded-lg", "shadow-lg", "border",
-          "border-indigo-300", "dark:bg-gray-800", "dark:text-gray-100",
-          "dark:border-indigo-700"
-        );
+        mirror.className = "draggable-mirror pub-drag-mirror";
+        mirror.innerHTML = "";
+        mirror.style.background = "transparent";
+        mirror.style.boxShadow = "none";
+        mirror.style.height = "auto";
+        const list = document.querySelector("[data-pub-list]");
+        mirror.style.width = list
+          ? `${Math.round(list.getBoundingClientRect().width)}px`
+          : "20rem";
+        mirror.appendChild(makeDragMirror(articleFromSource(event.originalSource)));
       });
 
       cards.on("drag:move", (event) => {
