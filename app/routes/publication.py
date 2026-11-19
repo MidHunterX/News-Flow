@@ -556,9 +556,12 @@ async def generate_layout(
     """Ask Gemini to assign articles to pages for a balanced layout.
 
     Uses the current layout settings (total_pages, page_words,
-    word_allowance) and the workspace's articles (with their word counts)
-    to generate a page assignment. The result is saved as a generation
-    history entry and auto-applied to the workspace.
+    word_allowance) and the workspace's articles (with their word counts and
+    statuses) to generate a page assignment. Completed articles — already
+    published to WordPress, so an editor deemed them important — are offered
+    to the model as a preferred list, with the rest of the workspace as the
+    fallback pool. The result is saved as a generation history entry and
+    auto-applied to the workspace.
 
     Returns the generation id and the page assignments.
     """
@@ -566,14 +569,16 @@ async def generate_layout(
     items = await get_publication_items() if archived else await get_items()
     layout = await get_publication_layout()
 
-    # Build article tuples: (id, title, source, word_count)
-    articles: list[tuple[int, str, str, int | None]] = []
+    # Build article tuples: (id, title, source, word_count, status). The
+    # status lets the AI layout prompt split completed (previously published,
+    # i.e. editor-approved) stories from the rest of the pool.
+    articles: list[tuple[int, str, str, int | None, str | None]] = []
     content_dir = PUBLICATION_ARTICLES_DIR if archived else ARTICLES_DIR
     for item in items:
         if item.id is None:
             continue
         wc = _word_count(content_dir / f"{item.id}.txt")
-        articles.append((item.id, item.title, item.source, wc))
+        articles.append((item.id, item.title, item.source, wc, item.status))
 
     if not articles:
         return {"ok": False, "detail": "No articles to layout"}

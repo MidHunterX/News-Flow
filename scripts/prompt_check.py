@@ -42,6 +42,7 @@ from pathlib import Path
 # Make "app" importable when running from the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.db.constants import STATUS_COMPLETED
 from app.gemini import (
     _LAYOUT_RESPONSE_SCHEMA,
     _LAYOUT_SYSTEM_PROMPT,
@@ -338,7 +339,8 @@ async def show_layout() -> None:
             items = [
                 NewsItem(id=1, title="Kerala seal thriller against Karnataka",
                          url=None, image_url=None, description="desc",
-                         published_at="2026-10-31", source="kaumudi"),
+                         published_at="2026-10-31", source="kaumudi",
+                         status=STATUS_COMPLETED),
                 NewsItem(id=2, title="Union Cabinet approves coastal highway",
                          url=None, image_url=None, description="desc",
                          published_at="2026-10-31", source="mangalam"),
@@ -347,14 +349,16 @@ async def show_layout() -> None:
                          published_at="2026-10-31", source="madhyamam"),
                 NewsItem(id=4, title="Kerala Blasters sign Brazilian striker",
                          url=None, image_url=None, description="desc",
-                         published_at="2026-10-31", source="kaumudi"),
+                         published_at="2026-10-31", source="kaumudi",
+                         status=STATUS_COMPLETED),
                 NewsItem(id=5, title="Gold prices hit record high",
                          url=None, image_url=None, description="desc",
                          published_at="2026-10-31", source="mangalam"),
             ]
 
-        # Build article tuples with word counts (from saved content or 0)
-        articles: list[tuple[int, str, str, int | None]] = []
+        # Build article tuples with word counts (from saved content or 0) and
+        # the status the AI layout prompt split (completed vs pending) needs.
+        articles: list[tuple[int, str, str, int | None, str | None]] = []
         for item in items:
             if item.id is None:
                 continue
@@ -377,32 +381,36 @@ async def show_layout() -> None:
                 except (OSError, UnicodeError):
                     pass
 
-            articles.append((item.id, item.title, item.source, word_count))
+            articles.append(
+                (item.id, item.title, item.source, word_count, item.status)
+            )
 
         if not articles:
             print("(no articles in DB; using sample article list)")
             articles = [
-                (1, "Kerala seal thriller against Karnataka", "kaumudi", 280),
-                (2, "Union Cabinet approves coastal highway", "mangalam", 150),
-                (3, "Heavy rain warning for Idukki district", "madhyamam", 95),
-                (4, "Kerala Blasters sign Brazilian striker", "kaumudi", 200),
-                (5, "Gold prices hit record high", "mangalam", 120),
-                (6, "New flight connections for Kannur airport", "kaumudi", 80),
-                (7, "Onam festivals see record attendance", "madhyamam", 110),
+                (1, "Kerala seal thriller against Karnataka", "kaumudi", 280,
+                 STATUS_COMPLETED),
+                (2, "Union Cabinet approves coastal highway", "mangalam", 150,
+                 None),
+                (3, "Heavy rain warning for Idukki district", "madhyamam", 95,
+                 None),
+                (4, "Kerala Blasters sign Brazilian striker", "kaumudi", 200,
+                 STATUS_COMPLETED),
+                (5, "Gold prices hit record high", "mangalam", 120, None),
+                (6, "New flight connections for Kannur airport", "kaumudi", 80,
+                 None),
+                (7, "Onam festivals see record attendance", "madhyamam", 110,
+                 None),
             ]
 
         if not layout:
             layout = {"total_pages": 4, "page_words": 300, "word_allowance": 50}
 
-        total_words = sum(wc for _, _, _, wc in articles if wc)
+        total_words = sum(wc for _, _, _, wc, _ in articles if wc)
         if total_words and layout["page_words"]:
-            mean_wc = total_words / sum(1 for _, _, _, wc in articles if wc)
-            articles_per_page_hint = max(1, math.ceil(layout["page_words"] / mean_wc))
-        else:
-            articles_per_page_hint = 0
-        total_words = sum(wc for _, _, _, wc in articles if wc)
-        if total_words and layout["page_words"]:
-            mean_wc = total_words / sum(1 for _, _, _, wc in articles if wc)
+            mean_wc = total_words / sum(
+                1 for _, _, _, wc, _ in articles if wc
+            )
             articles_per_page_hint = max(1, math.ceil(layout["page_words"] / mean_wc))
         else:
             articles_per_page_hint = 0

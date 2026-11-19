@@ -581,3 +581,90 @@ class TestPickArticleIds:
 
         monkeypatch.setattr("app.client.get_client", fake_get_client)
         assert await gemini.pick_article_ids(PENDING, [], 2) == []
+
+
+# ---------------------------------------------------------------------------
+# AI Layout: completed/pending prompt split + suggest_layout
+# ---------------------------------------------------------------------------
+
+COMPLETED = "completed"
+
+LAYOUT_ARTICLES = [
+    (1, "Budget session opens", "kaumudi", 300, COMPLETED),
+    (2, "Local temple festival begins", "mangalam", 120, None),
+    (3, "New coastal highway approved", "madhyamam", 200, COMPLETED),
+    (4, "Gold prices climb again", "kaumudi", 90, "rejected"),
+]
+
+
+class TestBuildLayoutPrompt:
+    def test_splits_completed_and_pending_lists(self):
+        prompt = gemini.build_layout_prompt(LAYOUT_ARTICLES, 4, 300, 50, 2)
+        completed_start = prompt.index("Completed articles (2 total")
+        pending_start = prompt.index("Pending articles (2 total")
+        assert completed_start < pending_start
+        # Completed stories sit in the first block, everything else in the
+        # second — including rejected/accepted rows, which are merely "extra".
+        completed_block = prompt[completed_start:pending_start]
+        pending_block = prompt[pending_start:]
+        assert "1. Budget session opens" in completed_block
+        assert "3. New coastal highway approved" in completed_block
+        assert "2. Local temple festival begins" in pending_block
+        assert "4. Gold prices climb again" in pending_block
+        assert "1. Budget session opens" not in pending_block
+
+    def test_no_completed_articles_renders_placeholder(self):
+        prompt = gemini.build_layout_prompt(
+            [(1, "Only pending", "kaumudi", 100, None)], 2, 300, 50, 1
+        )
+        assert "Completed articles (0 total" in prompt
+        assert "Pending articles (1 total" in prompt
+        assert "(none)" in prompt
+
+    def test_keeps_page_settings_and_instruction(self):
+        prompt = gemini.build_layout_prompt(LAYOUT_ARTICLES, 4, 300, 50, 2)
+        assert "total_pages: 4" in prompt
+        assert "total word budget: 4 pages x 300 words/page = 1200 words" in prompt
+        assert "prefer the completed articles" in prompt
+
+    def test_system_prompt_mentions_both_lists(self):
+        text = gemini._LAYOUT_SYSTEM_PROMPT.format(
+            total_articles=4, total_pages=4, articles_per_page_target=2
+        )
+        assert "COMPLETED" in text
+        assert "PENDING" in text
+
+
+def _layout_response(pages: list[list[int]]) -> FakeResponse:
+    text = '{"pages": ' + __import__("json").dumps(pages) + "}"
+    return FakeResponse({
+        "candidates": [{"content": {"parts": [{"text": text}]}}],
+    })
+
+
+class TestSuggestLayout:
+    async def test_unconfigured_returns_empty_without_http(self, monkeypatch):
+        monkeypatch.setattr(gemini, "GEMINI_API_KEY", "")
+        assert await gemini.suggest_layout(LAYOUT_ARTICLES, 2, 300, 50) == []
+
+    async def test_no_articles_returns_empty(self, gemini_env):
+        assert await gemini.suggest_layout([], 2, 300, 50) == []
+
+    async def test_prompt_carries_the_completed_pending_split(
+        self, gemini_env, monkeypatch
+    ):
+        client = FakeClient(lambda url, kwargs: _layout_response([[1, 3], [2]]))
+
+        async def fake_get_client():
+            return client
+
+        monkeypatch.setattr("app.client.get_client", fake_get_client)
+        pages = await gemini.suggest_layout(LAYOUT_ARTICLES, 2, 300, 50)
+        assert pages == [[1, 3], [2]]
+        prompt_text = client.calls[0][1]["json"]["contents"][0]["parts"][0]["text"]
+        assert "Completed articles (2 total" in prompt_text
+        assert "Pending articles (2 total" in prompt_text
+        system_text = (
+            client.calls[0][1]["json"]["systemInstruction"]["parts"][0]["text"]
+        )
+        assert "COMPLETED" in system_text

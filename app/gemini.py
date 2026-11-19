@@ -41,7 +41,7 @@ from typing import Any
 import httpx
 
 from app.config import GEMINI_API_KEY, GEMINI_MODEL
-from app.db.constants import NOTIF_WARNING
+from app.db.constants import NOTIF_WARNING, STATUS_COMPLETED
 from app.models import NewsItem
 
 logger = logging.getLogger(__name__)
@@ -414,17 +414,25 @@ async def suggest_categories(
 
 _LAYOUT_SYSTEM_PROMPT = (
     "You are an editor for a Malayalam newspaper's print edition. You are given "
-    "a list of candidate articles (ID, title, word count) and the page layout "
+    "two lists of candidate articles (ID, title, word count) and the page layout "
     "settings: total_pages, page_words (target words per page), and "
     "word_allowance (slack above/below). Your task is to CURATE the most "
     "important, newsworthy articles and assign them to pages to create a "
     "balanced newspaper layout.\n\n"
+    "The candidates come in two lists. COMPLETED articles were already "
+    "published to WordPress — an editor judged them important, so strongly "
+    "prefer them. PENDING articles are everything else: keep them only to fill "
+    "the remaining space, or when one is clearly more newsworthy than what is "
+    "left.\n\n"
     "There are far more candidates than will fit. You do NOT need to place "
     "every article — dropping lower-priority articles is expected and correct.\n\n"
     "Selection (curation):\n"
     "- Keep only the most important, newsworthy articles. The total word budget "
     "is total_pages * page_words; keep roughly enough articles to fill that "
     "budget, and discard the rest.\n"
+    "- Choose from the completed list first; fall back to pending articles only "
+    "when the completed ones do not fill the budget or a pending story is "
+    "plainly more important.\n"
     "- Deduplicate: the same news often appears under different headings, and "
     "follow-ups may cover an already-covered story. Pick only the single most "
     "important article for each distinct story and drop the rest.\n"
@@ -479,34 +487,53 @@ _LAYOUT_RESPONSE_SCHEMA: dict[str, Any] = {
 
 
 def build_layout_prompt(
-    articles: list[tuple[int, str, str | None, int | None]],
+    articles: list[tuple[int, str, str | None, int | None, str | None]],
     total_pages: int,
     page_words: int,
     word_allowance: int,
     articles_per_page_hint: int,
 ) -> str:
-    """User prompt for AI Layout: candidate list + page settings.
+    """User prompt for AI Layout: completed/pending lists + page settings.
 
-    *articles* holds (id, title, source, word_count) tuples. The source
-    field is accepted for call-site compatibility but is not included in
-    the prompt — it is not important for layout decisions and wastes
+    *articles* holds (id, title, source, word_count, status) tuples. The
+    source field is accepted for call-site compatibility but is not included
+    in the prompt — it is not important for layout decisions and wastes
     tokens.
+
+    Articles whose status is ``STATUS_COMPLETED`` are rendered first, as the
+    **completed** list: the WordPress pipeline (or an editor) already judged
+    them worth publishing, so they are the strongest importance signal the
+    prompt has. Every other article goes into the **pending** list, the
+    fallback pool the model may draw from to fill the remaining budget.
     *articles_per_page_hint* is a heuristically-derived soft ceiling on how
     many articles typically fit on one page, given to the model only as a
     rough guide so it does not overstuff a single page. The word budget is
     what governs the actual count per page. The model is expected to drop
     lower-priority candidates rather than place them all.
     """
-    lines = []
-    for article_id, title, _source, word_count in articles:
+    def render(lines: list[str]) -> str:
+        return "\n".join(lines) if lines else "(none)"
+
+    completed_lines: list[str] = []
+    pending_lines: list[str] = []
+    for article_id, title, _source, word_count, status in articles:
         wc = word_count if word_count is not None else 0
-        lines.append(f"{article_id}. {title} ({wc} words)")
+        line = f"{article_id}. {title} ({wc} words)"
+        if status == STATUS_COMPLETED:
+            completed_lines.append(line)
+        else:
+            pending_lines.append(line)
 
     total_budget = total_pages * page_words
 
     return (
-        f"Candidate articles ({len(articles)} total — more than will fit):\n"
-        f"{chr(10).join(lines)}\n\n"
+        f"Completed articles ({len(completed_lines)} total — already published "
+        f"to WordPress; an AI Agent/editor judged these important, so prefer them):\n"
+        f"{render(completed_lines)}\n\n"
+        f"Pending articles ({len(pending_lines)} total — the remaining "
+        f"candidates; use them only if the completed ones cannot fill the "
+        f"budget):\n"
+        f"{render(pending_lines)}\n\n"
         f"Page layout settings:\n"
         f"- total_pages: {total_pages}\n"
         f"- page_words: {page_words} (target words per page)\n"
@@ -515,10 +542,10 @@ def build_layout_prompt(
         f"= {total_budget} words\n"
         f"- articles_per_page_hint: {articles_per_page_hint} "
         f"(rough soft ceiling — a guide only; the word budget governs)\n\n"
-        f"Curate and lay out this edition per the rules above: drop duplicates "
-        f"and lower-priority stories, keep enough to fill the budget favoring "
-        f"local Kerala news, and spread the kept articles evenly across all "
-        f"{total_pages} pages."
+        f"Curate and lay out this edition per the rules above: prefer the "
+        f"completed articles, drop duplicates and lower-priority stories, keep "
+        f"enough to fill the budget favoring local Kerala news, and spread the "
+        f"kept articles evenly across all {total_pages} pages."
     )
 
 
@@ -581,16 +608,18 @@ def _validate_layout_response(
 
 
 async def suggest_layout(
-    articles: list[tuple[int, str, str | None, int | None]],
+    articles: list[tuple[int, str, str | None, int | None, str | None]],
     total_pages: int,
     page_words: int,
     word_allowance: int,
 ) -> list[list[int]]:
     """Ask Gemini to assign articles to pages for a balanced layout.
 
-    *articles* holds (id, title, source, word_count) tuples. The source
-    field is accepted for call-site compatibility but is not included in
-    the prompt.
+    *articles* holds (id, title, source, word_count, status) tuples. The
+    source field is accepted for call-site compatibility but is not included
+    in the prompt. Completed articles are rendered as a separate list ahead
+    of the pending ones so the model knows which stories an editor already
+    deemed important.
     Returns a list of page arrays: index 0 = page 1, etc.
     Each inner array contains article IDs assigned to that page.
 
@@ -602,15 +631,15 @@ async def suggest_layout(
 
     from app.client import get_client  # lazy: tests patch app.client.get_client
 
-    article_ids = {aid for aid, _, _, _ in articles}
+    article_ids = {aid for aid, _, _, _, _ in articles}
 
     # Heuristic target articles per page, derived from the mean scraped
     # word count. Presented as a soft guide (not a hard cap) because the
     # real constraint is the per-page word budget and every article must be
     # placed somewhere.
-    total_words = sum(wc for _, _, __, wc in articles if wc)
+    total_words = sum(wc for _, _, __, wc, ___ in articles if wc)
     if total_words and page_words:
-        mean_wc = total_words / sum(1 for _, _, __, wc in articles if wc)
+        mean_wc = total_words / sum(1 for _, _, __, wc, ___ in articles if wc)
         articles_per_page_hint = max(1, math.ceil(page_words / mean_wc))
     else:
         articles_per_page_hint = 0
