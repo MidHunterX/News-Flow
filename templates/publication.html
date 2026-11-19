@@ -868,6 +868,14 @@
       };
     }
 
+    // The floating preview every drag shows: a sidebar chip wearing the
+    // cards' raised white look, so a card drag and a chip drag read the
+    // same while the pointer carries them around.
+    const DRAG_PREVIEW_CLASSES =
+      "flex items-center gap-2 rounded-lg bg-white px-1.5 py-1 text-sm " +
+      "shadow-xl border border-indigo-300 " +
+      "dark:bg-gray-800 dark:border-indigo-700";
+
     // A card's drag mirror wears the sidebar chip it becomes on a page:
     // thumbnail, title and word count — so the drag already reads as the
     // layout entry instead of a floating caption. It is a preview only, so
@@ -879,10 +887,7 @@
       // mirror clone has no list to belong to.
       const preview = document.createElement("div");
       while (chip.firstChild) preview.appendChild(chip.firstChild);
-      preview.className =
-        "flex items-center gap-2 rounded-lg bg-white px-1.5 py-1 text-sm " +
-        "shadow-xl border border-indigo-300 " +
-        "dark:bg-gray-800 dark:border-indigo-700";
+      preview.className = DRAG_PREVIEW_CLASSES;
       return preview;
     }
 
@@ -921,6 +926,17 @@
       );
       sortable.on("drag:start", () => {
         lastChipPoint = null;
+      });
+      // The sidebar's own drag preview gets the same raised chip look as a
+      // card drag: the mirror is a clone of the chip in the list (no
+      // background of its own), so restyle it and drop the list-only bits
+      // (the negative margins and the hover wash). Its dimensions stay
+      // constrained to the chip's so it matches the list it came from.
+      sortable.on("mirror:created", (event) => {
+        const mirror = event.mirror;
+        if (!mirror) return;
+        mirror.className = `draggable-mirror ${DRAG_PREVIEW_CLASSES}`;
+        mirror.removeAttribute("data-article-chip");
       });
       sortable.on("drag:move", (event) => {
         const sensor = event.sensorEvent;
