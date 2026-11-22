@@ -665,10 +665,12 @@ class TestSidebarView:
         assert 'onclick="openPubSettings()"' in html  # gear → settings modal
         assert 'id="pub-settings-modal"' in html
         assert 'id="pub-slider"' in html  # quota slider + allowance ring
-        # The layout saves itself: status line, no Save button.
-        assert 'id="save-layout-status"' in html
+        # The layout saves itself: no Save button and no status chrome.
         assert 'id="save-layout-button"' not in html
+        assert 'id="save-layout-status"' not in html
+        assert 'id="save-layout-retry"' not in html
         assert "Save layout" not in html
+        assert "Changes save automatically" not in html
         assert "@shopify/draggable" in html  # the DnD bundle
         assert 'data-pub-list="1"' in html  # a page's sortable list
         assert "data-pub-page-drop" in html  # a card's drop target
@@ -910,8 +912,9 @@ class TestDragAndDropWiring:
         assert "AUTOSAVE_DELAY" in html  # debounced, not one POST per drop
         assert "void persistLayout();" in html
         assert "async function persistLayout()" in html
-        assert 'id="save-layout-status"' in html  # status replaces the button
         assert 'id="save-layout-button"' not in html
+        assert 'id="save-layout-status"' not in html  # no status chrome
+        assert "saveFailureNotified" in html  # a failure still warns once
 
     def test_auto_save_does_not_reload_or_jump_to_top(self):
         """A confirmed write must update the baseline in place — reloading
@@ -923,7 +926,6 @@ class TestDragAndDropWiring:
         assert "reloadPage()" not in persist_fn
         assert "window.location.reload()" not in persist_fn
         assert "savedLayout = sentSnapshot;" in persist_fn
-        assert "setSaveStatus(\"saved\"" in persist_fn
 
     def test_moved_cards_sync_opacity_and_page_tag(self):
         html = _render_bare()

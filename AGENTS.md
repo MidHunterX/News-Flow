@@ -224,10 +224,10 @@ Two workspaces exist side by side:
   to full opacity without one. Every change auto-saves after a short
   debounce: the sidebar POSTs `/api/publication/layout` with every page in
   display order and, once the read-back (`GET /api/publication/layout`)
-  matches what it sent, moves its baseline snapshot and updates the footer
-  status — in place, never by reloading, so the scroll position survives.
-  A failed write keeps the draft with a Retry button and the beforeunload
-  guard.
+  matches what it sent, moves its baseline snapshot — in place, never by
+  reloading, so the scroll position survives. There is no save status
+  chrome; a failed write warns once, keeps the draft on screen, and the
+  beforeunload guard still protects it.
   Every committed-layout flow (settings, AI generate/apply, clear) reloads
   through the same helper, which also navigates as a fallback when a
   script reload is ignored; choosing a history generation first confirms

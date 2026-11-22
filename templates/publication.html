@@ -405,7 +405,7 @@
     </div>
 
     <!-- ============ RIGHT: print-layout sidebar (edge-docked) ============ -->
-    <aside class="w-80 xl:w-96 shrink-0 sticky top-6 max-h-[calc(100vh-8rem)] flex flex-col
+    <aside class="w-80 xl:w-96 shrink-0 sticky top-6 max-h-[calc(100vh-3rem)] flex flex-col
                   bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden dark:bg-gray-800 dark:border-indigo-900"
            data-day="{{ selected_day }}">
       <!-- Panel header: the gear opens the publication-only settings
@@ -495,21 +495,11 @@
       </div>
 
       <!-- Pinned footer: the layout saves itself after every change, so
-           there is no button — just the status of the last write and the
-           drag hint. A save never reloads the page, so the scroll position
-           (and anything focused) stays where it is. -->
+           there is no button and no status chrome — just the drag hint.
+           A save never reloads the page, so the scroll position (and
+           anything focused) stays where it is. -->
       <div class="p-3 border-t border-indigo-100 shrink-0 dark:border-indigo-900">
-        <div class="flex items-center justify-center gap-2">
-          <p id="save-layout-status" role="status" aria-live="polite"
-             class="text-[11px] font-medium text-center text-gray-400 dark:text-gray-500">
-            Changes save automatically.
-          </p>
-          <button type="button" id="save-layout-retry" onclick="retryLayoutSave()"
-                  class="hidden text-[11px] font-semibold text-indigo-600 underline hover:text-indigo-800 dark:text-indigo-300 dark:hover:text-indigo-100">
-            Retry
-          </button>
-        </div>
-        <p class="mt-1 text-[11px] text-gray-400 text-center dark:text-gray-500">
+        <p class="text-[11px] text-gray-400 text-center dark:text-gray-500">
           Tip: You can drag a card by its image.
         </p>
       </div>
@@ -650,14 +640,13 @@
     // the draft: every change is auto-saved after a short debounce, and a
     // save never reloads the page, so the scroll position stays put.
     const layoutRoot = document.getElementById("pub-layout-root");
-    const layoutStatus = document.getElementById("save-layout-status");
-    const layoutRetry = document.getElementById("save-layout-retry");
     const AUTOSAVE_DELAY = 400;
     let layoutDirty = false;
     let layoutSaved = false; // an explicit reload: leave without the guard
     let autosaveTimer = null;
     let saveInFlight = false;
     let saveQueued = false;
+    let saveFailureNotified = false;
     let activeDropzone = null;
     let activeCardList = null;
 
@@ -678,23 +667,6 @@
     }
     let savedLayout = layoutSnapshot();
 
-    const SAVE_STATUS_CLASSES = {
-      idle: "text-gray-400 dark:text-gray-500",
-      saving: "text-indigo-500 dark:text-indigo-400",
-      saved: "text-green-600 dark:text-green-400",
-      error: "text-red-500 dark:text-red-400",
-    };
-
-    function setSaveStatus(state, message) {
-      if (layoutStatus) {
-        layoutStatus.className =
-          "text-[11px] font-medium text-center " +
-          (SAVE_STATUS_CLASSES[state] || SAVE_STATUS_CLASSES.idle);
-        layoutStatus.textContent = message;
-      }
-      if (layoutRetry) layoutRetry.classList.toggle("hidden", state !== "error");
-    }
-
     function refreshDirty() {
       layoutDirty = layoutSnapshot() !== savedLayout;
       return layoutDirty;
@@ -708,7 +680,6 @@
         // The draft is back to what the server holds: drop a pending write.
         clearTimeout(autosaveTimer);
         autosaveTimer = null;
-        if (!saveInFlight) setSaveStatus("saved", "Layout saved.");
         return;
       }
       clearTimeout(autosaveTimer);
@@ -716,12 +687,6 @@
         autosaveTimer = null;
         void persistLayout();
       }, AUTOSAVE_DELAY);
-    }
-
-    function retryLayoutSave() {
-      clearTimeout(autosaveTimer);
-      autosaveTimer = null;
-      void persistLayout();
     }
 
     // Every explicit flow (settings, AI generate/apply, clear) ends here:
@@ -1110,8 +1075,8 @@
     }
 
     // Write the draft in the background. The response is read back and
-    // compared with what was sent before the baseline snapshot moves, so
-    // the status only says "saved" once the server really holds this
+    // compared with what was sent before the baseline snapshot moves, so the
+    // draft is only marked clean once the server really holds this
     // arrangement. There is no reload — the DOM already shows it, so the
     // scroll position stays exactly where the drag left it.
     async function persistLayout() {
@@ -1123,7 +1088,6 @@
       const pages = collectLayoutPages();
       const sentSnapshot = layoutSnapshot();
       saveInFlight = true;
-      setSaveStatus("saving", "Saving…");
       try {
         const res = await fetch(
           `/api/publication/layout?day=${encodeURIComponent(pubDay)}`,
@@ -1149,17 +1113,18 @@
         // baseline. Anything dragged while the request ran stays dirty and
         // queues another save.
         savedLayout = sentSnapshot;
-        if (refreshDirty()) {
-          scheduleLayoutSave();
-        } else {
-          setSaveStatus("saved", "Layout saved");
-        }
+        saveFailureNotified = false;
+        if (refreshDirty()) scheduleLayoutSave();
       } catch (err) {
-        setSaveStatus(
-          "error",
-          (err && err.message) ||
-            "Saving the layout failed — your changes are still here."
-        );
+        // No status chrome on this page: warn once per failing streak, and
+        // keep the draft (the beforeunload guard still protects it).
+        if (!saveFailureNotified) {
+          saveFailureNotified = true;
+          alert(
+            (err && err.message) ||
+              "Saving the layout failed — your changes are still here."
+          );
+        }
       } finally {
         saveInFlight = false;
         if (saveQueued) {
