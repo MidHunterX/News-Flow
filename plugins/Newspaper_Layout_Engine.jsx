@@ -310,7 +310,6 @@
   var SMALL_ARTICLE_MIN_WORDS = 50;
   var SMALL_ARTICLE_MAX_WORDS = 130;
   var GROUP_GAP = 8;
-  var HEADING_GAP = 0; // Automatically padded in object style
   var IMAGE_GAP = 6;
   var DEFAULT_IMAGE_ASPECT = 1.5; // width / height
   var IMAGE_SIDE_ALTERNATES = true;
@@ -427,6 +426,36 @@
     return wc >= SMALL_ARTICLE_MIN_WORDS && wc <= SMALL_ARTICLE_MAX_WORDS;
   }
 
+  // =========================================================
+  // PAGE LAYOUT CONTEXT
+  // =========================================================
+
+  // Central place to compute per-page layout parameters.
+  // Future layout rules (image caps, gap rules, special sections, etc.)
+  // should be added here so placement functions stay generic.
+  function buildPageContext(units) {
+    var singleCount = 0;
+    var pairCount = 0;
+    for (var i = 0; i < units.length; i++) {
+      if (units[i].type === "single") singleCount++;
+      else if (units[i].type === "pair") pairCount++;
+    }
+
+    // RULE: when more than 2 single wide articles share a page,
+    // cap single-article image width at 3 columns.
+    var maxImageSpanSingle = singleCount > 2 ? 3 : 4;
+
+    return {
+      singleCount: singleCount,
+      pairCount: pairCount,
+      maxImageSpanSingle: maxImageSpanSingle,
+      // Add future per-page rules here, e.g.:
+      // maxImageSpanPair: ...,
+      // allowFullWidthImage: ...,
+      // minUnitHeight: ...,
+    };
+  }
+
   // Grouping rules:
   // 1. An explicit group key on consecutive articles takes priority.
   // 2. Otherwise, two consecutive 50-180 word articles become a pair.
@@ -495,13 +524,6 @@
       weight: words + 90,
       grouping: reason,
     };
-  }
-
-  function headingHeight(article, availableHeight) {
-    var text = String(article.heading || article.title || "");
-    var estimatedLines = Math.max(1, Math.ceil(text.length / 75));
-    var height = 25 + estimatedLines * 15;
-    return Math.min(Math.max(28, height), Math.max(24, availableHeight * 0.35));
   }
 
   // Image column selection: short articles receive a wider image, which
@@ -581,6 +603,7 @@
     bottom,
     styles,
     index,
+    pageContext,
   ) {
     var title = article.heading || article.title || "";
     var heading = placeHeadingAndMeasure(
@@ -602,7 +625,7 @@
     );
     var imageFrame = null;
     if (article.cover && article.cover.url && bottom - bodyTop > 24) {
-      var span = imageColumnSpan(articleWords(article), 4);
+      var span = imageColumnSpan(articleWords(article), pageContext.maxImageSpanSingle);
       var side = IMAGE_SIDE_ALTERNATES && index % 2 === 1 ? "right" : "left";
       var start = side === "right" ? 4 - span : 0;
       var bounds = imageBounds(layout, bodyTop, bottom, start, span, side);
@@ -751,6 +774,7 @@
       }
 
       var units = buildLayoutUnits(articles);
+      var pageContext = buildPageContext(units);
       var totalWeight = 0;
       for (var u = 0; u < units.length; u++) totalWeight += units[u].weight;
 
@@ -796,6 +820,7 @@
               unitBottom,
               styles,
               u,
+              pageContext,
             );
           }
 
