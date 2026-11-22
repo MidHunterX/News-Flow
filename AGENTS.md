@@ -221,13 +221,13 @@ Two workspaces exist side by side:
   (indigo under quota, green at 100%, heating through orange to red at
   `page_words + word_allowance`) and mirror the placement on the left
   cards: placed cards fade and show their `#pN` tag, unplaced ones return
-  to full opacity without one. Nothing is written until **Save layout**
-  POSTs `/api/publication/layout` with every page in display order; the
-  button is enabled only while the DOM's page→order snapshot differs from
-  the one the server rendered. After a successful POST the sidebar reads
-  the saved layout back (`GET /api/publication/layout`) and only reloads
-  once it matches what was sent, so a save can never leave the button on
-  its spinner; a failed read-back restores the button and says so.
+  to full opacity without one. Every change auto-saves after a short
+  debounce: the sidebar POSTs `/api/publication/layout` with every page in
+  display order and, once the read-back (`GET /api/publication/layout`)
+  matches what it sent, moves its baseline snapshot and updates the footer
+  status — in place, never by reloading, so the scroll position survives.
+  A failed write keeps the draft with a Retry button and the beforeunload
+  guard.
   Every committed-layout flow (settings, AI generate/apply, clear) reloads
   through the same helper, which also navigates as a fallback when a
   script reload is ignored; choosing a history generation first confirms

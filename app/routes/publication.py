@@ -439,10 +439,10 @@ async def get_saved_layout(
 ):
     """Read back the saved page layout, as the sidebar just wrote it.
 
-    Called right after **Save layout** to confirm the write landed before
-    the page reloads: each configured page comes back with its articles in
-    ``page_position`` order (unplaced rows are absent, empty pages are
-    listed empty).
+    Called right after the auto-save POST to confirm the write landed before
+    the sidebar clears its dirty state: each configured page comes back with
+    its articles in ``page_position`` order (unplaced rows are absent, empty
+    pages are listed empty).
     """
     archived = day == "previous"
     items = await get_publication_items() if archived else await get_items()

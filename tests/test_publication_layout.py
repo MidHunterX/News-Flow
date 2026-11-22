@@ -658,15 +658,17 @@ class TestSidebarView:
 
         assert titles == ["First", "Second"]
 
-    async def test_sidebar_offers_settings_drag_and_save(self, pub_workspace):
+    async def test_sidebar_offers_settings_drag_and_autosave(self, pub_workspace):
         response = await _view(day=None, sort="id")
         html = response.body.decode()
 
         assert 'onclick="openPubSettings()"' in html  # gear → settings modal
         assert 'id="pub-settings-modal"' in html
         assert 'id="pub-slider"' in html  # quota slider + allowance ring
-        assert 'id="save-layout-button"' in html
-        assert "Save layout" in html
+        # The layout saves itself: status line, no Save button.
+        assert 'id="save-layout-status"' in html
+        assert 'id="save-layout-button"' not in html
+        assert "Save layout" not in html
         assert "@shopify/draggable" in html  # the DnD bundle
         assert 'data-pub-list="1"' in html  # a page's sortable list
         assert "data-pub-page-drop" in html  # a card's drop target
@@ -900,11 +902,28 @@ class TestDragAndDropWiring:
         assert "chip.remove()" in html  # …which unplaces it
         assert 'handle: "[data-chip-thumb]"' in html  # chips drag by image
 
-    def test_save_is_enabled_only_when_the_layout_changes(self):
+    def test_changes_are_auto_saved_without_a_button(self):
         html = _render_bare()
-        assert "const savedLayout = layoutSnapshot();" in html
+        assert "let savedLayout = layoutSnapshot();" in html
         assert "layoutSnapshot() !== savedLayout" in html
-        assert "button.disabled = !layoutDirty;" in html
+        assert "function scheduleLayoutSave()" in html
+        assert "AUTOSAVE_DELAY" in html  # debounced, not one POST per drop
+        assert "void persistLayout();" in html
+        assert "async function persistLayout()" in html
+        assert 'id="save-layout-status"' in html  # status replaces the button
+        assert 'id="save-layout-button"' not in html
+
+    def test_auto_save_does_not_reload_or_jump_to_top(self):
+        """A confirmed write must update the baseline in place — reloading
+        would throw the page back to the top after every drag."""
+        html = _render_bare()
+        persist_fn = html.split("async function persistLayout(", 1)[1].split(
+            "\n    }", 1
+        )[0]
+        assert "reloadPage()" not in persist_fn
+        assert "window.location.reload()" not in persist_fn
+        assert "savedLayout = sentSnapshot;" in persist_fn
+        assert "setSaveStatus(\"saved\"" in persist_fn
 
     def test_moved_cards_sync_opacity_and_page_tag(self):
         html = _render_bare()
@@ -922,11 +941,11 @@ class TestDragAndDropWiring:
     def test_unsaved_layout_guards_against_reload(self):
         assert 'window.addEventListener("beforeunload"' in _render_bare()
 
-    def test_save_confirms_the_stored_layout_before_reloading(self):
+    def test_save_confirms_the_stored_layout_before_clearing_the_draft(self):
         html = _render_bare()
         assert "async function fetchSavedLayout()" in html  # read-back
         assert "savedLayoutMatches(stored, pages)" in html  # compare
-        assert "could not be confirmed" in html  # never spin silently
+        assert "could not be confirmed" in html  # the status never lies
         assert "window.location.reload();" in html
         assert "window.location.replace(window.location.href)" in html  # fallback
 
