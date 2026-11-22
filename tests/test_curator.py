@@ -452,3 +452,115 @@ async def test_archived_enrich_scrapes_into_the_publication_workspace(
     assert curator._interval_elapsed(future, 60) is False
     past = _iso(datetime.now(UTC) - timedelta(seconds=61))
     assert curator._interval_elapsed(past, 60) is True
+
+
+def _counting_fetch_env(monkeypatch, tmp_path):
+    """_fake_scrape_env plus a fetch counter, to prove the network was skipped."""
+    import app.utils as utils_mod
+
+    dirs, download = _fake_scrape_env(monkeypatch, tmp_path)
+    fetches: list[str] = []
+
+    async def counting_fetch(url: str) -> str:
+        fetches.append(url)
+        return "<html><body>ignored by _FakeScraper</body></html>"
+
+    monkeypatch.setattr(utils_mod, "fetch_html", counting_fetch)
+    return dirs, download, fetches
+
+
+async def test_enrich_skips_article_already_enriched_in_curation(
+    tmp_path, monkeypatch
+):
+    """Content + cover already local: no fetch, no download, still success."""
+    dirs, download, fetches = _counting_fetch_env(monkeypatch, tmp_path)
+    with db_pkg.SessionLocal() as session:
+        session.add(_row(Article, cover_file="/covers/cover.jpg"))
+        session.commit()
+        article_id = session.query(Article).one().id
+
+    dirs["cur_articles"].mkdir(parents=True, exist_ok=True)
+    dirs["cur_covers"].mkdir(parents=True, exist_ok=True)
+    body_file = dirs["cur_articles"] / f"{article_id}.txt"
+    body_file.write_text("existing heading\n\nexisting body", encoding="utf-8")
+    (dirs["cur_covers"] / "cover.jpg").write_bytes(b"jpeg")
+
+    item = _item(article_id, cover_file="/covers/cover.jpg")
+    assert curator.is_enriched(item) is True
+    assert await curator.enrich_accepted_article(item) is True
+
+    assert fetches == []
+    assert download.dest_dirs == []
+    # The existing local copy is left untouched.
+    assert body_file.read_text(encoding="utf-8") == "existing heading\n\nexisting body"
+
+
+async def test_enrich_skips_article_enriched_in_the_other_workspace(
+    tmp_path, monkeypatch
+):
+    """Either workspace counts: publication files satisfy a curation call."""
+    dirs, download, fetches = _counting_fetch_env(monkeypatch, tmp_path)
+    with db_pkg.SessionLocal() as session:
+        session.add(_row(PublicationArticle, cover_file="/publication/covers/cover.jpg"))
+        session.commit()
+        article_id = session.query(PublicationArticle).one().id
+
+    dirs["pub_articles"].mkdir(parents=True, exist_ok=True)
+    dirs["pub_covers"].mkdir(parents=True, exist_ok=True)
+    body_file = dirs["pub_articles"] / f"{article_id}.txt"
+    body_file.write_text("archived heading\n\narchived body", encoding="utf-8")
+    (dirs["pub_covers"] / "cover.jpg").write_bytes(b"jpeg")
+
+    item = _item(article_id, cover_file="/publication/covers/cover.jpg")
+    assert await curator.enrich_accepted_article(item) is True
+    assert await curator.enrich_accepted_article(item, archived=True) is True
+
+    assert fetches == []
+    assert download.dest_dirs == []
+    assert not (dirs["cur_articles"] / f"{article_id}.txt").exists()
+
+
+async def test_enrich_scrapes_when_content_exists_but_cover_is_missing(
+    tmp_path, monkeypatch
+):
+    """Both halves are required; a missing cover means it is not enriched."""
+    dirs, download, fetches = _counting_fetch_env(monkeypatch, tmp_path)
+    with db_pkg.SessionLocal() as session:
+        session.add(_row(Article, cover_file="/covers/cover.jpg"))
+        session.commit()
+        article_id = session.query(Article).one().id
+
+    dirs["cur_articles"].mkdir(parents=True, exist_ok=True)
+    (dirs["cur_articles"] / f"{article_id}.txt").write_text(
+        "stale body", encoding="utf-8"
+    )
+
+    item = _item(article_id, cover_file="/covers/cover.jpg")
+    assert curator.is_enriched(item) is False
+    assert await curator.enrich_accepted_article(item) is True
+
+    assert fetches == [item.url]
+    assert download.dest_dirs == [dirs["cur_covers"]]
+    body_file = dirs["cur_articles"] / f"{article_id}.txt"
+    assert "Scraped heading" in body_file.read_text(encoding="utf-8")
+
+
+async def test_enrich_scrapes_when_no_cover_file_is_recorded(
+    tmp_path, monkeypatch
+):
+    """Without a recorded cover name the image can't be located: scrape."""
+    dirs, _download, fetches = _counting_fetch_env(monkeypatch, tmp_path)
+    with db_pkg.SessionLocal() as session:
+        session.add(_row(Article))
+        session.commit()
+        article_id = session.query(Article).one().id
+
+    dirs["cur_articles"].mkdir(parents=True, exist_ok=True)
+    (dirs["cur_articles"] / f"{article_id}.txt").write_text(
+        "existing body", encoding="utf-8"
+    )
+
+    item = _item(article_id)
+    assert curator.is_enriched(item) is False
+    assert await curator.enrich_accepted_article(item) is True
+    assert fetches == [item.url]

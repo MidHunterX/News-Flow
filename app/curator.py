@@ -65,6 +65,40 @@ def is_selecting() -> bool:
     return _SELECTING
 
 
+def is_enriched(article: NewsItem) -> bool:
+    """True when the article's content and cover already exist on disk.
+
+    Both workspaces are considered, since the daily reset mirrors the
+    curation workspace into the publication one (and the publication page
+    can scrape into the mirror first): a ``<id>.txt`` body in either
+    ``ARTICLES_DIR`` or ``PUBLICATION_ARTICLES_DIR`` plus the article's
+    ``cover_file`` image in either ``COVERS_DIR`` or
+    ``PUBLICATION_COVERS_DIR`` means the work is already done.
+
+    The dirs are imported lazily so tests that rebind them on ``app.utils``
+    are honored.
+    """
+    from app.utils import (
+        ARTICLES_DIR,
+        COVERS_DIR,
+        PUBLICATION_ARTICLES_DIR,
+        PUBLICATION_COVERS_DIR,
+    )
+
+    if not article.id or not article.cover_file:
+        return False
+    content_dirs = (ARTICLES_DIR, PUBLICATION_ARTICLES_DIR)
+    cover_dirs = (COVERS_DIR, PUBLICATION_COVERS_DIR)
+    has_content = any(
+        (directory / f"{article.id}.txt").is_file() for directory in content_dirs
+    )
+    cover_name = Path(article.cover_file).name
+    has_cover = any(
+        (directory / cover_name).is_file() for directory in cover_dirs
+    )
+    return has_content and has_cover
+
+
 async def enrich_accepted_article(
     article: NewsItem, *, archived: bool = False
 ) -> bool:
@@ -83,6 +117,11 @@ async def enrich_accepted_article(
     ``cover_file`` records the ``/publication/covers/...`` path. The
     caller owns the article's status: nothing here accepts, rejects, or
     clears an article.
+
+    An article that is already enriched — content saved and cover downloaded
+    in either workspace (see :func:`is_enriched`) — is left alone and counts
+    as success, so repeated calls (re-accept, auto-scrape, the publication
+    page's Scrape button) never re-fetch a page that is already local.
 
     Returns False when the article page could not be used: the fetch raised,
     the page didn't parse, or the parsed body came back empty. A caller that
@@ -107,6 +146,8 @@ async def enrich_accepted_article(
     article_id = article.id
     if not article_id or not article.url or article.source not in SCRAPERS:
         return False
+    if is_enriched(article):
+        return True
     # Same layout in both workspaces; only the directories (and the cover
     # column to update) differ.
     content_dir = PUBLICATION_ARTICLES_DIR if archived else ARTICLES_DIR
